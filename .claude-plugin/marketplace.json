@@ -9,7 +9,7 @@
     {
       "name": "agent-fleet",
       "source": "./plugins/agent-fleet",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Rules for multi-agent work, with a UserPromptSubmit hook that injects them whenever the prompt invokes deep-research or ultracode — the trigger the skill description alone never fires.",
       "author": {
         "name": "4nrry",

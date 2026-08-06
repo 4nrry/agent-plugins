@@ -68,6 +68,13 @@ context — so the schema has to be right *before* the run, not after.
   false and another as true-with-a-caveat, both defensibly — the largest
   source of verdict variance in paired runs, and it moves your aggregate with
   the model choice.
+- Fit the quote requirement to the page's shape. A verbatim-sentence rule
+  fails on structured pages — package tables, milestone lists — where no
+  sentence exists to copy; held to fifteen words of prose, the agent
+  synthesises them, and the synthesis fails the string check while the fact
+  behind it was right, in every measured case. On those pages the verbatim
+  unit is the exact cell: a version string or a table row is shorter than any
+  sentence and more distinctive than most.
 - Prefer several small runs to one large one; resume by run id rather than
   relaunching.
 - Try small and solo first — one fetch, one quote check, a ten-line throwaway
@@ -105,9 +112,11 @@ context — so the schema has to be right *before* the run, not after.
 - Report near-misses as a ratio, not pass/fail. Markup breaks sentences across
   tags; roughly half or less means the agent wrote from memory. The ratio only
   carries information above a sentence or so, and a high one proves presence,
-  not anchoring — three tokens will match somewhere on almost any page,
+  not anchoring — three common tokens will match somewhere on almost any page,
   including the paragraph that does not support the verdict. On a short quote,
-  check where it landed rather than whether it landed.
+  check where it landed rather than whether it landed; the exception is a
+  distinctive identifier — a version string, a package name with its epoch —
+  where matching at all is the anchor.
 - An unreachable page is its own answer — neither pass nor failure. Some hosts
   refuse scripted GETs, some render client-side. Keep a per-project list rather
   than rediscovering it each run; archive mirrors and plain-HTML alternatives
