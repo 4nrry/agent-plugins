@@ -1,6 +1,6 @@
 {
   "name": "4nrry",
-  "description": "4nrry's personal Claude Code plugins",
+  "description": "Agent plugins and skills by 4nrry — skill bodies and scripts follow the Agent Skills open standard; this catalog packages them for Claude Code",
   "owner": {
     "name": "4nrry",
     "url": "https://github.com/4nrry"

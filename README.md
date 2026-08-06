@@ -1,8 +1,13 @@
-# 4nrry's Claude Code plugins
+# 4nrry's agent plugins
 
-Personal plugin marketplace for [Claude Code](https://code.claude.com/docs/en/plugins).
+Plugins and skills for AI agents. The skills follow the
+[Agent Skills](https://agentskills.io) open standard, so their bodies and
+bundled scripts are portable across tools that speak it. The packaging in this
+repo — hooks included — targets
+[Claude Code](https://code.claude.com/docs/en/plugins), which consumes it as a
+plugin marketplace; other formats may join as the collection grows.
 
-## Install
+## Install (Claude Code)
 
 Add the marketplace, then install a plugin:
 
