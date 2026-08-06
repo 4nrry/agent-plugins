@@ -1,0 +1,17 @@
+{
+  "name": "4nrry",
+  "description": "4nrry's personal Claude Code plugins",
+  "owner": {
+    "name": "4nrry",
+    "url": "https://github.com/4nrry"
+  },
+  "plugins": [
+    {
+      "name": "agent-fleet",
+      "source": "./plugins/agent-fleet",
+      "version": "1.0.0",
+      "description": "Rules for multi-agent work, with a UserPromptSubmit hook that injects them whenever the prompt invokes deep-research or ultracode — the trigger the skill description alone never fires.",
+      "author": { "name": "4nrry", "url": "https://github.com/4nrry" }
+    }
+  ]
+}
