@@ -7,11 +7,11 @@ Personal plugin marketplace for [Claude Code](https://code.claude.com/docs/en/pl
 Add the marketplace, then install a plugin:
 
 ```
-/plugin marketplace add 4nrry/claude-plugins
+/plugin marketplace add 4nrry/agent-plugins
 /plugin install agent-fleet@4nrry
 ```
 
-Or paste `4nrry/claude-plugins` into the Claude Desktop **Add marketplace** dialog.
+Or paste `4nrry/agent-plugins` into the Claude Desktop **Add marketplace** dialog.
 
 ## Plugins
 
