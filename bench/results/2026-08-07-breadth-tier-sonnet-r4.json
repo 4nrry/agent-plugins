@@ -1,0 +1,173 @@
+{
+  "run_id": "2026-08-07-breadth-tier-sonnet-r4",
+  "date": "2026-08-07T22:42:10.884337+00:00",
+  "plugin": "agent-fleet",
+  "plugin_version": "1.0.2",
+  "question": "Does the breadth-fleet model tier (haiku vs sonnet) change citation fidelity and key-fact recall under closed schema and read-only containment?",
+  "variable": "breadth agent model",
+  "arm": "sonnet",
+  "batch_id": "2026-08-07-breadth-tier",
+  "eval_ref": "bench/evals/plasma67-citations.json",
+  "eval_sha256": "058df2a583bb504eb25e4af9eab429399fe48c0c72397dab0b57c859ec516948",
+  "harness": {
+    "orchestrator_model": "claude-fable-5",
+    "claude_code_version": "2.1.223 (Claude Code)",
+    "workflow_run_id": "wf_6a35e8b6-020",
+    "session_effort": "xhigh"
+  },
+  "agents": [
+    {
+      "agent_id": "a04fe8ff05ea2b3ee",
+      "label": null,
+      "phase": "breadth",
+      "model": "claude-sonnet-5",
+      "agent_type": "Explore",
+      "prompt_sha256": "cad03d15cbda02295880d06e7917f817fe0f7e39942bafec622e1a7021d23261",
+      "prompt_head": "Which plasma-desktop version does Ubuntu 26.10 (Stonking) currently carry? Fetch https://packages.ubuntu.com/stonking/plasma-desktop and https://launchpad.net/u",
+      "tokens": {
+        "output": 2046,
+        "input_uncached": 143,
+        "cache_write": 13859,
+        "cache_read": 408758
+      },
+      "tool_calls": 12,
+      "duration_ms": 42264,
+      "api_calls": 11
+    },
+    {
+      "agent_id": "a6ec4c7cef51f2657",
+      "label": null,
+      "phase": "breadth",
+      "model": "claude-sonnet-5",
+      "agent_type": "Explore",
+      "prompt_sha256": "33e7785927e17008e3859765c8c4b2320f0fa07adba665771c608b28754a4654",
+      "prompt_head": "What plasma-desktop version does the Kubuntu Backports PPA currently publish for Ubuntu 26.04 (Resolute)? Fetch https://launchpad.net/~kubuntu-ppa/+archive/ubun",
+      "tokens": {
+        "output": 5711,
+        "input_uncached": 20,
+        "cache_write": 9821,
+        "cache_read": 367507
+      },
+      "tool_calls": 10,
+      "duration_ms": 70202,
+      "api_calls": 10
+    },
+    {
+      "agent_id": "a7f4edc30ee5616c4",
+      "label": null,
+      "phase": "breadth",
+      "model": "claude-sonnet-5",
+      "agent_type": "Explore",
+      "prompt_sha256": "3549039253dc3abb57b21f0cf39c05f219032d05b7f7c500ca00bda28fba3b64",
+      "prompt_head": "What is the status of KDE bug 107302 (https://bugs.kde.org/show_bug.cgi?id=107302), and which Plasma version fixed it? Fetch the bug page. Return the bug title,",
+      "tokens": {
+        "output": 414,
+        "input_uncached": 8,
+        "cache_write": 3210,
+        "cache_read": 134776
+      },
+      "tool_calls": 4,
+      "duration_ms": 21969,
+      "api_calls": 4
+    },
+    {
+      "agent_id": "a8484f3b62b2cabf4",
+      "label": null,
+      "phase": "breadth",
+      "model": "claude-sonnet-5",
+      "agent_type": "Explore",
+      "prompt_sha256": "554d7cd14ea0729969ebdbd50d3ddf2eba208dd994599eb40bdb694045e63ca3",
+      "prompt_head": "Does KDE Plasma 6.7 include per-monitor (per-screen) virtual desktops — a different virtual desktop on each monitor? Fetch the official Plasma 6.7.0 announcemen",
+      "tokens": {
+        "output": 2413,
+        "input_uncached": 20,
+        "cache_write": 7927,
+        "cache_read": 363416
+      },
+      "tool_calls": 10,
+      "duration_ms": 49561,
+      "api_calls": 10
+    },
+    {
+      "agent_id": "ac9e1164f3eb31049",
+      "label": null,
+      "phase": "breadth",
+      "model": "claude-sonnet-5",
+      "agent_type": "Explore",
+      "prompt_sha256": "5bbb6f8890be1a16a6bf95c77da7d4464696dd85c2300c830f043b65844ca5ea",
+      "prompt_head": "When was (or will be) KDE Plasma 6.7 released, and what is its 6.7.x bugfix schedule? Fetch the kde.org announcement for Plasma 6.7.0 and the announcements list",
+      "tokens": {
+        "output": 4755,
+        "input_uncached": 193,
+        "cache_write": 5953,
+        "cache_read": 173955
+      },
+      "tool_calls": 9,
+      "duration_ms": 53578,
+      "api_calls": 5
+    }
+  ],
+  "untracked_agents": [],
+  "totals": {
+    "output": 15339,
+    "input_uncached": 384,
+    "cache_write": 40770,
+    "cache_read": 1448412,
+    "tool_calls": 45,
+    "wall_duration_ms": 70204
+  },
+  "outcomes": {
+    "verifier_self_test": true,
+    "citations": {
+      "source": "script",
+      "measured": 22,
+      "found": 20,
+      "partial": 1,
+      "absent": 1,
+      "unfetchable_quotes": 0,
+      "found_rate": 0.909,
+      "wrong_source": 0
+    },
+    "assertions": {
+      "source": "script",
+      "schema_ok": 5,
+      "schema_total": 5,
+      "key_fact_score": 4,
+      "key_fact_total": 5,
+      "per_item": {
+        "schedule": {
+          "schema_ok": true,
+          "key_fact": true,
+          "findings": 5,
+          "found": 5
+        },
+        "feature": {
+          "schema_ok": true,
+          "key_fact": true,
+          "findings": 3,
+          "found": 2
+        },
+        "tracker": {
+          "schema_ok": true,
+          "key_fact": false,
+          "findings": 4,
+          "found": 4
+        },
+        "backports": {
+          "schema_ok": true,
+          "key_fact": true,
+          "findings": 5,
+          "found": 4
+        },
+        "distro": {
+          "schema_ok": true,
+          "key_fact": true,
+          "findings": 5,
+          "found": 5
+        }
+      }
+    }
+  },
+  "notes": "Round 4 of 5, batch 2026-08-07-breadth-tier. Known eval design weakness, applies equally to both arms: tracker key_fact_regexes require the bug number in claim+quote text; whether an agent restates the number there is a stylistic choice (measured: some runs do, some leave it only in the url field), so key_fact:tracker conflates fact recall with that choice. Queue for eval v2 after this batch. ",
+  "orchestrator_prompt_sha256": "4acdd37465656c63b01b60ec9b206da91cae5aef656f3823700954aab3dedb8c"
+}

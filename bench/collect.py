@@ -167,7 +167,8 @@ def apply_phase_map(agents, spec):
         phase, _, prefixes = part.partition("=")
         phase = phase.strip()
         for prefix in [p.strip() for p in prefixes.split(",") if p.strip()]:
-            matches = [a for a in agents if a["agent_id"].startswith(prefix)]
+            matches = agents if prefix == "*" else \
+                [a for a in agents if a["agent_id"].startswith(prefix)]
             if not matches:
                 sys.exit(f"collect.py: phase-map prefix '{prefix}' matches no agent")
             for a in matches:
