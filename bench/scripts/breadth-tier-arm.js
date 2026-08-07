@@ -6,8 +6,10 @@ export const meta = {
 
 // The single manipulated variable arrives via args; everything else in this
 // file is byte-identical across arms — its sha256 is each record's
-// orchestrator_prompt_sha256.
-const MODEL = args.model
+// orchestrator_prompt_sha256. Some harness builds deliver args as a JSON
+// string rather than an object; accept both.
+const parsedArgs = typeof args === 'string' ? JSON.parse(args) : args
+const MODEL = parsedArgs && parsedArgs.model
 if (MODEL !== 'haiku' && MODEL !== 'sonnet') throw new Error('args.model must be haiku or sonnet')
 
 phase('Breadth')
