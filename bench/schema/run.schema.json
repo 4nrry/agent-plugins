@@ -1,0 +1,280 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Benchmark run record",
+  "type": "object",
+  "required": [
+    "run_id",
+    "date",
+    "plugin",
+    "plugin_version",
+    "question",
+    "variable",
+    "arm",
+    "harness",
+    "agents",
+    "totals",
+    "outcomes",
+    "notes"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}-[a-z0-9-]+$"
+    },
+    "date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Collection timestamp (UTC) — when collect.py ran, not when the run started; the run's own time span is in the agent timestamps."
+    },
+    "plugin": {
+      "type": "string"
+    },
+    "plugin_version": {
+      "type": "string"
+    },
+    "question": {
+      "type": "string",
+      "description": "What this run helps answer."
+    },
+    "variable": {
+      "type": "string",
+      "description": "The single manipulated variable, or 'none' for a pilot."
+    },
+    "arm": {
+      "type": "string",
+      "description": "Which arm of the comparison this run belongs to, or 'pilot'."
+    },
+    "eval_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Path under bench/evals/ frozen before the run, or null for a pilot."
+    },
+    "harness": {
+      "type": "object",
+      "required": [
+        "orchestrator_model",
+        "claude_code_version",
+        "workflow_run_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "orchestrator_model": {
+          "type": "string",
+          "description": "Exact model ID of the orchestrating session."
+        },
+        "workflow_run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "session_effort": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "claude_code_version": {
+          "type": "string",
+          "description": "Output of `claude --version` for the session that ran the workflow."
+        }
+      }
+    },
+    "agents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "agent_id",
+          "phase",
+          "model",
+          "agent_type",
+          "prompt_sha256",
+          "prompt_head",
+          "tokens",
+          "tool_calls",
+          "duration_ms",
+          "api_calls"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phase": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "agent_type": {
+            "type": "string"
+          },
+          "prompt_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "prompt_head": {
+            "type": "string",
+            "maxLength": 160,
+            "description": "First 160 chars of the prompt, for human reading; the hash is the identity."
+          },
+          "tokens": {
+            "type": "object",
+            "required": [
+              "output",
+              "input_uncached",
+              "cache_write",
+              "cache_read"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "output": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "input_uncached": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "cache_write": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "cache_read": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "tool_calls": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "api_calls": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "untracked_agents": {
+      "type": "array",
+      "description": "Agents that ran but produced no harvestable transcript (e.g. Agent-tool calls outside a workflow).",
+      "items": {
+        "type": "object",
+        "required": [
+          "phase",
+          "model",
+          "why_untracked"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "phase": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "why_untracked": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "required": [
+        "output",
+        "input_uncached",
+        "cache_write",
+        "cache_read",
+        "tool_calls",
+        "wall_duration_ms"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "output": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "input_uncached": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_write": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_read": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tool_calls": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "wall_duration_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "max(timestamp) - min(timestamp) across ALL tracked agents' transcript entries. A lower bound on real pipeline wall time whenever untracked_agents is non-empty or the orchestrator did work between phases."
+        }
+      }
+    },
+    "outcomes": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "Task-level results. Shape is eval-specific; null when the run measured cost/latency only. Protocol requires every sub-object to carry a source tag: 'script' (mechanically measured, self-tested) or 'orchestrator_assertion' (counted or judged by the orchestrator) — the two do not mix in one sub-object.",
+      "properties": {
+        "verifier_self_test": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "notes": {
+      "type": "string",
+      "description": "Provenance notes: anything estimated or inferred rather than measured, and known deviations from protocol."
+    },
+    "batch_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Shared id linking every run of one paired comparison; null for pilots and standalone runs."
+    },
+    "eval_sha256": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "sha256 of the frozen eval file; required whenever eval_ref is set."
+    },
+    "orchestrator_prompt_sha256": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "sha256 of the orchestrator-level prompt for paired arms — the mechanical check that arms differed only in the declared variable. Filled by the researcher; required by protocol for any arm that is not 'pilot'."
+    }
+  }
+}

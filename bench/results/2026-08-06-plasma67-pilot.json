@@ -1,0 +1,147 @@
+{
+  "run_id": "2026-08-06-plasma67-pilot",
+  "date": "2026-08-07T22:12:12.375546+00:00",
+  "plugin": "agent-fleet",
+  "plugin_version": "1.0.2",
+  "question": "Does the routed pipeline (haiku breadth, script verify, sonnet adversarial) produce a verified answer on a real research task?",
+  "variable": "none",
+  "arm": "pilot",
+  "batch_id": null,
+  "eval_ref": null,
+  "eval_sha256": null,
+  "harness": {
+    "orchestrator_model": "claude-fable-5",
+    "claude_code_version": "2.1.223 (Claude Code)",
+    "workflow_run_id": "wf_dbb72732-e14",
+    "session_effort": null
+  },
+  "agents": [
+    {
+      "agent_id": "a0db299f956a3a27e",
+      "label": null,
+      "phase": "breadth",
+      "model": "claude-haiku-4-5-20251001",
+      "agent_type": "Explore",
+      "prompt_sha256": "2c505bcedfeae4b01c6ca6a3a63b072458ecd35e532bfb7c061eaf97f03edafd",
+      "prompt_head": "When was (or will be) KDE Plasma 6.7 released, and what is its 6.7.x bugfix schedule? Fetch the official Plasma release schedule at https://community.kde.org/Sc",
+      "tokens": {
+        "output": 6024,
+        "input_uncached": 358,
+        "cache_write": 42089,
+        "cache_read": 774805
+      },
+      "tool_calls": 27,
+      "duration_ms": 147443,
+      "api_calls": 26
+    },
+    {
+      "agent_id": "a78fe48a6fa93aa5d",
+      "label": null,
+      "phase": "breadth",
+      "model": "claude-haiku-4-5-20251001",
+      "agent_type": "Explore",
+      "prompt_sha256": "88a6c607e55f60df489dd3fd19463b15535f3175809a185f2674924112a72b80",
+      "prompt_head": "Find developer-side evidence for per-screen virtual desktops in KWin: the status of https://bugs.kde.org/show_bug.cgi?id=341143 and any merged merge request in ",
+      "tokens": {
+        "output": 6961,
+        "input_uncached": 334,
+        "cache_write": 71927,
+        "cache_read": 2336216
+      },
+      "tool_calls": 41,
+      "duration_ms": 237636,
+      "api_calls": 41
+    },
+    {
+      "agent_id": "a79a2d3f8a9692979",
+      "label": null,
+      "phase": "breadth",
+      "model": "claude-haiku-4-5-20251001",
+      "agent_type": "Explore",
+      "prompt_sha256": "091af54f4f7435ed224f3812e3bc474604175273940364e311b9631bb9ebc36d",
+      "prompt_head": "Does KDE Plasma 6.7 include per-monitor (per-screen) virtual desktops — a different virtual desktop on each monitor? Fetch the official Plasma 6.7 announcement ",
+      "tokens": {
+        "output": 7854,
+        "input_uncached": 1651,
+        "cache_write": 46649,
+        "cache_read": 929696
+      },
+      "tool_calls": 80,
+      "duration_ms": 232129,
+      "api_calls": 28
+    },
+    {
+      "agent_id": "aa30e83bde2a65e3e",
+      "label": null,
+      "phase": "breadth",
+      "model": "claude-haiku-4-5-20251001",
+      "agent_type": "Explore",
+      "prompt_sha256": "435b6531cf8f4c0e6191e58f0d4d269d0dd8e9bc244a1a434ec15307d63e2113",
+      "prompt_head": "Which Kubuntu release ships KDE Plasma 6.7 natively? Fetch kubuntu.org release announcements / notes for the 2026 releases and state which Kubuntu version carri",
+      "tokens": {
+        "output": 6918,
+        "input_uncached": 1467,
+        "cache_write": 38382,
+        "cache_read": 611203
+      },
+      "tool_calls": 40,
+      "duration_ms": 175405,
+      "api_calls": 21
+    },
+    {
+      "agent_id": "aeb5b73e9e18f71e7",
+      "label": null,
+      "phase": "breadth",
+      "model": "claude-haiku-4-5-20251001",
+      "agent_type": "Explore",
+      "prompt_sha256": "d0563fc94018055ae833a72f32e38ab081670c1ad26182a0ff53d03be394abcd",
+      "prompt_head": "What Plasma version do the Kubuntu Backports PPAs currently ship, and for which Kubuntu releases? Fetch https://launchpad.net/~kubuntu-ppa/+archive/ubuntu/backp",
+      "tokens": {
+        "output": 5091,
+        "input_uncached": 670,
+        "cache_write": 45033,
+        "cache_read": 447366
+      },
+      "tool_calls": 33,
+      "duration_ms": 125684,
+      "api_calls": 15
+    }
+  ],
+  "untracked_agents": [
+    {
+      "phase": "adversarial",
+      "model": "sonnet",
+      "why_untracked": "ran via Agent tool outside the workflow; no transcript dir harvested by collect.py yet"
+    }
+  ],
+  "totals": {
+    "output": 32848,
+    "input_uncached": 4480,
+    "cache_write": 244080,
+    "cache_read": 5099286,
+    "tool_calls": 221,
+    "wall_duration_ms": 237638
+  },
+  "outcomes": {
+    "verifier_self_test": true,
+    "citations": {
+      "source": "script",
+      "measured": 14,
+      "found": 5,
+      "partial": 3,
+      "absent": 6,
+      "fusion_suspected": 0,
+      "wrong_source": 0,
+      "urls_dead": 1
+    },
+    "adversarial_review": {
+      "source": "orchestrator_assertion",
+      "corrections_real": 2,
+      "overflags_arbitrated": 1,
+      "absent_diagnosis": "the 6 absent quotes were paraphrases of structured pages (Launchpad/packages tables); the adversarial pass reported confirming the underlying facts on-page — reported, not mechanically re-verified",
+      "schema_failures": 1,
+      "failed_agent_id": "a78fe48a6fa93aa5d"
+    }
+  },
+  "notes": "Pilot, n=1, supports no comparison claims. Orchestrator tokens not captured. Adversarial agent usage unmeasured (untracked_agents), so totals and wall_duration_ms are lower bounds for the full pipeline. The named failed_agent_id completed without calling StructuredOutput; its tokens are included, its findings were null. Citation numbers measured by verify_citations.py (plugin 1.0.2) after self-test. Eval set not frozen beforehand (eval_ref null) — pilot predates the protocol. Usage deduplicated per message.id keeping field-wise max of progressive snapshots; an earlier draft of this record summed every line and inflated cache fields ~2.7x."
+}

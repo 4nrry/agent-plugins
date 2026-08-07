@@ -1,0 +1,23 @@
+{
+  "eval_name": "example",
+  "description": "Minimal shape of a frozen eval set. Freeze means: commit this file, record its sha256 in every run's eval_sha256, and never edit it — a change starts a new benchmark.",
+  "items": [
+    {
+      "id": 1,
+      "input": "The task prompt handed to the pipeline, verbatim.",
+      "expected": "What a correct outcome looks like, concretely enough to check.",
+      "assertions": [
+        {
+          "name": "citation-verbatim",
+          "check": "script",
+          "how": "verify_citations.py ratio >= 0.8 on the claim's quote against its URL"
+        },
+        {
+          "name": "verdict-matches-key",
+          "check": "script",
+          "how": "verdict field equals the answer key entry for this item"
+        }
+      ]
+    }
+  ]
+}
