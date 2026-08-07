@@ -1,0 +1,58 @@
+{
+  "eval_name": "plasma67-citations",
+  "description": "Citation fidelity and key-fact recall on a real research task (KDE Plasma 6.7 / Kubuntu packaging), mixing prose pages (kde.org announcements) and structured pages (Launchpad/packages tables). Frozen 2026-08-07; sources verified reachable on 2026-08-06. Source drift is a documented threat: pages may change after freeze.",
+  "items": [
+    {
+      "id": "schedule",
+      "input": "When was (or will be) KDE Plasma 6.7 released, and what is its 6.7.x bugfix schedule? Fetch the kde.org announcement for Plasma 6.7.0 and the announcements listing. Return dated claims.",
+      "expected": "Plasma 6.7.0 released June 16, 2026; bugfix releases 6.7.1-6.7.4 exist with July-August dates.",
+      "key_fact_regexes": ["6\\.7\\.0", "(June 16|16 June|2026-06-16)"]
+    },
+    {
+      "id": "feature",
+      "input": "Does KDE Plasma 6.7 include per-monitor (per-screen) virtual desktops — a different virtual desktop on each monitor? Fetch the official Plasma 6.7.0 announcement on kde.org. State whether the feature landed, and whether the announcement says it is default or optional.",
+      "expected": "Feature landed in 6.7.0 ('per-screen virtual desktops have finally arrived'); the announcement is silent on default-vs-optional.",
+      "key_fact_regexes": ["per-screen virtual desktops"]
+    },
+    {
+      "id": "tracker",
+      "input": "What is the status of KDE bug 107302 (https://bugs.kde.org/show_bug.cgi?id=107302), and which Plasma version fixed it? Fetch the bug page. Return the bug title, status, and the 'Version Fixed/Implemented In' value.",
+      "expected": "Bug 107302 'Per-screen virtual desktops' is CLOSED FIXED with Version Fixed/Implemented In = 6.7.0.",
+      "key_fact_regexes": ["107302", "(CLOSED|FIXED|6\\.7\\.0)"]
+    },
+    {
+      "id": "backports",
+      "input": "What plasma-desktop version does the Kubuntu Backports PPA currently publish for Ubuntu 26.04 (Resolute)? Fetch https://launchpad.net/~kubuntu-ppa/+archive/ubuntu/backports?field.name_filter=plasma&field.status_filter=published and read the package rows. Is any 6.7.x build present for 26.04?",
+      "expected": "Top published plasma-desktop for resolute is 4:6.6.6 (~ppa1 suffix); no 6.7.x build present.",
+      "key_fact_regexes": ["6\\.6\\.6"]
+    },
+    {
+      "id": "distro",
+      "input": "Which plasma-desktop version does Ubuntu 26.10 (Stonking) currently carry? Fetch https://packages.ubuntu.com/stonking/plasma-desktop and https://launchpad.net/ubuntu/stonking/+source/plasma-desktop. Return the version and its upload date.",
+      "expected": "plasma-desktop 4:6.7.4-0ubuntu1, uploaded 2026-08-04.",
+      "key_fact_regexes": ["6\\.7\\.4", "([Ss]tonking|26\\.10)"]
+    }
+  ],
+  "assertions": [
+    {
+      "name": "schema-ok",
+      "check": "script",
+      "how": "the item's agent returned a StructuredOutput result (result != null)"
+    },
+    {
+      "name": "citation-found-rate",
+      "check": "script",
+      "how": "fraction of the run's measured quotes with verify_citations.py best_ratio >= 0.8; verifier self-test must pass first"
+    },
+    {
+      "name": "no-wrong-source",
+      "check": "script",
+      "how": "verify_citations.py wrong_source == 0 for the run"
+    },
+    {
+      "name": "key-fact",
+      "check": "script",
+      "how": "per item: at least one finding whose claim+quote matches ALL of the item's key_fact_regexes AND whose quote scores best_ratio >= 0.8 or is an exact structured-page string (ratio >= 0.8 on the cell). Score = items passing / 5."
+    }
+  ]
+}
