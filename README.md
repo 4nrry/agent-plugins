@@ -33,8 +33,3 @@ optimizer rewrites, on an eval set where the string match scores zero false
 positives) — so triggering is mechanical, not persuasive. Every rule in the
 skill body comes from paired A/B runs; the design notes live in the skill
 itself.
-
-## Methodology
-
-How these rules were measured — the benchmark loop, one rule per paid lesson —
-is documented in [METHODOLOGY.md](METHODOLOGY.md).
