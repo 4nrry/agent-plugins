@@ -33,3 +33,12 @@ optimizer rewrites, on an eval set where the string match scores zero false
 positives) — so triggering is mechanical, not persuasive. Every rule in the
 skill body comes from paired A/B runs; the design notes live in the skill
 itself.
+
+## Benchmarks
+
+Improvement claims about plugins in this repo are comparisons between run
+records committed under [`bench/results/`](bench/results/), collected per
+[`bench/PROTOCOL.md`](bench/PROTOCOL.md) — per-agent token splits, resolved
+model IDs, paired arms with hash-checked prompts, and outcomes tagged by
+source (script measurement vs orchestrator assertion). A claim without
+records is marketing and does not belong here.
