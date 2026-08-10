@@ -1,11 +1,11 @@
 {
   "name": "agent-fleet",
   "displayName": "Agent Fleet",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "author": {
     "name": "4nrry",
     "url": "https://github.com/4nrry"
   },
   "license": "MIT",
-  "description": "Rules for multi-agent work, with a UserPromptSubmit hook that injects them whenever the prompt invokes deep-research or ultracode — the trigger the skill description alone never fires (measured 2026-08-06: recall 0.00-0.33 across five description rewrites)."
+  "description": "Rules for multi-agent work, with a UserPromptSubmit hook that injects them whenever the prompt invokes deep-research or ultracode — the trigger the skill description alone never fires (measured 2026-08-06: per-query recall 0.00-0.33 over 3 runs each; four optimizer rewrites did no better than the original)."
 }
