@@ -22,5 +22,5 @@ if [[ ! -f "$PLUGIN_ROOT/SKILL.md" ]]; then
   exit 1
 fi
 
-printf 'The agent-fleet skill applies to this request (matched: deep-research/ultracode). Follow it when orchestrating. Skill directory: %s (scripts/ paths below are relative to it).\n\n' "$PLUGIN_ROOT"
+printf 'The agent-fleet skill applies to this request (matched: deep-research/ultracode). Follow it when orchestrating. Before dispatching any predefined workflow, read its script and check for model: overrides on the agent() calls — without them every agent inherits the session model, at fan-out scale; this is the rule most often skipped. Skill directory: %s (scripts/ paths below are relative to it).\n\n' "$PLUGIN_ROOT"
 cat "$PLUGIN_ROOT/SKILL.md"

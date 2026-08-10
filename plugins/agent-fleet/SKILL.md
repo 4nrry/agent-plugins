@@ -13,6 +13,17 @@ sections below — the fan-out is sized here, the model for each stage is chosen
 here, and "adversarially verify claims" is the section on what comes back. The
 synthesis stage is the one the rules hand to you rather than to an agent.
 
+A predefined workflow is a fleet someone else designed, and these rules do not
+reach inside its script on their own. Before dispatching one — `/deep-research`
+included — open the script and look for `model:` on its `agent()` calls: no
+override means every agent inherits the session's model, and a top-tier
+session pays top tier once per agent. In the one measured failure, a ~97-agent
+run reached its verification fan-out with everything inheriting the top model
+while these rules sat loaded in context — nobody had read the script. Caught
+late, the fix is cheap: stop the run and resume it with edited overrides; the
+unchanged prefix replays from cache, so the phases already paid for are kept,
+not repaid.
+
 Under `ultracode` the fan-out stops being a decision and becomes the session
 default, because Claude orchestrates dynamic workflows for substantive tasks on
 its own. A dynamic workflow also changes what you get to see: the script holds
