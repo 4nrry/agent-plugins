@@ -1,5 +1,5 @@
 export const meta = {
-  name: 'deep-research-routed',
+  name: 'deep-research',
   description: 'Deep research harness with model routing — the built-in deep-research script verbatim, plus per-phase model overrides: search/fetch on haiku, adversarial verification on sonnet, scope/synthesis on the session model.',
   whenToUse: 'When the user wants a deep, multi-source, fact-checked research report on any topic. BEFORE invoking, check if the question is specific enough to research directly — if underspecified (e.g., "what car to buy" without budget/use-case/region), ask 2-3 clarifying questions to narrow scope. Then pass the refined question as args, weaving the answers in.',
   phases: [{"title":"Scope","detail":"Decompose question (from args) into 5 search angles"},{"title":"Search","detail":"5 parallel WebSearch agents, one per angle","model":"haiku"},{"title":"Fetch","detail":"URL-dedup, fetch top 15 sources, extract falsifiable claims","model":"haiku"},{"title":"Verify","detail":"3-vote adversarial verification per claim (need 2/3 refutes to kill)","model":"sonnet"},{"title":"Synthesize","detail":"Merge semantic dupes, rank by confidence, cite sources"}],
