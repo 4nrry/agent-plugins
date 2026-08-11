@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # UserPromptSubmit hook: inject the bundled agent-fleet SKILL.md when the
 # prompt invokes deep-research or ultracode. Exists because the description
-# alone never fires (trigger-eval 2026-08-06: recall 0.00-0.33, five rewrites
-# no better) — so the trigger is mechanical string match, not model persuasion.
-# Keep the pattern narrow: the same eval measured zero false triggers, and
-# widening it is what would break that.
+# alone barely fires: trigger-eval 2026-08-06 measured 2 of 30 should-trigger
+# runs for the shipped description (per-query recall 0.00-0.33), and no
+# optimizer rewrite improved the held-out score — so the trigger is mechanical
+# string match, not model persuasion. Keep the pattern narrow: the same eval
+# measured zero false triggers in 150 negative runs, and widening it is what
+# would break that. Records: bench/results/2026-08-06-trigger-eval/ in
+# https://github.com/4nrry/agent-plugins.
 set -euo pipefail
 
 # Resolve the plugin root from the script's own location rather than
