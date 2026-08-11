@@ -27,12 +27,18 @@ fan-out, constraining output schemas, and verifying what agents return with a
 bundled citation checker (`scripts/verify_citations.py`).
 
 Ships a `UserPromptSubmit` hook that injects the skill whenever the prompt
-invokes deep-research or ultracode. The hook exists because measurement showed
-the description alone never triggers the skill (per-query recall 0.00–0.33 —
-20 frozen queries, 3 runs each, five descriptions evaluated: the original plus
-four optimizer rewrites — with zero false fires on the string match) — so triggering is mechanical, not persuasive. Every rule in the
-skill body comes from paired A/B runs; the design notes live in the skill
-itself.
+invokes deep-research or ultracode. The hook exists because the description
+alone barely triggers the skill: over 20 frozen queries run 3 times each, the
+shipped description fired on **2 of 30** should-trigger runs (per-query recall
+0.00–0.33), and four optimizer rewrites never moved the held-out score — while
+all five descriptions stayed silent on **all 150** should-not runs. Triggering
+is therefore mechanical, not persuasive. Raw harness output, eval set and the
+full reading:
+[`bench/results/2026-08-06-trigger-eval/`](bench/results/2026-08-06-trigger-eval/).
+
+The rules in the skill body come from paired A/B runs made while developing it;
+those predate this repository's protocol and are not published as records here,
+so read them as design notes rather than as measurements you can check.
 
 ## Benchmarks
 
@@ -42,3 +48,8 @@ records committed under [`bench/results/`](bench/results/), collected per
 model IDs, paired arms with hash-checked prompts, and outcomes tagged by
 source (script measurement vs orchestrator assertion). A claim without
 records is marketing and does not belong here.
+
+Records collected before that protocol existed, or by a foreign harness, are
+published as raw output with their hashes and are labeled **imported** in the
+first paragraph of their claims file, together with every field they lack and
+every claim that lack forbids.

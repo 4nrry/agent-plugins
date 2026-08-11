@@ -1,0 +1,22 @@
+[
+  {"query": "/deep-research quais frameworks de orquestracao de agentes suportam handoff de contexto entre modelos diferentes, com fontes primarias", "should_trigger": true},
+  {"query": "quero levantar a legislacao de trabalho remoto nos 50 estados dos EUA, cada estado com citacao da lei estadual. da ultima vez isso virou 200 agentes e estourou tudo, monta um plano melhor", "should_trigger": true},
+  {"query": "preciso comparar como umas 30 bibliotecas python de PDF lidam com formulario interativo, com fonte oficial pra cada uma. como voce organizaria isso?", "should_trigger": true},
+  {"query": "os agentes voltaram com 40 achados do scan de seguranca e alguns me parecem falso positivo, como eu confiro isso sem reler tudo na mao?", "should_trigger": true},
+  {"query": "tenho uns 60 arquivos de log pra classificar por tipo de erro, vale paralelizar com subagentes ou faco num loop so?", "should_trigger": true},
+  {"query": "o relatorio que o time gerou tem 25 citacoes de docs oficiais e desconfio que algumas foram escritas de memoria, quero validar cada uma contra a pagina viva", "should_trigger": true},
+  {"query": "minhas pesquisas profundas tao caras demais, quais fases dao pra rodar em modelo menor sem perder qualidade?", "should_trigger": true},
+  {"query": "vou montar um workflow dinamico pra auditar 80 repositorios, me ajuda a desenhar o schema de saida dos agentes antes de rodar", "should_trigger": true},
+  {"query": "spin up a bunch of subagents to cross-check these 15 vendor claims against their official docs, i want verbatim quotes for each", "should_trigger": true},
+  {"query": "pesquisa bem feita sobre o mercado de baterias de sodio: quero muitas fontes primarias, checadas uma a uma, nao um resumao de blog", "should_trigger": true},
+  {"query": "como eu crio um subagente customizado no claude code? quero um .md em .claude/agents com tools restritas e model haiku", "should_trigger": false},
+  {"query": "meu script python com multiprocessing ta deadlockando quando spawna os workers, olha esse traceback aqui", "should_trigger": false},
+  {"query": "quanto custa o managed agents da anthropic? e o sdk de agentes tem suporte a go?", "should_trigger": false},
+  {"query": "traduz esse relatorio de 30 paginas pro ingles mantendo a formatacao e as tabelas", "should_trigger": false},
+  {"query": "confere se esse link ta fora do ar: https://nginx.org/en/docs/http/ngx_http_core_module.html", "should_trigger": false},
+  {"query": "o kubernetes tem aquele PodDisruptionBudget ne, me explica quando faz sentido usar", "should_trigger": false},
+  {"query": "escreve um agente de atendimento com a API da anthropic que chama tools do meu CRM", "should_trigger": false},
+  {"query": "resume os 5 PDFs da pasta ~/Documentos/artigos, um paragrafo cada", "should_trigger": false},
+  {"query": "quero listar minhas rotinas agendadas na nuvem e pausar a de segunda-feira", "should_trigger": false},
+  {"query": "meu docker compose sobe 12 containers e dois ficam reiniciando em loop, investiga ai", "should_trigger": false}
+]

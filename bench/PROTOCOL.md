@@ -56,6 +56,17 @@ message.
    directions (misses and over-flags), not a single accuracy number. Anything
    in the claim that is not in the records is labeled estimated or inferred.
 
+## Imported records
+
+Measurements that predate this protocol, or that came out of a foreign harness,
+may be committed under `bench/results/` on three conditions: the raw output is
+published **byte-identical** with its sha256 stated (a retrofit into this
+schema would be a rewrite of data that cannot be re-derived); the record's
+claims file lists every field the schema requires and the harness did not
+emit; and no claim is made that those missing fields would have supported —
+a batch without token accounting cannot carry a cost claim. Imported records
+are labeled as such in their first paragraph.
+
 ## What the token split is for
 
 Cost claims need `tokens.output`, `tokens.input_uncached`,
@@ -86,8 +97,12 @@ Recorded here so they read as untested rather than covered:
   they enter records under `untracked_agents`, and every total that excludes
   them is a lower bound.
 - Orchestrator (main-context) tokens are not captured per run.
-- No results exist yet for any paired arms under this protocol; the pilot
-  record is n=1 and supports no comparison claims.
+- One paired comparison exists under this protocol (`2026-08-07-breadth-tier`,
+  n=5 per arm); the `2026-08-06-plasma67-pilot` record is n=1 and supports no
+  comparison claims. Everything else the plugin asserts is still untested here.
+- The trigger-eval batch is imported (see above): it carries no token or
+  timing data, so the plugin's hook is justified by a recall measurement and
+  by nothing about its cost.
 - Usage accounting was verified against one harness build's transcript format
   (progressive streaming snapshots per `message.id`); a format change would
   need re-verification, which is why `harness.claude_code_version` is

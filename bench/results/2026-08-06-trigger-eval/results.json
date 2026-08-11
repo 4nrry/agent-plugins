@@ -1,0 +1,1390 @@
+{
+  "exit_reason": "max_iterations (5)",
+  "original_description": "Rules for multi-agent work \u2014 routing each phase to the right model, sizing a fan-out, constraining output schemas so budget is not spent on text you discard, and verifying what agents return. Read this before any deep-research run, whether invoked by name or triggered implicitly by a question that needs many sources, and before launching subagents, a dynamic workflow, an agent team, or any parallel run. Read it again when the results come back and you must decide what to trust. Consult it even when the user never says \"deep research\", \"fleet\", \"fan-out\" or \"subagent\" \u2014 any time work is about to be split across several agents, or a batch of agent findings needs checking.",
+  "best_description": "Rules for multi-agent work \u2014 routing each phase to the right model, sizing a fan-out, constraining output schemas so budget is not spent on text you discard, and verifying what agents return. Read this before any deep-research run, whether invoked by name or triggered implicitly by a question that needs many sources, and before launching subagents, a dynamic workflow, an agent team, or any parallel run. Read it again when the results come back and you must decide what to trust. Consult it even when the user never says \"deep research\", \"fleet\", \"fan-out\" or \"subagent\" \u2014 any time work is about to be split across several agents, or a batch of agent findings needs checking.",
+  "best_score": "4/8",
+  "best_train_score": "6/12",
+  "best_test_score": "4/8",
+  "final_description": "Load FIRST \u2014 never answer these from memory; the skill holds measured decision rules (numbers you don't have) and a ready-made citation-checking script. Mandatory companion to every /deep-research run. Also load when: research must rest on many primary sources each checked one by one (market studies, state-by-state or country-by-country law/regulation surveys, technology landscape reviews); a report's quotes or citations look written from memory and each must be validated against its live source page; dozens of logs, files, records, or URLs need classifying or verifying and the question is subagents in parallel vs one loop; deep research or agent runs are too expensive and you must pick which phases drop to a smaller model without losing quality; any subagent fan-out, workflow, or agent team is being launched or its results judged. Skip for: coding agents against an LLM API, writing subagent .md files, OS parallelism (multiprocessing, containers), scheduled routines.",
+  "iterations_run": 5,
+  "holdout": 0.4,
+  "train_size": 12,
+  "test_size": 8,
+  "history": [
+    {
+      "iteration": 1,
+      "description": "Rules for multi-agent work \u2014 routing each phase to the right model, sizing a fan-out, constraining output schemas so budget is not spent on text you discard, and verifying what agents return. Read this before any deep-research run, whether invoked by name or triggered implicitly by a question that needs many sources, and before launching subagents, a dynamic workflow, an agent team, or any parallel run. Read it again when the results come back and you must decide what to trust. Consult it even when the user never says \"deep research\", \"fleet\", \"fan-out\" or \"subagent\" \u2014 any time work is about to be split across several agents, or a batch of agent findings needs checking.",
+      "train_passed": 6,
+      "train_failed": 6,
+      "train_total": 12,
+      "train_results": [
+        {
+          "query": "o relatorio que o time gerou tem 25 citacoes de docs oficiais e desconfio que algumas foram escritas de memoria, quero validar cada uma contra a pagina viva",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "minhas pesquisas profundas tao caras demais, quais fases dao pra rodar em modelo menor sem perder qualidade?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "pesquisa bem feita sobre o mercado de baterias de sodio: quero muitas fontes primarias, checadas uma a uma, nao um resumao de blog",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "tenho uns 60 arquivos de log pra classificar por tipo de erro, vale paralelizar com subagentes ou faco num loop so?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "/deep-research quais frameworks de orquestracao de agentes suportam handoff de contexto entre modelos diferentes, com fontes primarias",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero levantar a legislacao de trabalho remoto nos 50 estados dos EUA, cada estado com citacao da lei estadual. da ultima vez isso virou 200 agentes e estourou tudo, monta um plano melhor",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero listar minhas rotinas agendadas na nuvem e pausar a de segunda-feira",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu script python com multiprocessing ta deadlockando quando spawna os workers, olha esse traceback aqui",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "resume os 5 PDFs da pasta ~/Documentos/artigos, um paragrafo cada",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "como eu crio um subagente customizado no claude code? quero um .md em .claude/agents com tools restritas e model haiku",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "escreve um agente de atendimento com a API da anthropic que chama tools do meu CRM",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu docker compose sobe 12 containers e dois ficam reiniciando em loop, investiga ai",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "test_passed": 4,
+      "test_failed": 4,
+      "test_total": 8,
+      "test_results": [
+        {
+          "query": "vou montar um workflow dinamico pra auditar 80 repositorios, me ajuda a desenhar o schema de saida dos agentes antes de rodar",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "os agentes voltaram com 40 achados do scan de seguranca e alguns me parecem falso positivo, como eu confiro isso sem reler tudo na mao?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "preciso comparar como umas 30 bibliotecas python de PDF lidam com formulario interativo, com fonte oficial pra cada uma. como voce organizaria isso?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "spin up a bunch of subagents to cross-check these 15 vendor claims against their official docs, i want verbatim quotes for each",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "traduz esse relatorio de 30 paginas pro ingles mantendo a formatacao e as tabelas",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "quanto custa o managed agents da anthropic? e o sdk de agentes tem suporte a go?",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "o kubernetes tem aquele PodDisruptionBudget ne, me explica quando faz sentido usar",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "confere se esse link ta fora do ar: https://nginx.org/en/docs/http/ngx_http_core_module.html",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "passed": 6,
+      "failed": 6,
+      "total": 12,
+      "results": [
+        {
+          "query": "o relatorio que o time gerou tem 25 citacoes de docs oficiais e desconfio que algumas foram escritas de memoria, quero validar cada uma contra a pagina viva",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "minhas pesquisas profundas tao caras demais, quais fases dao pra rodar em modelo menor sem perder qualidade?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "pesquisa bem feita sobre o mercado de baterias de sodio: quero muitas fontes primarias, checadas uma a uma, nao um resumao de blog",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "tenho uns 60 arquivos de log pra classificar por tipo de erro, vale paralelizar com subagentes ou faco num loop so?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "/deep-research quais frameworks de orquestracao de agentes suportam handoff de contexto entre modelos diferentes, com fontes primarias",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero levantar a legislacao de trabalho remoto nos 50 estados dos EUA, cada estado com citacao da lei estadual. da ultima vez isso virou 200 agentes e estourou tudo, monta um plano melhor",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero listar minhas rotinas agendadas na nuvem e pausar a de segunda-feira",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu script python com multiprocessing ta deadlockando quando spawna os workers, olha esse traceback aqui",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "resume os 5 PDFs da pasta ~/Documentos/artigos, um paragrafo cada",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "como eu crio um subagente customizado no claude code? quero um .md em .claude/agents com tools restritas e model haiku",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "escreve um agente de atendimento com a API da anthropic que chama tools do meu CRM",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu docker compose sobe 12 containers e dois ficam reiniciando em loop, investiga ai",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "iteration": 2,
+      "description": "Use when planning, costing, or verifying work delegated to multiple agents: deep-research runs (/deep-research, or any request for rigorous research backed by many primary sources, each checked individually), subagent fan-outs, dynamic workflows, and agent teams. Covers: deciding whether a batch of items (files to classify, sources to verify) is worth parallelizing across subagents or better done in one loop; sizing a fan-out so it doesn't balloon into hundreds of agents; cutting the cost of expensive research runs by routing phases to smaller models without losing quality; constraining agent output schemas; and checking what agents return \u2014 especially validating each citation or quote in a report against its live source page when some may be fabricated or written from memory. Not for writing agent code against an LLM API, creating Claude Code subagent definition files, OS-level parallelism (multiprocessing, containers), or scheduling routines.",
+      "train_passed": 6,
+      "train_failed": 6,
+      "train_total": 12,
+      "train_results": [
+        {
+          "query": "minhas pesquisas profundas tao caras demais, quais fases dao pra rodar em modelo menor sem perder qualidade?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "o relatorio que o time gerou tem 25 citacoes de docs oficiais e desconfio que algumas foram escritas de memoria, quero validar cada uma contra a pagina viva",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "pesquisa bem feita sobre o mercado de baterias de sodio: quero muitas fontes primarias, checadas uma a uma, nao um resumao de blog",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "tenho uns 60 arquivos de log pra classificar por tipo de erro, vale paralelizar com subagentes ou faco num loop so?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "/deep-research quais frameworks de orquestracao de agentes suportam handoff de contexto entre modelos diferentes, com fontes primarias",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero levantar a legislacao de trabalho remoto nos 50 estados dos EUA, cada estado com citacao da lei estadual. da ultima vez isso virou 200 agentes e estourou tudo, monta um plano melhor",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "meu script python com multiprocessing ta deadlockando quando spawna os workers, olha esse traceback aqui",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "quero listar minhas rotinas agendadas na nuvem e pausar a de segunda-feira",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "resume os 5 PDFs da pasta ~/Documentos/artigos, um paragrafo cada",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "como eu crio um subagente customizado no claude code? quero um .md em .claude/agents com tools restritas e model haiku",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "escreve um agente de atendimento com a API da anthropic que chama tools do meu CRM",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu docker compose sobe 12 containers e dois ficam reiniciando em loop, investiga ai",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "test_passed": 4,
+      "test_failed": 4,
+      "test_total": 8,
+      "test_results": [
+        {
+          "query": "vou montar um workflow dinamico pra auditar 80 repositorios, me ajuda a desenhar o schema de saida dos agentes antes de rodar",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "os agentes voltaram com 40 achados do scan de seguranca e alguns me parecem falso positivo, como eu confiro isso sem reler tudo na mao?",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "preciso comparar como umas 30 bibliotecas python de PDF lidam com formulario interativo, com fonte oficial pra cada uma. como voce organizaria isso?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "spin up a bunch of subagents to cross-check these 15 vendor claims against their official docs, i want verbatim quotes for each",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "traduz esse relatorio de 30 paginas pro ingles mantendo a formatacao e as tabelas",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "quanto custa o managed agents da anthropic? e o sdk de agentes tem suporte a go?",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "o kubernetes tem aquele PodDisruptionBudget ne, me explica quando faz sentido usar",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "confere se esse link ta fora do ar: https://nginx.org/en/docs/http/ngx_http_core_module.html",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "passed": 6,
+      "failed": 6,
+      "total": 12,
+      "results": [
+        {
+          "query": "minhas pesquisas profundas tao caras demais, quais fases dao pra rodar em modelo menor sem perder qualidade?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "o relatorio que o time gerou tem 25 citacoes de docs oficiais e desconfio que algumas foram escritas de memoria, quero validar cada uma contra a pagina viva",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "pesquisa bem feita sobre o mercado de baterias de sodio: quero muitas fontes primarias, checadas uma a uma, nao um resumao de blog",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "tenho uns 60 arquivos de log pra classificar por tipo de erro, vale paralelizar com subagentes ou faco num loop so?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "/deep-research quais frameworks de orquestracao de agentes suportam handoff de contexto entre modelos diferentes, com fontes primarias",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero levantar a legislacao de trabalho remoto nos 50 estados dos EUA, cada estado com citacao da lei estadual. da ultima vez isso virou 200 agentes e estourou tudo, monta um plano melhor",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "meu script python com multiprocessing ta deadlockando quando spawna os workers, olha esse traceback aqui",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "quero listar minhas rotinas agendadas na nuvem e pausar a de segunda-feira",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "resume os 5 PDFs da pasta ~/Documentos/artigos, um paragrafo cada",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "como eu crio um subagente customizado no claude code? quero um .md em .claude/agents com tools restritas e model haiku",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "escreve um agente de atendimento com a API da anthropic que chama tools do meu CRM",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu docker compose sobe 12 containers e dois ficam reiniciando em loop, investiga ai",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "iteration": 3,
+      "description": "Use for four jobs. (1) Deep research: every /deep-research invocation, and any request for rigorous research built on many primary sources checked one by one \u2014 market studies, legal or regulatory surveys, technical landscape reviews \u2014 even when the user only describes the topic. (2) Citation audit: verifying each quote and citation in a report against its live source page, when some may be fabricated or written from memory. (3) Batch decisions: dozens-to-hundreds of items to classify, fetch, or verify \u2014 decide between a single loop and a subagent fan-out, and cap the fan-out before it balloons into hundreds of agents. (4) Cost control: an agent or research run is too expensive \u2014 route phases to smaller models without losing quality. Not for writing agent code against an LLM API, authoring subagent definition files, OS-level parallelism (multiprocessing, containers), or scheduling routines.",
+      "train_passed": 7,
+      "train_failed": 5,
+      "train_total": 12,
+      "train_results": [
+        {
+          "query": "o relatorio que o time gerou tem 25 citacoes de docs oficiais e desconfio que algumas foram escritas de memoria, quero validar cada uma contra a pagina viva",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "minhas pesquisas profundas tao caras demais, quais fases dao pra rodar em modelo menor sem perder qualidade?",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "pesquisa bem feita sobre o mercado de baterias de sodio: quero muitas fontes primarias, checadas uma a uma, nao um resumao de blog",
+          "should_trigger": true,
+          "trigger_rate": 0.6666666666666666,
+          "triggers": 2,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "tenho uns 60 arquivos de log pra classificar por tipo de erro, vale paralelizar com subagentes ou faco num loop so?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero levantar a legislacao de trabalho remoto nos 50 estados dos EUA, cada estado com citacao da lei estadual. da ultima vez isso virou 200 agentes e estourou tudo, monta um plano melhor",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "/deep-research quais frameworks de orquestracao de agentes suportam handoff de contexto entre modelos diferentes, com fontes primarias",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero listar minhas rotinas agendadas na nuvem e pausar a de segunda-feira",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu script python com multiprocessing ta deadlockando quando spawna os workers, olha esse traceback aqui",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "resume os 5 PDFs da pasta ~/Documentos/artigos, um paragrafo cada",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "como eu crio um subagente customizado no claude code? quero um .md em .claude/agents com tools restritas e model haiku",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "escreve um agente de atendimento com a API da anthropic que chama tools do meu CRM",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu docker compose sobe 12 containers e dois ficam reiniciando em loop, investiga ai",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "test_passed": 4,
+      "test_failed": 4,
+      "test_total": 8,
+      "test_results": [
+        {
+          "query": "vou montar um workflow dinamico pra auditar 80 repositorios, me ajuda a desenhar o schema de saida dos agentes antes de rodar",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "os agentes voltaram com 40 achados do scan de seguranca e alguns me parecem falso positivo, como eu confiro isso sem reler tudo na mao?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "preciso comparar como umas 30 bibliotecas python de PDF lidam com formulario interativo, com fonte oficial pra cada uma. como voce organizaria isso?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "spin up a bunch of subagents to cross-check these 15 vendor claims against their official docs, i want verbatim quotes for each",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "traduz esse relatorio de 30 paginas pro ingles mantendo a formatacao e as tabelas",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "quanto custa o managed agents da anthropic? e o sdk de agentes tem suporte a go?",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "o kubernetes tem aquele PodDisruptionBudget ne, me explica quando faz sentido usar",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "confere se esse link ta fora do ar: https://nginx.org/en/docs/http/ngx_http_core_module.html",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "passed": 7,
+      "failed": 5,
+      "total": 12,
+      "results": [
+        {
+          "query": "o relatorio que o time gerou tem 25 citacoes de docs oficiais e desconfio que algumas foram escritas de memoria, quero validar cada uma contra a pagina viva",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "minhas pesquisas profundas tao caras demais, quais fases dao pra rodar em modelo menor sem perder qualidade?",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "pesquisa bem feita sobre o mercado de baterias de sodio: quero muitas fontes primarias, checadas uma a uma, nao um resumao de blog",
+          "should_trigger": true,
+          "trigger_rate": 0.6666666666666666,
+          "triggers": 2,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "tenho uns 60 arquivos de log pra classificar por tipo de erro, vale paralelizar com subagentes ou faco num loop so?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero levantar a legislacao de trabalho remoto nos 50 estados dos EUA, cada estado com citacao da lei estadual. da ultima vez isso virou 200 agentes e estourou tudo, monta um plano melhor",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "/deep-research quais frameworks de orquestracao de agentes suportam handoff de contexto entre modelos diferentes, com fontes primarias",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero listar minhas rotinas agendadas na nuvem e pausar a de segunda-feira",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu script python com multiprocessing ta deadlockando quando spawna os workers, olha esse traceback aqui",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "resume os 5 PDFs da pasta ~/Documentos/artigos, um paragrafo cada",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "como eu crio um subagente customizado no claude code? quero um .md em .claude/agents com tools restritas e model haiku",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "escreve um agente de atendimento com a API da anthropic que chama tools do meu CRM",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu docker compose sobe 12 containers e dois ficam reiniciando em loop, investiga ai",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "iteration": 4,
+      "description": "Use before doing \u2014 or even advising on \u2014 any of these, however answerable they seem directly; the skill holds measured decision rules and a bundled citation-checking script. (a) Every /deep-research run, and any research built on many individually checked primary sources: market studies, per-state or per-country legal/regulatory surveys, technical landscape reviews. (b) Auditing a report whose quotes or citations may be hallucinated or written from memory, validating each against its live source page \u2014 even when no agents are involved. (c) Dozens of items (logs, files, records, URLs) to classify, fetch, or verify: parallelize with subagents or run one loop? Cap the fan-out before 50 items become 200 agents. (d) An expensive agent or research run: deciding which phases move to a smaller model without losing quality. Not for writing LLM-API agent code, authoring subagent .md files, OS-level parallelism (multiprocessing, containers), or scheduled routines.",
+      "train_passed": 7,
+      "train_failed": 5,
+      "train_total": 12,
+      "train_results": [
+        {
+          "query": "o relatorio que o time gerou tem 25 citacoes de docs oficiais e desconfio que algumas foram escritas de memoria, quero validar cada uma contra a pagina viva",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "minhas pesquisas profundas tao caras demais, quais fases dao pra rodar em modelo menor sem perder qualidade?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "pesquisa bem feita sobre o mercado de baterias de sodio: quero muitas fontes primarias, checadas uma a uma, nao um resumao de blog",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "tenho uns 60 arquivos de log pra classificar por tipo de erro, vale paralelizar com subagentes ou faco num loop so?",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero levantar a legislacao de trabalho remoto nos 50 estados dos EUA, cada estado com citacao da lei estadual. da ultima vez isso virou 200 agentes e estourou tudo, monta um plano melhor",
+          "should_trigger": true,
+          "trigger_rate": 1.0,
+          "triggers": 3,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "/deep-research quais frameworks de orquestracao de agentes suportam handoff de contexto entre modelos diferentes, com fontes primarias",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero listar minhas rotinas agendadas na nuvem e pausar a de segunda-feira",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu script python com multiprocessing ta deadlockando quando spawna os workers, olha esse traceback aqui",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "resume os 5 PDFs da pasta ~/Documentos/artigos, um paragrafo cada",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "como eu crio um subagente customizado no claude code? quero um .md em .claude/agents com tools restritas e model haiku",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "escreve um agente de atendimento com a API da anthropic que chama tools do meu CRM",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu docker compose sobe 12 containers e dois ficam reiniciando em loop, investiga ai",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "test_passed": 4,
+      "test_failed": 4,
+      "test_total": 8,
+      "test_results": [
+        {
+          "query": "vou montar um workflow dinamico pra auditar 80 repositorios, me ajuda a desenhar o schema de saida dos agentes antes de rodar",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "os agentes voltaram com 40 achados do scan de seguranca e alguns me parecem falso positivo, como eu confiro isso sem reler tudo na mao?",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "preciso comparar como umas 30 bibliotecas python de PDF lidam com formulario interativo, com fonte oficial pra cada uma. como voce organizaria isso?",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "spin up a bunch of subagents to cross-check these 15 vendor claims against their official docs, i want verbatim quotes for each",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "traduz esse relatorio de 30 paginas pro ingles mantendo a formatacao e as tabelas",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "quanto custa o managed agents da anthropic? e o sdk de agentes tem suporte a go?",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "o kubernetes tem aquele PodDisruptionBudget ne, me explica quando faz sentido usar",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "confere se esse link ta fora do ar: https://nginx.org/en/docs/http/ngx_http_core_module.html",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "passed": 7,
+      "failed": 5,
+      "total": 12,
+      "results": [
+        {
+          "query": "o relatorio que o time gerou tem 25 citacoes de docs oficiais e desconfio que algumas foram escritas de memoria, quero validar cada uma contra a pagina viva",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "minhas pesquisas profundas tao caras demais, quais fases dao pra rodar em modelo menor sem perder qualidade?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "pesquisa bem feita sobre o mercado de baterias de sodio: quero muitas fontes primarias, checadas uma a uma, nao um resumao de blog",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "tenho uns 60 arquivos de log pra classificar por tipo de erro, vale paralelizar com subagentes ou faco num loop so?",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero levantar a legislacao de trabalho remoto nos 50 estados dos EUA, cada estado com citacao da lei estadual. da ultima vez isso virou 200 agentes e estourou tudo, monta um plano melhor",
+          "should_trigger": true,
+          "trigger_rate": 1.0,
+          "triggers": 3,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "/deep-research quais frameworks de orquestracao de agentes suportam handoff de contexto entre modelos diferentes, com fontes primarias",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero listar minhas rotinas agendadas na nuvem e pausar a de segunda-feira",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu script python com multiprocessing ta deadlockando quando spawna os workers, olha esse traceback aqui",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "resume os 5 PDFs da pasta ~/Documentos/artigos, um paragrafo cada",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "como eu crio um subagente customizado no claude code? quero um .md em .claude/agents com tools restritas e model haiku",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "escreve um agente de atendimento com a API da anthropic que chama tools do meu CRM",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu docker compose sobe 12 containers e dois ficam reiniciando em loop, investiga ai",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ]
+    },
+    {
+      "iteration": 5,
+      "description": "Load FIRST \u2014 never answer these from memory; the skill holds measured decision rules (numbers you don't have) and a ready-made citation-checking script. Mandatory companion to every /deep-research run. Also load when: research must rest on many primary sources each checked one by one (market studies, state-by-state or country-by-country law/regulation surveys, technology landscape reviews); a report's quotes or citations look written from memory and each must be validated against its live source page; dozens of logs, files, records, or URLs need classifying or verifying and the question is subagents in parallel vs one loop; deep research or agent runs are too expensive and you must pick which phases drop to a smaller model without losing quality; any subagent fan-out, workflow, or agent team is being launched or its results judged. Skip for: coding agents against an LLM API, writing subagent .md files, OS parallelism (multiprocessing, containers), scheduled routines.",
+      "train_passed": 6,
+      "train_failed": 6,
+      "train_total": 12,
+      "train_results": [
+        {
+          "query": "o relatorio que o time gerou tem 25 citacoes de docs oficiais e desconfio que algumas foram escritas de memoria, quero validar cada uma contra a pagina viva",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "minhas pesquisas profundas tao caras demais, quais fases dao pra rodar em modelo menor sem perder qualidade?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "pesquisa bem feita sobre o mercado de baterias de sodio: quero muitas fontes primarias, checadas uma a uma, nao um resumao de blog",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "tenho uns 60 arquivos de log pra classificar por tipo de erro, vale paralelizar com subagentes ou faco num loop so?",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero levantar a legislacao de trabalho remoto nos 50 estados dos EUA, cada estado com citacao da lei estadual. da ultima vez isso virou 200 agentes e estourou tudo, monta um plano melhor",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "/deep-research quais frameworks de orquestracao de agentes suportam handoff de contexto entre modelos diferentes, com fontes primarias",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero listar minhas rotinas agendadas na nuvem e pausar a de segunda-feira",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu script python com multiprocessing ta deadlockando quando spawna os workers, olha esse traceback aqui",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "resume os 5 PDFs da pasta ~/Documentos/artigos, um paragrafo cada",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "como eu crio um subagente customizado no claude code? quero um .md em .claude/agents com tools restritas e model haiku",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "escreve um agente de atendimento com a API da anthropic que chama tools do meu CRM",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu docker compose sobe 12 containers e dois ficam reiniciando em loop, investiga ai",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "test_passed": 4,
+      "test_failed": 4,
+      "test_total": 8,
+      "test_results": [
+        {
+          "query": "vou montar um workflow dinamico pra auditar 80 repositorios, me ajuda a desenhar o schema de saida dos agentes antes de rodar",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "os agentes voltaram com 40 achados do scan de seguranca e alguns me parecem falso positivo, como eu confiro isso sem reler tudo na mao?",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "preciso comparar como umas 30 bibliotecas python de PDF lidam com formulario interativo, com fonte oficial pra cada uma. como voce organizaria isso?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "spin up a bunch of subagents to cross-check these 15 vendor claims against their official docs, i want verbatim quotes for each",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "traduz esse relatorio de 30 paginas pro ingles mantendo a formatacao e as tabelas",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "quanto custa o managed agents da anthropic? e o sdk de agentes tem suporte a go?",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "o kubernetes tem aquele PodDisruptionBudget ne, me explica quando faz sentido usar",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "confere se esse link ta fora do ar: https://nginx.org/en/docs/http/ngx_http_core_module.html",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ],
+      "passed": 6,
+      "failed": 6,
+      "total": 12,
+      "results": [
+        {
+          "query": "o relatorio que o time gerou tem 25 citacoes de docs oficiais e desconfio que algumas foram escritas de memoria, quero validar cada uma contra a pagina viva",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "minhas pesquisas profundas tao caras demais, quais fases dao pra rodar em modelo menor sem perder qualidade?",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "pesquisa bem feita sobre o mercado de baterias de sodio: quero muitas fontes primarias, checadas uma a uma, nao um resumao de blog",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "tenho uns 60 arquivos de log pra classificar por tipo de erro, vale paralelizar com subagentes ou faco num loop so?",
+          "should_trigger": true,
+          "trigger_rate": 0.3333333333333333,
+          "triggers": 1,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero levantar a legislacao de trabalho remoto nos 50 estados dos EUA, cada estado com citacao da lei estadual. da ultima vez isso virou 200 agentes e estourou tudo, monta um plano melhor",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "/deep-research quais frameworks de orquestracao de agentes suportam handoff de contexto entre modelos diferentes, com fontes primarias",
+          "should_trigger": true,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": false
+        },
+        {
+          "query": "quero listar minhas rotinas agendadas na nuvem e pausar a de segunda-feira",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu script python com multiprocessing ta deadlockando quando spawna os workers, olha esse traceback aqui",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "resume os 5 PDFs da pasta ~/Documentos/artigos, um paragrafo cada",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "como eu crio um subagente customizado no claude code? quero um .md em .claude/agents com tools restritas e model haiku",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "escreve um agente de atendimento com a API da anthropic que chama tools do meu CRM",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        },
+        {
+          "query": "meu docker compose sobe 12 containers e dois ficam reiniciando em loop, investiga ai",
+          "should_trigger": false,
+          "trigger_rate": 0.0,
+          "triggers": 0,
+          "runs": 3,
+          "pass": true
+        }
+      ]
+    }
+  ]
+}
