@@ -1,0 +1,137 @@
+{
+ "run_id": "2026-08-18-chrome-handle-shared-pilot",
+ "date": "2026-08-18T15:08:47.207286+00:00",
+ "plugin": "agent-fleet",
+ "plugin_version": "1.0.8",
+ "question": "When five subagents drive the Chrome MCP by calling tabs_context_mcp{createIfEmpty:true} instead of acquiring their own tab, do they collide \u2014 and does the collision surface as an error or as silently wrong page content attributed to the right URL?",
+ "variable": "none",
+ "arm": "pilot",
+ "batch_id": null,
+ "eval_ref": null,
+ "eval_sha256": null,
+ "harness": {
+  "orchestrator_model": "claude-opus-5",
+  "claude_code_version": "2.1.234 (Claude Code)",
+  "workflow_run_id": null,
+  "session_effort": null
+ },
+ "agents": [
+  {
+   "agent_id": "a0770959445853d37",
+   "label": null,
+   "phase": "retrieval",
+   "model": "claude-haiku-4-5-20251001",
+   "agent_type": "general-purpose",
+   "prompt_sha256": "93bfb0141cfecdf5f310d8eae1dc924e8a5929951baa77f5b99df4c7713d3e15",
+   "prompt_head": "Teste de concorr\u00eancia do MCP do Chrome. Pergunta sob teste: v\u00e1rios subagentes conseguem dirigir o Chrome ao mesmo tempo?\n\nPASSO 0: rode `date +%s.%N` via Bash. ",
+   "tokens": {
+    "output": 2014,
+    "input_uncached": 60,
+    "cache_write": 24955,
+    "cache_read": 275837
+   },
+   "tool_calls": 8,
+   "duration_ms": 41704,
+   "api_calls": 7
+  },
+  {
+   "agent_id": "a0d77d6cc16aa4674",
+   "label": null,
+   "phase": "retrieval",
+   "model": "claude-haiku-4-5-20251001",
+   "agent_type": "general-purpose",
+   "prompt_sha256": "713e7f2599ae9e19f774b3b556b4eed9a4233aaf7fa7ff4fe54e7af82fcc7fd3",
+   "prompt_head": "Teste de concorr\u00eancia do MCP do Chrome. Pergunta sob teste: v\u00e1rios subagentes conseguem dirigir o Chrome ao mesmo tempo?\n\nPASSO 0: rode `date +%s.%N` via Bash. ",
+   "tokens": {
+    "output": 1321,
+    "input_uncached": 52,
+    "cache_write": 22741,
+    "cache_read": 226794
+   },
+   "tool_calls": 5,
+   "duration_ms": 34677,
+   "api_calls": 6
+  },
+  {
+   "agent_id": "a4a2fd3c74c18634f",
+   "label": null,
+   "phase": "retrieval",
+   "model": "claude-haiku-4-5-20251001",
+   "agent_type": "general-purpose",
+   "prompt_sha256": "fd1a5bd514c896ca392937cbfa9e124bdefcf6aab772b268963455d51e15934f",
+   "prompt_head": "Teste de concorr\u00eancia do MCP do Chrome. Pergunta sob teste: v\u00e1rios subagentes conseguem dirigir o Chrome ao mesmo tempo?\n\nPASSO 0: rode `date +%s.%N` via Bash. ",
+   "tokens": {
+    "output": 2243,
+    "input_uncached": 68,
+    "cache_write": 44977,
+    "cache_read": 295404
+   },
+   "tool_calls": 7,
+   "duration_ms": 54962,
+   "api_calls": 8
+  },
+  {
+   "agent_id": "a62e437a093ced1e3",
+   "label": null,
+   "phase": "retrieval",
+   "model": "claude-haiku-4-5-20251001",
+   "agent_type": "general-purpose",
+   "prompt_sha256": "2df507179899545b587193dc383ac2ce224e2f711110ba8af78a60411993ebfc",
+   "prompt_head": "Teste de concorr\u00eancia do MCP do Chrome. Pergunta sob teste: v\u00e1rios subagentes conseguem dirigir o Chrome ao mesmo tempo?\n\nPASSO 0: rode `date +%s.%N` via Bash. ",
+   "tokens": {
+    "output": 2830,
+    "input_uncached": 76,
+    "cache_write": 28722,
+    "cache_read": 367745
+   },
+   "tool_calls": 8,
+   "duration_ms": 59728,
+   "api_calls": 9
+  },
+  {
+   "agent_id": "ac6891173e3eba36c",
+   "label": null,
+   "phase": "retrieval",
+   "model": "claude-haiku-4-5-20251001",
+   "agent_type": "general-purpose",
+   "prompt_sha256": "135056a59e5e35b1a40d6608ead3a9d01fbe9f27ba0c317c4bf6b8095c9368ee",
+   "prompt_head": "Teste de concorr\u00eancia do MCP do Chrome. Pergunta sob teste: v\u00e1rios subagentes conseguem dirigir o Chrome ao mesmo tempo?\n\nPASSO 0: rode `date +%s.%N` via Bash. ",
+   "tokens": {
+    "output": 1837,
+    "input_uncached": 92,
+    "cache_write": 29050,
+    "cache_read": 455097
+   },
+   "tool_calls": 10,
+   "duration_ms": 57619,
+   "api_calls": 11
+  }
+ ],
+ "untracked_agents": [],
+ "totals": {
+  "output": 10245,
+  "input_uncached": 348,
+  "cache_write": 150445,
+  "cache_read": 1620877,
+  "tool_calls": 38,
+  "wall_duration_ms": 80725
+ },
+ "outcomes": {
+  "source": "orchestrator_assertion",
+  "verifier_self_test": null,
+  "agents": 5,
+  "distinct_tab_ids": 2,
+  "agents_sharing_one_tab": 4,
+  "shared_tab_id": "1996720225",
+  "clean": 1,
+  "empty_result": 1,
+  "hard_error": 2,
+  "silent_cross_contamination": 1,
+  "errors_verbatim": [
+   "Frame with ID 0 was removed",
+   "Tab 1996720225 no longer exists"
+  ],
+  "contamination_detail": "one agent navigated to /comments/1vkmhyl/, navigate returned success, read_page returned /comments/1vrdetw/ (another agent's target) and the agent reported that page's comment author under its own requested URL"
+ },
+ "notes": "Existence proof, not a rate: n=1 run shows silent cross-contamination CAN occur under a shared handle; it does not measure how often. Not pairable with 2026-08-18-chrome-handle-own-pilot \u2014 that run differs in BOTH handle acquisition and subagent model (haiku here, sonnet there). PROTOCOL DEVIATIONS. (1) Ad-hoc Agent-tool fan-out, not a Workflow: harness.workflow_run_id is null and there is no orchestrator prompt hash, so this run cannot be mechanically paired with any other. (2) n=1 \u2014 below the protocol floor of 5 runs per arm. (3) No frozen eval set; eval_ref and eval_sha256 are null. (4) No mechanical verifier ran, so outcomes.verifier_self_test is null and every outcome is tagged orchestrator_assertion \u2014 counted by the orchestrator from each agent's returned report, not string-checked against the pages. Recorded as arm 'pilot' / variable 'none' because every candidate pairing in this batch differs in more than one variable, which the protocol forbids for an arm."
+}

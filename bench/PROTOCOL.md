@@ -99,7 +99,11 @@ Recorded here so they read as untested rather than covered:
 - Orchestrator (main-context) tokens are not captured per run.
 - One paired comparison exists under this protocol (`2026-08-07-breadth-tier`,
   n=5 per arm); the `2026-08-06-plasma67-pilot` record is n=1 and supports no
-  comparison claims. Everything else the plugin asserts is still untested here.
+  comparison claims. The four `2026-08-18-*-pilot` records are likewise n=1 and
+  are pilots rather than arms because every candidate pairing among them varies
+  two things at once (see their CLAIMS file); they carry a full token split but
+  no mechanical verifier, so their outcomes are orchestrator assertions.
+  Everything else the plugin asserts is still untested here.
 - The trigger-eval batch is imported (see above): it carries no token or
   timing data, so the plugin's hook is justified by a recall measurement and
   by nothing about its cost.
