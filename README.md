@@ -27,7 +27,11 @@ fan-out, constraining output schemas, and verifying what agents return with a
 bundled citation checker (`scripts/verify_citations.py`).
 
 Ships a `UserPromptSubmit` hook that injects the skill whenever the prompt
-invokes deep-research or ultracode. The hook exists because the description
+**contains** `ultracode` or `deep-research`. It is a substring match, so it
+fires on a prompt that merely mentions them as readily as on one that asks for
+a fan-out — measured 2026-08-20: **4 of 4** invocations and **8 of 8** mere
+mentions, at 10 KB of injected context per fire. The hook exists because the
+description
 alone barely triggers the skill: over 20 frozen queries run 3 times each, the
 shipped description fired on **2 of 30** should-trigger runs (per-query recall
 0.00–0.33), and four optimizer rewrites never moved the held-out score — while
@@ -35,6 +39,9 @@ all five descriptions stayed silent on **all 150** should-not runs. Triggering
 is therefore mechanical, not persuasive. Raw harness output, eval set and the
 full reading:
 [`bench/results/2026-08-06-trigger-eval/`](bench/results/2026-08-06-trigger-eval/).
+What the hook that replaced the description does and does not cover is a
+separate benchmark:
+[`bench/results/2026-08-20-hook-grep-CLAIMS.md`](bench/results/2026-08-20-hook-grep-CLAIMS.md).
 
 The rules in the skill body come from paired A/B runs made while developing it;
 those predate this repository's protocol and are not published as records here,

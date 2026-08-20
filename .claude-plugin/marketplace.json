@@ -9,8 +9,8 @@
     {
       "name": "agent-fleet",
       "source": "./plugins/agent-fleet",
-      "version": "1.0.8",
-      "description": "Rules for multi-agent work, with a UserPromptSubmit hook that injects them whenever the prompt invokes deep-research or ultracode — the description alone barely fires (measured 2026-08-06: 2 of 30 should-trigger runs, per-query recall 0.00-0.33; no rewrite improved the held-out score; 0 false fires in 150 negative runs; records under bench/results/2026-08-06-trigger-eval/).",
+      "version": "1.0.9",
+      "description": "Rules for multi-agent work, with a UserPromptSubmit hook that injects them whenever the prompt contains 'ultracode' or 'deep-research' (a substring match: measured 2026-08-20, it fires on 4 of 4 invocations and on 8 of 8 prompts that only mention them; records under bench/results/2026-08-20-hook-grep-CLAIMS.md) — the description alone barely fires (measured 2026-08-06: 2 of 30 should-trigger runs, per-query recall 0.00-0.33; no rewrite improved the held-out score; 0 false fires in 150 negative runs; records under bench/results/2026-08-06-trigger-eval/).",
       "author": {
         "name": "4nrry",
         "url": "https://github.com/4nrry"

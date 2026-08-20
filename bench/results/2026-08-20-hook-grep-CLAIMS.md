@@ -102,6 +102,12 @@ either half alone).
   relabel; moving both would change the mention column to 6/6 and change no
   conclusion.
 - **One matcher, one machine, one hook version.** The result is pinned to
-  sha256 `ee999cd472f3…d42b`; editing the pattern invalidates it.
+  sha256 `ee999cd472f3…d42b`; editing the pattern invalidates it. The file at
+  HEAD hashes to `dee6f21a006e…beca` instead: claim 1 was acted on, and the
+  header comment that said the hook fires on *invocation* now says it fires on
+  *containment*. That edit is comment-only — the grep is byte-identical, and
+  the scorer was re-run against the same frozen eval afterwards for the same
+  4/4 and 8/8. A reader checking the hash should expect the mismatch and check
+  the diff, not assume the measurement moved.
 - **The verifier and the eval were written in the same session by the same
   author as the observation.** No independent replication.

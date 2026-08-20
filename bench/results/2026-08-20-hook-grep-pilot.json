@@ -36,7 +36,8 @@
       "mention_fired": 8,
       "mention_total": 8,
       "false_fire_rate_on_mention": 1.0,
-      "recall_on_invocation": 1.0
+      "recall_on_invocation": 1.0,
+      "hook_sha256_note": "The hook file was edited after this run, in the same change that acted on claim 1: its header comment said the hook fires when the prompt 'invokes' the trigger words, which this batch measured to be wrong. The edit touches only that comment — the grep is byte-identical — and the scorer was re-run against the same frozen eval afterwards, returning the same 4/4 and 8/8. hook_sha256 above stays the hash this run was measured against; the file at HEAD hashes to dee6f21a006e30dbb28f7a2d067b3362fb6c87007dc2ffc7bf87b8260b85beca."
     },
     "in_the_wild": {
       "source": "script",
