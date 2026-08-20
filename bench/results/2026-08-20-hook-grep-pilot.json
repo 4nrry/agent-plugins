@@ -1,0 +1,66 @@
+{
+  "run_id": "2026-08-20-hook-grep-pilot",
+  "date": "2026-08-20T13:40:31Z",
+  "plugin": "agent-fleet",
+  "plugin_version": "1.0.8",
+  "question": "The hook's stated intent is to inject when the prompt *invokes* deep-research or ultracode. Does its string match separate invocation from mention?",
+  "variable": "none",
+  "arm": "pilot",
+  "eval_ref": "bench/evals/hook-grep-2026-08-20.json",
+  "eval_sha256": "cbbf963bcc4e1a41fec8fa97492579f9229e8632d3fde4aca22688a431816bb4",
+  "batch_id": null,
+  "orchestrator_prompt_sha256": null,
+  "harness": {
+    "orchestrator_model": "claude-opus-5",
+    "workflow_run_id": null,
+    "session_effort": null,
+    "claude_code_version": "2.1.236"
+  },
+  "agents": [],
+  "totals": {
+    "output": 0,
+    "input_uncached": 0,
+    "cache_write": 0,
+    "cache_read": 0,
+    "tool_calls": 0,
+    "wall_duration_ms": 0
+  },
+  "outcomes": {
+    "verifier_self_test": true,
+    "trigger_rates": {
+      "source": "script",
+      "verifier": "bench/scripts/score_hook_grep.py",
+      "hook_sha256": "ee999cd472f342a51282aac0e04eee4c6b0b7df5623eed398d3551209e23d42b",
+      "invocation_fired": 4,
+      "invocation_total": 4,
+      "mention_fired": 8,
+      "mention_total": 8,
+      "false_fire_rate_on_mention": 1.0,
+      "recall_on_invocation": 1.0
+    },
+    "in_the_wild": {
+      "source": "script",
+      "note": "Eval item 5 is not a designed case. It is the prompt that fired the hook during an unrelated conversation on 2026-08-20 (repository renaming), transcribed byte-for-byte. It is scored by the same verifier as the designed items.",
+      "item_id": 5,
+      "fired": true,
+      "orchestrated_anything": false
+    },
+    "injection_cost": {
+      "source": "script",
+      "payload_bytes_per_fire": 10056,
+      "payload_tokens_estimated": 2500,
+      "how": "stdout of one firing invocation, measured with wc -c; the token figure divides by 4 bytes/token for English prose and is estimated, not tokenized"
+    },
+    "cross_batch_coverage": {
+      "source": "script",
+      "note": "The same hook run read-only against the frozen 2026-08-06 eval, which was written for the skill description and is unmodified here. Backs claim 4; the two eval sets remain non-comparable as instruments, this is the hook measured on the older set's queries.",
+      "eval_ref": "bench/evals/trigger-eval-2026-08-06.json",
+      "eval_sha256": "aaf1f84d03126c4dd5eb5a100bb78d2d7453877039a139df4b42d8b149eb6ff7",
+      "should_trigger_fired": 1,
+      "should_trigger_total": 10,
+      "should_not_fired": 0,
+      "should_not_total": 10
+    }
+  },
+  "notes": "Pilot, n=1 per item by design: the apparatus is a shell grep with no model in it, so the measurement is deterministic and has no rate to average. Confirmed by re-running the scorer twice and hashing its JSON output — identical (8f1329a897b3…). The protocol's floor of 3 repetitions per query addresses stochastic trigger rates and does not apply here. No agents ran, so agents[] is empty and every total is zero — this record carries no cost claim about the pipeline; the injection_cost figure is the size of the hook's own payload, and its token count is estimated rather than tokenized. This run does not compare arms and supports no improvement claim; it establishes the current behaviour of hook sha256 ee999cd4… against a newly frozen eval. It is a separate benchmark from 2026-08-06-trigger-eval, which measured the skill *description* under a model judge; the two eval sets are not comparable and neither number transfers to the other mechanism."
+}

@@ -1,0 +1,163 @@
+{
+  "eval_name": "hook-grep-2026-08-20",
+  "description": "Frozen eval for the agent-fleet UserPromptSubmit hook's string match (plugins/agent-fleet/hooks/inject.sh), NOT for the skill description. The hook's stated intent is to inject when the prompt *invokes* deep-research or ultracode; it matches the surface strings, so this set separates invocation from mention. Item 5 is not designed: it is a prompt observed in the wild on 2026-08-20 that fired the hook during a conversation that orchestrated nothing, transcribed byte-for-byte including its typos. Freeze means: commit this file, record its sha256 in every run's eval_sha256, and never edit it — a change starts a new benchmark.",
+  "items": [
+    {
+      "id": 1,
+      "class": "invocation",
+      "input": "/deep-research quais frameworks de orquestracao de agentes suportam handoff de contexto entre modelos diferentes, com fontes primarias",
+      "expected": "fires — explicit slash invocation, the canonical case the hook exists for",
+      "assertions": [
+        {
+          "name": "hook-fires",
+          "check": "script",
+          "how": "score_hook_grep.py: inject.sh writes non-empty stdout for this prompt"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "class": "invocation",
+      "input": "roda um deep research sobre o mercado de baterias de sodio, quero fontes primarias checadas uma a uma",
+      "expected": "fires — natural-language invocation, space variant",
+      "assertions": [
+        {
+          "name": "hook-fires",
+          "check": "script",
+          "how": "score_hook_grep.py: inject.sh writes non-empty stdout for this prompt"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "class": "invocation",
+      "input": "ultracode: audita os 80 repositorios da org e me diz quais estao sem CI",
+      "expected": "fires — ultracode used as a directive",
+      "assertions": [
+        {
+          "name": "hook-fires",
+          "check": "script",
+          "how": "score_hook_grep.py: inject.sh writes non-empty stdout for this prompt"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "class": "invocation",
+      "input": "faz uma deep-research disso aqui e me traz citacao verbatim pra cada afirmacao",
+      "expected": "fires — hyphen variant",
+      "assertions": [
+        {
+          "name": "hook-fires",
+          "check": "script",
+          "how": "score_hook_grep.py: inject.sh writes non-empty stdout for this prompt"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "class": "mention",
+      "observed_in_the_wild": "2026-08-20",
+      "input": "é q eu comecei a fazer benchmarks sobre deep research e ultracode\ncheguei ate a testare em houtros harness alem do claude mas n documentei\nparece estar afunilando pra esse rumo",
+      "expected": "does not fire — the user is describing past benchmarking work during a conversation about renaming the repository; nothing is being orchestrated. Transcribed verbatim from the observed session, typos included.",
+      "assertions": [
+        {
+          "name": "hook-silent",
+          "check": "script",
+          "how": "score_hook_grep.py: inject.sh writes empty stdout for this prompt"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "class": "mention",
+      "input": "comecei a documentar meus benchmarks de deep research mas n terminei, me ajuda a organizar as pastas",
+      "expected": "does not fire — filesystem chore about research artifacts, not a research run",
+      "assertions": [
+        {
+          "name": "hook-silent",
+          "check": "script",
+          "how": "score_hook_grep.py: inject.sh writes empty stdout for this prompt"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "class": "mention",
+      "input": "o hook do agent-fleet da grep em ultracode|deep-research, isso nao ta largo demais?",
+      "expected": "does not fire — the prompt is about the matcher itself; self-reference is the sharpest case of the class",
+      "assertions": [
+        {
+          "name": "hook-silent",
+          "check": "script",
+          "how": "score_hook_grep.py: inject.sh writes empty stdout for this prompt"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "class": "mention",
+      "input": "quanto custou o ultimo deep research que eu rodei? quero o split de tokens",
+      "expected": "does not fire — retrospective accounting for a run that already finished",
+      "assertions": [
+        {
+          "name": "hook-silent",
+          "check": "script",
+          "how": "score_hook_grep.py: inject.sh writes empty stdout for this prompt"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "class": "mention",
+      "input": "traduz esse paragrafo pro ingles: \"the deep research pipeline routes breadth to a cheap tier\"",
+      "expected": "does not fire — the trigger string is inside quoted material the user wants transformed",
+      "assertions": [
+        {
+          "name": "hook-silent",
+          "check": "script",
+          "how": "score_hook_grep.py: inject.sh writes empty stdout for this prompt"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "class": "mention",
+      "input": "renomeia o skill de ultracode pra outra coisa, o nome ta colidindo com o do repo",
+      "expected": "does not fire — a rename chore naming the trigger word as its object",
+      "assertions": [
+        {
+          "name": "hook-silent",
+          "check": "script",
+          "how": "score_hook_grep.py: inject.sh writes empty stdout for this prompt"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "class": "mention",
+      "input": "no claude code, ultracode e uma flag de sessao ou uma palavra no prompt? so quero entender o mecanismo",
+      "expected": "does not fire — a question about the feature, answerable without orchestrating anything",
+      "assertions": [
+        {
+          "name": "hook-silent",
+          "check": "script",
+          "how": "score_hook_grep.py: inject.sh writes empty stdout for this prompt"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "class": "mention",
+      "input": "me explica a diferenca entre deep research e um fan-out manual com a Agent tool",
+      "expected": "does not fire — conceptual explanation request",
+      "assertions": [
+        {
+          "name": "hook-silent",
+          "check": "script",
+          "how": "score_hook_grep.py: inject.sh writes empty stdout for this prompt"
+        }
+      ]
+    }
+  ]
+}
