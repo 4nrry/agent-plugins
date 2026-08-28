@@ -8,10 +8,12 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
+      # v3 onwards is a composite action with no Node runtime of its own, so
+      # it cannot be caught by a future Node deprecation the way v2 was.
       - name: Install just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v4
 
       # shellcheck ships on ubuntu-latest runners. validate.py reports it as a
       # skipped check rather than failing when absent, so assert it is here —
