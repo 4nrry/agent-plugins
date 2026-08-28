@@ -1,9 +1,26 @@
 # Benchmark protocol
 
 Rule zero of this repository: **a claim that a plugin improved is a comparison
-between run records committed under `bench/results/`.** A claim without run
-records is marketing, and does not go in a README, a description, or a commit
-message.
+between run records committed under `bench/plugins/<plugin>/results/`.** A claim
+without run records is marketing, and does not go in a README, a description, or
+a commit message.
+
+## Layout
+
+Benchmark material is namespaced by the plugin it was measured on, mirroring
+`plugins/<plugin>/`:
+
+```
+bench/PROTOCOL.md  collect.py  validate.py   repo-level: this protocol, the
+bench/schema/                                collector, the checker, the shapes
+bench/shared/                                findings that belong to no plugin
+bench/plugins/<plugin>/{evals,results,scripts}/
+```
+
+A record's `plugin` field must name a directory that exists under `plugins/`,
+and `validate.py` enforces it. A finding that is genuinely about orchestration
+rather than about one plugin belongs in `bench/shared/` — see its README for
+when to move one there.
 
 ## Definitions
 
@@ -21,9 +38,9 @@ message.
 
 1. **State the question and the single variable** before running anything.
    Write them into the run records (`question`, `variable`, `arm`).
-2. **Freeze the eval set** under `bench/evals/` before the first run: inputs,
-   expected outcomes, and mechanical assertions (see `evals/example.json` for
-   the required shape). Record its sha256 in every run (`eval_sha256`).
+2. **Freeze the eval set** under `bench/plugins/<plugin>/evals/` before the
+   first run: inputs, expected outcomes, and mechanical assertions (see
+   `schema/eval.example.json` for the required shape). Record its sha256 in every run (`eval_sha256`).
    Changing the eval set starts a new benchmark; results across eval versions
    are not comparable, and the hash is what catches a silent edit.
 3. **Launch arms paired, in the same turn**, with prompts identical except
@@ -56,10 +73,28 @@ message.
    directions (misses and over-flags), not a single accuracy number. Anything
    in the claim that is not in the records is labeled estimated or inferred.
 
+## Hashes in claims files
+
+A claims file quotes hashes in truncated form (`aaf1f84d…6ff7`) so a reader can
+check provenance by eye. `validate.py` resolves every one of them against the
+files in the repo and warns on a miss, which is how two transcription typos in
+published claims were found — the full hashes in the records were right, the
+abbreviations beside them were not.
+
+Two rules follow from that check existing:
+
+- **Do not quote the current hash of a file that is still being edited.** It
+  goes stale on the next comment fix. Quote the hash the batch was *measured
+  against*, and let the mechanical re-run guard the behaviour.
+- **Mark a hash that is deliberately no longer on disk** — the version of a
+  script a batch measured, before a later edit — by writing `historical` within
+  the next 120 characters. That is the checker's opt-out, and it is a real
+  marker it looks for, not an assumption it makes.
+
 ## Imported records
 
 Measurements that predate this protocol, or that came out of a foreign harness,
-may be committed under `bench/results/` on three conditions: the raw output is
+may be committed under `bench/plugins/<plugin>/results/` on three conditions: the raw output is
 published **byte-identical** with its sha256 stated (a retrofit into this
 schema would be a rewrite of data that cannot be re-derived); the record's
 claims file lists every field the schema requires and the harness did not

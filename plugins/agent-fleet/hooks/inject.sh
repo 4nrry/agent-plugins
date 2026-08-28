@@ -3,14 +3,14 @@
 # prompt CONTAINS deep-research or ultracode. Substring match, not intent: it
 # fires on a prompt that mentions them as readily as on one that asks for a
 # fan-out (measured 2026-08-20: 4/4 invocations, 8/8 mentions, ~10 KB injected
-# per fire — bench/results/2026-08-20-hook-grep-CLAIMS.md). Exists because the
+# per fire — bench/plugins/agent-fleet/results/2026-08-20-hook-grep-CLAIMS.md). Exists because the
 # description
 # alone barely fires: trigger-eval 2026-08-06 measured 2 of 30 should-trigger
 # runs for the shipped description (per-query recall 0.00-0.33), and no
 # optimizer rewrite improved the held-out score — so the trigger is mechanical
 # string match, not model persuasion. Keep the pattern narrow: the same eval
 # measured zero false triggers in 150 negative runs, and widening it is what
-# would break that. Records: bench/results/2026-08-06-trigger-eval/ in
+# would break that. Records: bench/plugins/agent-fleet/results/2026-08-06-trigger-eval/ in
 # https://github.com/4nrry/agent-plugins.
 set -euo pipefail
 

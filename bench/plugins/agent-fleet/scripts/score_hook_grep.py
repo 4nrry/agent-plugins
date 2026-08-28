@@ -33,11 +33,15 @@ import argparse
 import hashlib
 import json
 import os
+import pathlib
 import shutil
 import subprocess
 import sys
 
-REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# bench/plugins/<plugin>/scripts/ -> up 4 to the repo root. Counting levels is
+# what broke when bench/ was namespaced by plugin; validate.py now runs this
+# script's self-test, so a future move fails the check instead of the data.
+REPO = str(pathlib.Path(__file__).resolve().parents[4])
 HOOK = os.path.join(REPO, "plugins", "agent-fleet", "hooks", "inject.sh")
 
 # Known-answer pairs for --self-test: one must fire, one must stay silent.

@@ -6,7 +6,7 @@
   "question": "The hook's stated intent is to inject when the prompt *invokes* deep-research or ultracode. Does its string match separate invocation from mention?",
   "variable": "none",
   "arm": "pilot",
-  "eval_ref": "bench/evals/hook-grep-2026-08-20.json",
+  "eval_ref": "bench/plugins/agent-fleet/evals/hook-grep-2026-08-20.json",
   "eval_sha256": "cbbf963bcc4e1a41fec8fa97492579f9229e8632d3fde4aca22688a431816bb4",
   "batch_id": null,
   "orchestrator_prompt_sha256": null,
@@ -29,7 +29,7 @@
     "verifier_self_test": true,
     "trigger_rates": {
       "source": "script",
-      "verifier": "bench/scripts/score_hook_grep.py",
+      "verifier": "bench/plugins/agent-fleet/scripts/score_hook_grep.py",
       "hook_sha256": "ee999cd472f342a51282aac0e04eee4c6b0b7df5623eed398d3551209e23d42b",
       "invocation_fired": 4,
       "invocation_total": 4,
@@ -37,7 +37,7 @@
       "mention_total": 8,
       "false_fire_rate_on_mention": 1.0,
       "recall_on_invocation": 1.0,
-      "hook_sha256_note": "The hook file was edited after this run, in the same change that acted on claim 1: its header comment said the hook fires when the prompt 'invokes' the trigger words, which this batch measured to be wrong. The edit touches only that comment — the grep is byte-identical — and the scorer was re-run against the same frozen eval afterwards, returning the same 4/4 and 8/8. hook_sha256 above stays the hash this run was measured against; the file at HEAD hashes to dee6f21a006e30dbb28f7a2d067b3362fb6c87007dc2ffc7bf87b8260b85beca."
+      "hook_sha256_note": "Historical: the hash of hooks/inject.sh as this run measured it. The file has changed since in comment-only edits (the header's 'invokes' was corrected to 'contains' per claim 1, and the bench paths it cites moved when bench/ was namespaced by plugin); the grep itself is byte-identical and the scorer was re-run after each for the same 4/4 and 8/8. No current-HEAD hash is recorded here deliberately — two of them went stale within a day. bench/validate.py re-runs this scorer on every check, so behaviour drift fails the build instead of a hash quietly rotting."
     },
     "in_the_wild": {
       "source": "script",
@@ -55,7 +55,7 @@
     "cross_batch_coverage": {
       "source": "script",
       "note": "The same hook run read-only against the frozen 2026-08-06 eval, which was written for the skill description and is unmodified here. Backs claim 4; the two eval sets remain non-comparable as instruments, this is the hook measured on the older set's queries.",
-      "eval_ref": "bench/evals/trigger-eval-2026-08-06.json",
+      "eval_ref": "bench/plugins/agent-fleet/evals/trigger-eval-2026-08-06.json",
       "eval_sha256": "aaf1f84d03126c4dd5eb5a100bb78d2d7453877039a139df4b42d8b149eb6ff7",
       "should_trigger_fired": 1,
       "should_trigger_total": 10,

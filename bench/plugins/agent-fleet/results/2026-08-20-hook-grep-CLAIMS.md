@@ -26,10 +26,11 @@ apparatus is a shell grep, so the measurement is deterministic. Confirmed by
 running the scorer twice and hashing its JSON output — identical
 (`8f1329a897b3…`). The protocol's floor of 3 repetitions per query exists for
 stochastic trigger rates; a grep has no rate to average.
-**Eval:** `bench/evals/hook-grep-2026-08-20.json`, sha256 `cbbf963bcc4e…6bb4`
+**Eval:** `bench/plugins/agent-fleet/evals/hook-grep-2026-08-20.json`, sha256 `cbbf963bcc4e…6bb4`
 — 12 items, 4 invocation / 8 mention, mostly Portuguese.
-**Apparatus under test:** `hooks/inject.sh`, sha256 `ee999cd472f3…d42b`.
-**Verifier:** `bench/scripts/score_hook_grep.py`, self-test passed (it asserts
+**Apparatus under test:** `hooks/inject.sh`, sha256 `ee999cd472f3…d42b`
+(historical — comment-only edits since; see *Deviations*).
+**Verifier:** `bench/plugins/agent-fleet/scripts/score_hook_grep.py`, self-test passed (it asserts
 a known fire *and* a known silence — a matcher that fires on everything passes
 either half alone).
 
@@ -101,13 +102,15 @@ either half alone).
   and item 12 (explain the difference) are the ones a reasonable person could
   relabel; moving both would change the mention column to 6/6 and change no
   conclusion.
-- **One matcher, one machine, one hook version.** The result is pinned to
-  sha256 `ee999cd472f3…d42b`; editing the pattern invalidates it. The file at
-  HEAD hashes to `dee6f21a006e…beca` instead: claim 1 was acted on, and the
-  header comment that said the hook fires on *invocation* now says it fires on
-  *containment*. That edit is comment-only — the grep is byte-identical, and
-  the scorer was re-run against the same frozen eval afterwards for the same
-  4/4 and 8/8. A reader checking the hash should expect the mismatch and check
-  the diff, not assume the measurement moved.
+- **One matcher, one machine, one hook version.** The result was measured
+  against `hooks/inject.sh` at sha256 `ee999cd472f3…d42b` (historical — the
+  file has changed since, see below). Editing the *pattern* invalidates this
+  batch; the file has so far only had comment edits, and no HEAD hash is
+  quoted here on purpose. Two of them rotted within a day of being written —
+  once when claim 1 was acted on and the header stopped saying the hook fires
+  on "invocation", once when `bench/` was namespaced by plugin and the paths
+  in that same comment moved. What guards the result is not a quoted hash but
+  `bench/validate.py`, which re-runs this batch's scorer on every `just check`:
+  if the matcher's behaviour ever drifts from 4/4 and 8/8, the build fails.
 - **The verifier and the eval were written in the same session by the same
   author as the observation.** No independent replication.

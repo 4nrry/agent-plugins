@@ -7,7 +7,7 @@
   "variable": "breadth agent model",
   "arm": "haiku",
   "batch_id": "2026-08-07-breadth-tier",
-  "eval_ref": "bench/evals/plasma67-citations.json",
+  "eval_ref": "bench/plugins/agent-fleet/evals/plasma67-citations.json",
   "eval_sha256": "058df2a583bb504eb25e4af9eab429399fe48c0c72397dab0b57c859ec516948",
   "harness": {
     "orchestrator_model": "claude-fable-5",

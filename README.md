@@ -20,37 +20,17 @@ Or paste `4nrry/agent-plugins` into the Claude Desktop **Add marketplace** dialo
 
 ## Plugins
 
-### agent-fleet
+| Plugin | What it is |
+|---|---|
+| [agent-fleet](plugins/agent-fleet/) | Rules for multi-agent work — model routing per phase, fan-out sizing, output schemas, and citation verification. Two hooks, because the prose alone measurably did not fire. |
 
-Rules for multi-agent work: routing each phase to the right model, sizing a
-fan-out, constraining output schemas, and verifying what agents return with a
-bundled citation checker (`scripts/verify_citations.py`).
-
-Ships a `UserPromptSubmit` hook that injects the skill whenever the prompt
-**contains** `ultracode` or `deep-research`. It is a substring match, so it
-fires on a prompt that merely mentions them as readily as on one that asks for
-a fan-out — measured 2026-08-20: **4 of 4** invocations and **8 of 8** mere
-mentions, at 10 KB of injected context per fire. The hook exists because the
-description
-alone barely triggers the skill: over 20 frozen queries run 3 times each, the
-shipped description fired on **2 of 30** should-trigger runs (per-query recall
-0.00–0.33), and four optimizer rewrites never moved the held-out score — while
-all five descriptions stayed silent on **all 150** should-not runs. Triggering
-is therefore mechanical, not persuasive. Raw harness output, eval set and the
-full reading:
-[`bench/results/2026-08-06-trigger-eval/`](bench/results/2026-08-06-trigger-eval/).
-What the hook that replaced the description does and does not cover is a
-separate benchmark:
-[`bench/results/2026-08-20-hook-grep-CLAIMS.md`](bench/results/2026-08-20-hook-grep-CLAIMS.md).
-
-The rules in the skill body come from paired A/B runs made while developing it;
-those predate this repository's protocol and are not published as records here,
-so read them as design notes rather than as measurements you can check.
+Each plugin's own README carries its components, its measurements, and what
+those measurements do not establish.
 
 ## Benchmarks
 
 Improvement claims about plugins in this repo are comparisons between run
-records committed under [`bench/results/`](bench/results/), collected per
+records committed under `bench/plugins/<plugin>/results/`, collected per
 [`bench/PROTOCOL.md`](bench/PROTOCOL.md) — per-agent token splits, resolved
 model IDs, paired arms with hash-checked prompts, and outcomes tagged by
 source (script measurement vs orchestrator assertion). A claim without
@@ -60,3 +40,36 @@ Records collected before that protocol existed, or by a foreign harness, are
 published as raw output with their hashes and are labeled **imported** in the
 first paragraph of their claims file, together with every field they lack and
 every claim that lack forbids.
+
+Findings that belong to no single plugin — a fact about model routing or
+harness behaviour that any plugin would reuse — go in
+[`bench/shared/`](bench/shared/).
+
+## Repository checks
+
+```
+just check
+```
+
+Runs [`bench/validate.py`](bench/validate.py): manifests carry no duplicated
+metadata, every hook command points at an executable file, every run record
+conforms to [`bench/schema/run.schema.json`](bench/schema/run.schema.json),
+every `eval_ref` resolves *and* hashes to the `eval_sha256` beside it, every
+`bench/` path cited in a plugin description exists, shellcheck passes, and every
+script advertising `--self-test` passes it. CI runs the same one command.
+
+## Layout
+
+```
+.claude-plugin/marketplace.json     entries are {name, source}; plugin.json is
+                                    the single authority for plugin metadata
+plugins/<plugin>/                   the installable plugin, with its own README
+bench/PROTOCOL.md  validate.py      how records are collected, and the checker
+bench/schema/                       run record + eval file shapes
+bench/shared/                       findings belonging to no single plugin
+bench/plugins/<plugin>/             evals, results and scripts for that plugin
+```
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).

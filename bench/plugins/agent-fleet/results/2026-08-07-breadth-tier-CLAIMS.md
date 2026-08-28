@@ -6,11 +6,11 @@ containment?
 **Variable:** breadth agent model. **Arms:** `haiku`
 (claude-haiku-4-5-20251001), `sonnet` (claude-sonnet-5) — resolved IDs from
 transcripts. **n:** 5 runs per arm, launched paired in the same turn, rounds
-1–5. **Eval:** `bench/evals/plasma67-citations.json`, sha256 `058df2a5…6948`,
+1–5. **Eval:** `bench/plugins/agent-fleet/evals/plasma67-citations.json`, sha256 `058df2a5…6948`,
 frozen and committed before round 1. **Arm script:**
-`bench/scripts/breadth-tier-arm.js`, sha256 `4acdd374…de9c` — byte-identical
+`bench/plugins/agent-fleet/scripts/breadth-tier-arm.js`, sha256 `4acdd374…db8c` — byte-identical
 across arms, recorded as `orchestrator_prompt_sha256` in every run. **Scorer:**
-`bench/scripts/score_plasma67.py` over the plugin's `verify_citations.py`
+`bench/plugins/agent-fleet/scripts/score_plasma67.py` over the plugin's `verify_citations.py`
 (self-test passed before every scored run).
 
 ## Per-run results (records in this directory, `…-<arm>-r<n>.json`)

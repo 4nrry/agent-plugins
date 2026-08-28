@@ -1,0 +1,25 @@
+name: check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      # shellcheck ships on ubuntu-latest runners. validate.py reports it as a
+      # skipped check rather than failing when absent, so assert it is here —
+      # otherwise a runner image change would silently stop checking the hooks.
+      - name: Assert shellcheck is available
+        run: shellcheck --version
+
+      # Python is stdlib-only here by design: no pip install step, so a clone
+      # runs the same check with nothing set up.
+      - name: just check
+        run: just check

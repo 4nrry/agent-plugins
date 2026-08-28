@@ -16,11 +16,11 @@ is the **original** (the one the plugin ships), iterations 2–5 are the
 optimizer's four rewrites, each written after seeing the previous failures.
 **n:** 3 runs per query per description → 300 runs total (150 on
 should-trigger queries, 150 on should-not). **Eval:**
-`bench/evals/trigger-eval-2026-08-06.json`, sha256
+`bench/plugins/agent-fleet/evals/trigger-eval-2026-08-06.json`, sha256
 `aaf1f84d…6ff7` — 20 queries, 10 should-trigger / 10 should-not, mostly in
 Portuguese because that is how this user writes; split 12 train / 8 test
 (holdout 0.4) by the harness. **Judge model:** `claude-fable-5`, the session
-model at the time. **Raw output:** `results.json`, sha256 `9c37834f…4064`;
+model at the time. **Raw output:** `results.json`, sha256 `9c37834f…a064`;
 `logs/improve_iter_{1..4}.json` are the optimizer's four rewrite prompts and
 responses — four log files, one per rewrite, which is the structural
 corroboration that there were four rewrites and not five.
@@ -78,7 +78,7 @@ experiment** (one under description 3, one under description 4).
   batch**, and none is made. The two hashes above are the provenance that a
   reader can check against their own copy.
 - **The eval file is the optimizer's shape** (`query` / `should_trigger`), not
-  `evals/example.json`'s (`input` / `expected` / `assertions`). The assertion
+  `schema/eval.example.json`'s (`input` / `expected` / `assertions`). The assertion
   is implicit in the harness: did the skill get invoked, yes or no.
 - **The judge is the harness's own trigger detection**, run under one model
   (`claude-fable-5`) on one machine, and was not independently re-verified. A

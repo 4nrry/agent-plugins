@@ -50,7 +50,7 @@
         "string",
         "null"
       ],
-      "description": "Path under bench/evals/ frozen before the run, or null for a pilot."
+      "description": "Repo-relative path to the eval file frozen before the run (normally under bench/plugins/<plugin>/evals/), or null for a pilot. validate.py requires that it resolves and that the file hashes to eval_sha256."
     },
     "harness": {
       "type": "object",
