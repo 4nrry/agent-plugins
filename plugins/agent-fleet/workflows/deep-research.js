@@ -1,7 +1,7 @@
 export const meta = {
   name: 'deep-research',
   description: 'Deep research harness with model routing — the built-in deep-research script verbatim, plus per-phase model overrides: search/fetch on haiku, adversarial verification on sonnet, scope/synthesis on the session model.',
-  whenToUse: 'When the user wants a deep, multi-source, fact-checked research report on any topic. BEFORE invoking, check if the question is specific enough to research directly — if underspecified (e.g., "what car to buy" without budget/use-case/region), ask 2-3 clarifying questions to narrow scope. Then pass the refined question as args, weaving the answers in.',
+  whenToUse: 'When the user wants a deep, multi-source, fact-checked research report on any topic. BEFORE invoking, check if the question is specific enough to research directly — if underspecified (e.g., "what car to buy" without budget/use-case/region), ask 2-3 clarifying questions to narrow scope. Then pass the refined question as args, weaving the answers in. Invoke ONLY as Workflow({name: "agent-fleet:deep-research", args: "<question>"}) — plugin workflows register prefixed; the bare name "deep-research" dispatches the UNROUTED built-in. After dispatch, the tool result names the persisted script (workflows/scripts/<run>.js in the session directory): grep it for "model:" before letting the run proceed — zero matches means the unrouted built-in is running; stop it and resume with overrides on every unfinished stage, re-passing args (resume does not carry them).',
   phases: [{"title":"Scope","detail":"Decompose question (from args) into 5 search angles"},{"title":"Search","detail":"5 parallel WebSearch agents, one per angle","model":"haiku"},{"title":"Fetch","detail":"URL-dedup, fetch top 15 sources, extract falsifiable claims","model":"haiku"},{"title":"Verify","detail":"3-vote adversarial verification per claim (need 2/3 refutes to kill)","model":"sonnet"},{"title":"Synthesize","detail":"Merge semantic dupes, rank by confidence, cite sources"}],
 }
 
@@ -10,15 +10,19 @@ export const meta = {
 // ddf3629179d2d098ea44d83dac8189ed805b2d072c99c4763593d9e4ef33ea66, which
 // already carried the verify-stage sonnet override applied mid-run on
 // 2026-08-07). Every prompt, schema, cap and quorum rule is unchanged; the
-// only additions are model: overrides at the agent() call sites and this
-// header. Routing rationale and the paired-run records behind it:
+// only additions are model: overrides at the agent() call sites, this
+// header, and invocation texts (meta, the comment below, the empty-args
+// guard) naming the plugin-prefixed name: plugin workflows register as
+// agent-fleet:deep-research, and the bare name dispatches the unrouted
+// built-in (measured 2026-08-28: a full run inherited the session model).
+// Routing rationale and the paired-run records behind it:
 // https://github.com/4nrry/agent-plugins (bench/). FORK CAVEAT: the built-in
 // evolves with Claude Code releases — on harness updates, diff a freshly
 // persisted built-in against the base sha and rebase these overrides.
 //
 // deep-research: Scope → pipeline(Search → URL-dedup → Fetch+Extract) → 3-vote Verify → Synthesize
 // Ported from bughunter architecture. WebSearch/WebFetch instead of git/grep.
-// Question is passed via Workflow({name: 'deep-research', args: '<question>'}).
+// Question is passed via Workflow({name: 'agent-fleet:deep-research', args: '<question>'}).
 
 const VOTES_PER_CLAIM = 3
 const REFUTATIONS_REQUIRED = 2
@@ -102,7 +106,7 @@ const REPORT_SCHEMA = {
 phase("Scope")
 const QUESTION = (typeof args === "string" && args.trim()) || ""
 if (!QUESTION) {
-  return { error: "No research question provided. Pass it as args: Workflow({name: 'deep-research', args: '<question>'})." }
+  return { error: "No research question provided. Pass it as args: Workflow({name: 'agent-fleet:deep-research', args: '<question>'}). Note: resume (resumeFromRunId) does not re-supply args — pass args again when resuming." }
 }
 // Scope inherits the session model on purpose: decomposition quality shapes
 // every downstream phase, and it is one agent, not a fan-out.

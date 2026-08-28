@@ -7,9 +7,13 @@
 # Behavior: denies ONCE per distinct unrouted script (or per predefined
 # workflow name), with the routing instruction as the reason; an identical
 # re-invocation passes, because re-invoking after reading the reason IS the
-# acknowledgment. Resume calls, scripts with model: overrides, and scripts
-# with no agent() calls pass silently. Any parse failure passes silently —
-# a broken check must never block work.
+# acknowledgment. Two exceptions on the name path: bare 'deep-research' is
+# denied EVERY time — this plugin ships the routed fork, registered as
+# 'agent-fleet:deep-research', so the bare name can only mean the unrouted
+# built-in — and 'agent-fleet:deep-research' passes silently, because its
+# script carries the per-phase overrides. Resume calls, scripts with model:
+# overrides, and scripts with no agent() calls pass silently. Any parse
+# failure passes silently — a broken check must never block work.
 set -euo pipefail
 
 input=$(cat)
@@ -48,6 +52,17 @@ fi
 
 name=$(jq -r '.name // empty' <<<"$tool_input")
 if [[ -n "$name" ]]; then
+  # The bare built-in name is a standing trap wherever this plugin is
+  # installed: the routed fork registers as 'agent-fleet:deep-research', so
+  # name: "deep-research" can only dispatch the unrouted built-in. Deny every
+  # time, no acknowledgment marker — the 2026-08-28 incident was exactly an
+  # acknowledged bare-name dispatch, a full fan-out on the session model.
+  if [[ "$name" == "deep-research" ]]; then
+    deny "agent-fleet routing check (fires every time): Workflow({name: \"deep-research\"}) dispatches the UNROUTED built-in — every agent inherits the session model, at fan-out scale. This plugin ships a routed fork registered as 'agent-fleet:deep-research' (search/fetch on haiku, verify on sonnet): re-invoke with that name, passing the same args. If the unrouted built-in is genuinely intended, dispatch its script via script/scriptPath, where the once-per-script acknowledgment applies."
+  fi
+  # The plugin's own fork needs no dispatch-time audit: its script carries
+  # the per-phase model: overrides (workflows/deep-research.js).
+  [[ "$name" == "agent-fleet:deep-research" ]] && exit 0
   safe=$(printf '%s' "$name" | tr -c 'A-Za-z0-9._-' '_')
   marker="$DATA/ack-name-$safe"
   [[ -e "$marker" ]] && exit 0
