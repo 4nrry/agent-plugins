@@ -1,0 +1,11 @@
+{
+  "name": "mobile-agent",
+  "displayName": "Mobile Agent",
+  "version": "0.1.0",
+  "author": {
+    "name": "4nrry",
+    "url": "https://github.com/4nrry"
+  },
+  "license": "MIT",
+  "description": "O que quebra em silencio quando um agente trabalha num app mobile: a camada de aparelho (adb, emulador, dump de UI) e a camada de bundler (Expo, Metro, prebuild). Nao ensina o CLI `android` nem o SDK: o Google mantem um catalogo proprio de skills com canal de update ciente de agente (`android skills list`), e prosa vendorizada perde para quem escreve o binario — de 22 skills daquele catalogo, uma se aplica a um projeto Expo, medido. Cobre a camada que ninguem cobre: falha que nao levanta erro. Hooks PreToolUse estreitos, cada um com seu proprio `if`, que AVISAM e nunca bloqueiam. Sem alegacao de melhoria: nao ha run records ainda, e pela regra zero do PROTOCOL.md uma alegacao sem registro e marketing."
+}
