@@ -80,6 +80,10 @@ case "${1:-}" in
       if [[ -z "$(printf '%s' "$arvore" | python3 "$PARSER" list)" ]]; then
         sem_arvore
       else
+        # Formato de printf entre aspas simples e proposital: o texto tem
+        # crases literais, e aspas duplas as fariam substituicao de comando —
+        # que e exatamente o bug que este arquivo ja teve.
+        # shellcheck disable=SC2016
         printf 'Nao achei %s na tela. `adb-ui.sh dump` mostra o que ha.\n' "$2" >&2
       fi
       exit 3

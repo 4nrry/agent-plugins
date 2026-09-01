@@ -18,7 +18,9 @@ download surpresa a cada build.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import shutil
+import tempfile
 import subprocess
 import sys
 
@@ -38,6 +40,33 @@ FACTS = [
      ["search"], [],
      "SKILL.md delega documentacao a `android docs search`"),
 ]
+
+
+# O bootstrapper instala aqui. Ler estes caminhos responde "qual versao" e
+# "quantas skills" sem invocar nada — que e o contrato deste arquivo.
+CLI_HOME = Path.home() / ".android" / "cli"
+
+
+def versao_instalada(raiz: Path = CLI_HOME) -> str | None:
+    """Versao do CLI lida do disco. Nunca invoca o binario."""
+    f = raiz / "skills" / "version"
+    try:
+        v = f.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return v or None
+
+
+def catalogo_no_disco(raiz: Path = CLI_HOME) -> int | None:
+    """Quantas skills o catalogo do Google traz, contadas no disco.
+
+    As skills citam esse numero com data. Contar aqui deixa a deriva visivel
+    sem transformar um numero que muda em criterio de falha.
+    """
+    d = raiz / "skills"
+    if not d.is_dir():
+        return None
+    return sum(1 for _ in d.rglob("SKILL.md"))
 
 
 def probe(argv: list[str]) -> str:
@@ -72,6 +101,8 @@ def run() -> int:
     # binario?") sem tocar no bootstrapper.
     resultado = {
         "android_path": shutil.which("android"),
+        "android_version": versao_instalada(),
+        "catalogo_skills": catalogo_no_disco(),
         "facts": [],
     }
     for fid, argv, must, must_not, sustenta in FACTS:
@@ -85,6 +116,8 @@ def run() -> int:
     else:
         v = resultado["android_path"] or "android nao encontrado no PATH"
         print(f"android: {v}")
+        print(f"  versao (lida do disco): {resultado['android_version'] or 'n/d'}")
+        print(f"  catalogo do Google: {resultado['catalogo_skills'] or 'n/d'} skills")
         for f in resultado["facts"]:
             marca = {"ok": "ok  ", "falhou": "FALHOU", "indisponivel": "n/d "}[f["veredito"]]
             print(f"  {marca} {f['id']}: {f['razao']}")
@@ -118,6 +151,32 @@ def self_test() -> int:
         if not argv or "--help" not in argv:
             print(f"{fid}: argv precisa terminar em --help, veio {argv}")
             falhas += 1
+
+    # As leituras de disco: ausencia devolve None, nunca excecao — o plugin
+    # serve maquina sem o CLI instalado, e um traceback ali seria pior que a
+    # informacao que falta.
+    with tempfile.TemporaryDirectory() as vazio:
+        v = Path(vazio)
+        checagens = [
+            (versao_instalada(v) is None, "versao: diretorio vazio deveria dar None"),
+            (catalogo_no_disco(v) is None, "catalogo: sem skills/ deveria dar None"),
+        ]
+        (v / "skills").mkdir()
+        (v / "skills" / "a").mkdir()
+        (v / "skills" / "a" / "SKILL.md").write_text("x", encoding="utf-8")
+        (v / "skills" / "version").write_text("  9.9.9  \n", encoding="utf-8")
+        checagens += [
+            (catalogo_no_disco(v) == 1, "catalogo: nao contou o SKILL.md"),
+            (versao_instalada(v) == "9.9.9", "versao: nao aparou espaco"),
+        ]
+        (v / "skills" / "version").write_text("", encoding="utf-8")
+        checagens.append(
+            (versao_instalada(v) is None, "versao: arquivo vazio deveria dar None")
+        )
+        for ok, msg in checagens:
+            if not ok:
+                print(msg)
+                falhas += 1
 
     print("self-test: ok" if not falhas else f"self-test: {falhas} falha(s)")
     return 1 if falhas else 0

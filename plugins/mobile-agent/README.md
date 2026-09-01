@@ -32,7 +32,7 @@ erro.
 | `commands/preflight.md` | `/mobile-agent:preflight` — checa o que ja esta de pe. |
 | `scripts/adb-ui.sh` | Inspecionar e tocar a tela por texto, sem ler screenshot. |
 | `scripts/adb_ui.py` | O parser da arvore, isolado para ser testavel. `--self-test`. |
-| `scripts/verify_tool_facts.py` | Confere contra o binario instalado cada flag que as skills citam. |
+| `scripts/verify_tool_facts.py` | Confere contra o binario instalado cada flag que as skills citam, e reporta versao do CLI e tamanho do catalogo do Google — ambos lidos do disco, sem invocar o bootstrapper. |
 
 ## Por que hooks, e nao so skill
 

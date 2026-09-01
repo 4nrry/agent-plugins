@@ -298,7 +298,18 @@ def check_claims_hashes() -> None:
 
 
 def check_shell() -> None:
-    """8. shellcheck over every tracked shell script."""
+    """8. shellcheck over every tracked shell script, at `style`.
+
+    Not `warning`: SC2006 — backticks where $() belongs — is severity `style`,
+    and a `warning` gate let through an unescaped backtick inside a
+    double-quoted string. It reached a shipped script, where the shell ran it:
+    the help text for an empty accessibility tree invoked `android`, which is a
+    bootstrapper that downloads hundreds of MB. A gate that misses the class of
+    bug the repo exists to document is the wrong gate.
+
+    Intentional cases opt out in the file, with a reason, via
+    `# shellcheck disable=<code>`.
+    """
     global checks_run
     scripts = sorted(REPO.rglob("*.sh"))
     scripts = [s for s in scripts if ".git" not in s.parts]
@@ -306,7 +317,7 @@ def check_shell() -> None:
         return warn("shellcheck", f"not installed — {len(scripts)} script(s) unchecked")
     for s in scripts:
         checks_run += 1
-        proc = subprocess.run(["shellcheck", "-S", "warning", str(s)],
+        proc = subprocess.run(["shellcheck", "-S", "style", str(s)],
                               capture_output=True, text=True)
         if proc.returncode != 0:
             fail(rel(s), "shellcheck:\n" + proc.stdout.strip())
