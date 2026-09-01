@@ -66,9 +66,12 @@ def judge(help_text: str, must: list[str], must_not: list[str]) -> tuple[str, st
 
 
 def run() -> int:
-    versao = probe(["--version"]).strip().splitlines()
+    # Nada de `android --version` aqui: e exatamente a invocacao que a docstring
+    # acima chama de download surpresa, e o contrato do --self-test so cobre o
+    # que esta em FACTS. O caminho resolvido responde a mesma pergunta ("existe
+    # binario?") sem tocar no bootstrapper.
     resultado = {
-        "android_version": versao[-1] if versao else None,
+        "android_path": shutil.which("android"),
         "facts": [],
     }
     for fid, argv, must, must_not, sustenta in FACTS:
@@ -80,7 +83,7 @@ def run() -> int:
     if "--json" in sys.argv:
         print(json.dumps(resultado, indent=2, ensure_ascii=False))
     else:
-        v = resultado["android_version"] or "android nao encontrado no PATH"
+        v = resultado["android_path"] or "android nao encontrado no PATH"
         print(f"android: {v}")
         for f in resultado["facts"]:
             marca = {"ok": "ok  ", "falhou": "FALHOU", "indisponivel": "n/d "}[f["veredito"]]

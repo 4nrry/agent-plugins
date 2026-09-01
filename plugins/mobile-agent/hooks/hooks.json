@@ -17,6 +17,11 @@
           },
           {
             "type": "command",
+            "if": "Bash(pgrep *)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-pkill.sh"
+          },
+          {
+            "type": "command",
             "if": "Bash(adb shell uiautomator *)",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-uiautomator.sh"
           },

@@ -76,15 +76,15 @@ Repare em `--screenshot`. A documentacao do proprio skill do Google diz
 O script empacotado aqui checa isso contra o binario instalado:
 
 ```bash
-scripts/verify_tool_facts.py
+${CLAUDE_PLUGIN_ROOT}/scripts/verify_tool_facts.py
 ```
 
 O plugin tambem empacota a ferramenta, nao so o conselho:
 
 ```bash
-scripts/adb-ui.sh dump              # rotulo + bounds, pelo stdout
-scripts/adb-ui.sh tap "Continuar"   # toca o menor no clicavel que casa
-scripts/adb-ui.sh shot out.jpg      # screenshot ja reduzido, seguro de ler
+${CLAUDE_PLUGIN_ROOT}/scripts/adb-ui.sh dump              # rotulo + bounds, pelo stdout
+${CLAUDE_PLUGIN_ROOT}/scripts/adb-ui.sh tap "Continuar"   # toca o menor no clicavel que casa
+${CLAUDE_PLUGIN_ROOT}/scripts/adb-ui.sh shot out.jpg      # screenshot ja reduzido, seguro de ler
 ```
 
 Quando a arvore volta vazia, o `dump` explica que provavelmente e superficie de
@@ -157,8 +157,8 @@ O `android` CLI e novo e se move. Nenhum fato de flag aqui vale sem checagem
 contra o binario que voce tem:
 
 ```bash
-scripts/verify_tool_facts.py          # asserta as flags citadas neste documento
-scripts/verify_tool_facts.py --self-test
+${CLAUDE_PLUGIN_ROOT}/scripts/verify_tool_facts.py          # asserta as flags citadas neste documento
+${CLAUDE_PLUGIN_ROOT}/scripts/verify_tool_facts.py --self-test
 ```
 
 Um detalhe que pega: o `android` de `cmdline-tools/latest/bin` e um

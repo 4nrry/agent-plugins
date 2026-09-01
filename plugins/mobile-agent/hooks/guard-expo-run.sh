@@ -23,7 +23,21 @@ grep -q 'prebuild' <<<"$cmd" && exit 0
 cwd=$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null) || cwd=""
 plat="android"
 grep -q 'run:ios' <<<"$cmd" && plat="ios"
-[[ -n "$cwd" && -d "$cwd/$plat" ]] || exit 0
+
+# O `cwd` do payload e o da sessao, e num monorepo o comando troca de diretorio
+# antes: `cd apps/mobile && npx expo run:android`. Sem seguir esse `cd`, a
+# checagem procuraria `android/` na raiz, nao acharia, e sairia calada — logo no
+# arranjo com mais de um checkout, que e o caso dificil.
+sub=$(sed -n 's/^[[:space:]]*cd[[:space:]]\+\([^;&|]*\).*/\1/p' <<<"$cmd" | head -1)
+sub=${sub%"${sub##*[![:space:]]}"}
+sub=${sub#\'}; sub=${sub%\'}
+sub=${sub#\"}; sub=${sub%\"}
+case "$sub" in
+  "")  base="$cwd" ;;
+  /*)  base="$sub" ;;
+  *)   base="$cwd/$sub" ;;
+esac
+[[ -n "$base" && -d "$base/$plat" ]] || exit 0
 
 jq -n --arg p "$plat" '{
   hookSpecificOutput: {

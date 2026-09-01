@@ -41,7 +41,7 @@ command -v adb >/dev/null 2>&1 || morre "adb nao esta no PATH."
 
 devices=$(adb devices 2>/dev/null | grep -cE '\sdevice$' || true)
 case "$devices" in
-  0) morre "Nenhum aparelho conectado. `adb devices` para conferir." ;;
+  0) morre "Nenhum aparelho conectado. \`adb devices\` para conferir." ;;
   1) ;;
   *) [[ -n "${ANDROID_SERIAL:-}" ]] || morre \
        "$devices aparelhos conectados. Exporte ANDROID_SERIAL para escolher." ;;
@@ -59,11 +59,11 @@ sem_arvore() {
     "Isso normalmente NAO e app travado. Superficie de GL — mapa, video," \
     "WebView, canvas — nao aparece no dump do UI Automator." \
     "" \
-    "Caminho visual, se o CLI `android` estiver instalado:" \
+    "Caminho visual, se o CLI \`android\` estiver instalado:" \
     "  android screen capture --annotate -o shot.png" \
     "  adb shell input \$(android screen resolve --screenshot shot.png --string \"tap #N\")" \
     "" \
-    "Sem ele, sobra coordenada absoluta (`tapxy`) e verificacao por cor de pixel." >&2
+    "Sem ele, sobra coordenada absoluta (\`tapxy\`) e verificacao por cor de pixel." >&2
 }
 
 case "${1:-}" in
@@ -94,10 +94,17 @@ case "${1:-}" in
     ;;
   type)
     [[ $# -ge 2 ]] || morre "uso: adb-ui.sh type <texto>"
-    # Se o texto sumir pela metade ou o app recarregar sozinho no meio da
-    # digitacao, suspeite de atalho de menu de desenvolvedor: em build de dev,
-    # certas teclas sao atalho. Digite em pedacos, cortando antes da tecla.
-    adb shell input text "$2"
+    # `adb shell` entrega a linha ao shell do APARELHO, que redivide por
+    # espaco e interpreta `;`, `&`, `$`. Sem tratar isso, `type "ABC 123"`
+    # digita so "ABC" e some com o resto sem erro nenhum. Entao: espaco vira
+    # %s (o `input text` aceita um argumento so) e o texto vai entre aspas
+    # simples, com as aspas simples internas escapadas.
+    texto=${2//\'/\'\\\'\'}
+    texto=${texto// /%s}
+    # Se mesmo assim o app recarregar sozinho no meio da digitacao, ai sim
+    # suspeite de atalho de menu de desenvolvedor: em build de dev, certas
+    # teclas sao atalho. Digite em pedacos, cortando antes da tecla.
+    adb shell input text "'$texto'"
     ;;
   esc)
     adb shell input keyevent 111
@@ -111,8 +118,14 @@ case "${1:-}" in
     # Reduzir nao e estetica: um screenshot cheio tem alguns MB, e ler isso
     # direto numa sessao de agente e o caminho conhecido para derrubar o
     # processo por memoria.
+    # O destino precisa ser absoluto: sem barra no caminho, o vipsthumbnail
+    # escreve ao lado da ENTRADA — que aqui esta em /tmp — e nao no diretorio
+    # de trabalho. O arquivo sairia em /tmp e este script imprimiria um caminho
+    # que nao existe.
+    case "$destino" in /*) abs="$destino" ;; *) abs="$PWD/$destino" ;; esac
     if command -v vipsthumbnail >/dev/null 2>&1; then
-      vipsthumbnail "$tmp" --size 640x -o "${destino}[Q=85]" 2>/dev/null
+      vipsthumbnail "$tmp" --size 640x -o "${abs}[Q=85]" 2>/dev/null
+      [[ -s "$abs" ]] || morre "vipsthumbnail nao escreveu $abs."
     elif command -v magick >/dev/null 2>&1; then
       magick "$tmp" -resize 640x "$destino"
     else

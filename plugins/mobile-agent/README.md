@@ -28,7 +28,7 @@ erro.
 |---|---|
 | `skills/android-device/` | Camada de aparelho: dump de UI, superficie de GL, screenshot, tuneis, processos. |
 | `skills/expo-metro/` | Camada de bundler: prebuild silencioso, porta do Metro, node_modules ausente, `EXPO_PUBLIC_`. |
-| `hooks/` | Cinco guardas `PreToolUse`, cada um com seu `if`. Avisam, nunca bloqueiam. |
+| `hooks/` | Seis guardas `PreToolUse`, cada um com seu `if`. Avisam, nunca bloqueiam. |
 | `commands/preflight.md` | `/mobile-agent:preflight` — checa o que ja esta de pe. |
 | `scripts/adb-ui.sh` | Inspecionar e tocar a tela por texto, sem ler screenshot. |
 | `scripts/adb_ui.py` | O parser da arvore, isolado para ser testavel. `--self-test`. |
@@ -49,12 +49,13 @@ destino de quem quiser o contexto inteiro.
 
 Cada handler carrega o proprio `if`, que segura exatamente uma permission rule —
 *"There is no `&&`, `||`, or list syntax for combining rules"*. Por isso sao
-cinco handlers, e duas formas de invocar o mesmo comando viram dois handlers.
+seis handlers, e duas formas de invocar o mesmo comando viram dois handlers.
 
 | `if` | por que |
 |---|---|
 | `Bash(adb kill-server)` | derruba os tuneis de todas as sessoes; o sintoma imita backend fora do ar |
-| `Bash(pkill *)` | `-f` casa a propria linha de comando: mata o proprio shell, ou reporta um processo que e voce |
+| `Bash(pkill *)` | `-f` casa a propria linha de comando: mata o proprio shell |
+| `Bash(pgrep *)` | idem, e o lado que so reporta: um processo que e voce mesmo |
 | `Bash(adb shell uiautomator *)` | dump para arquivo pode servir a arvore da rodada anterior |
 | `Bash(npx expo run:*)` | com o diretorio nativo presente, o prebuild nao roda |
 | `Bash(expo run:*)` | idem, sem `npx` |

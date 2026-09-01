@@ -14,8 +14,10 @@ input=$(cat) || exit 0
 cmd=$(jq -r '.tool_input.command // empty' <<<"$input" 2>/dev/null) || exit 0
 [[ -n "$cmd" ]] || exit 0
 
-# So interessa a forma que casa por linha de comando inteira: -f.
-grep -qE '(^|[;&|[:space:]])(pkill|pgrep)[[:space:]]+(-[a-zA-Z]*f)' <<<"$cmd" || exit 0
+# So interessa a forma que casa por linha de comando inteira: -f (ou --full).
+# A flag quase nunca vem colada ao nome — `pkill -9 -f node` e a forma mais
+# comum, e e justamente a que mata — entao aceite flags no meio do caminho.
+grep -qE '(^|[;&|[:space:]])(pkill|pgrep)([[:space:]]+-[^[:space:]]+)*[[:space:]]+(-[a-zA-Z]*f([[:space:]]|$)|--full)' <<<"$cmd" || exit 0
 
 jq -n '{
   hookSpecificOutput: {
