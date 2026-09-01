@@ -1,0 +1,37 @@
+{
+  "description": "Guardas de comando para trabalho mobile. Cada handler carrega seu proprio `if` — sem ele, todo comando Bash da sessao spawnaria um processo. O `if` segura exatamente uma permission rule: sem &&, sem ||, sem lista, entao e um handler por condicao, e duas formas de invocar o mesmo comando viram dois handlers apontando para o mesmo script.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(adb kill-server)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-adb-kill-server.sh"
+          },
+          {
+            "type": "command",
+            "if": "Bash(pkill *)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-pkill.sh"
+          },
+          {
+            "type": "command",
+            "if": "Bash(adb shell uiautomator *)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-uiautomator.sh"
+          },
+          {
+            "type": "command",
+            "if": "Bash(npx expo run:*)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-expo-run.sh"
+          },
+          {
+            "type": "command",
+            "if": "Bash(expo run:*)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-expo-run.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

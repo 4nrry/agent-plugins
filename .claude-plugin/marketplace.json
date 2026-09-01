@@ -9,6 +9,10 @@
     {
       "name": "agent-fleet",
       "source": "./plugins/agent-fleet"
+    },
+    {
+      "name": "mobile-agent",
+      "source": "./plugins/mobile-agent"
     }
   ]
 }
