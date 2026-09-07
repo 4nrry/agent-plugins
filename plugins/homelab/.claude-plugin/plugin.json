@@ -1,0 +1,11 @@
+{
+  "name": "homelab",
+  "displayName": "Homelab",
+  "version": "0.1.0",
+  "author": {
+    "name": "4nrry",
+    "url": "https://github.com/4nrry"
+  },
+  "license": "MIT",
+  "description": "Servicos que voce mesmo hospeda numa maquina Linux, e as armadilhas que a doc oficial nao cobre. Hoje: PalServer dedicado (Palworld) — a config que o servidor apaga sozinha no shutdown, entao `systemctl restart` nunca aplica edicao; a atualizacao por Steam que troca o binario debaixo do processo; RCON deprecado; e o que simplesmente nao existe do lado do servidor, como gerenciar guilda. Onde a doc oficial e a medicao divergem, o texto marca qual e qual, e o que nao foi verificado diz que nao foi. O estado da sua maquina — enderecos, versoes, numeros medidos — nao fica no plugin: mora em ~/.claude/palserver.local.md, e a skill traz so o molde. Sem alegacao de melhoria: nao ha run records, e pela regra zero do bench/PROTOCOL.md uma alegacao sem registro e marketing."
+}

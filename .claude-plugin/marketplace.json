@@ -11,6 +11,10 @@
       "source": "./plugins/agent-fleet"
     },
     {
+      "name": "homelab",
+      "source": "./plugins/homelab"
+    },
+    {
       "name": "mobile-agent",
       "source": "./plugins/mobile-agent"
     }
