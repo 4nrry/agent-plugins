@@ -113,6 +113,33 @@ O que caiu:
   valor recomendado. O enunciado correto: *a nota de patch e o unico relogio e a
   unica arbitra de contradicao; o dominio oficial nao e a resposta.*
 
+## Video: o buraco da camada de comunidade
+
+O levantamento mediu o degrau de comunidade como quase inalcancavel: Reddit sem
+uma thread real em 10/10 categorias, `site:reddit.com` substituido por
+`steamcommunity.com` em >=7 delas, Fandom com HTTP 402 em 2/2. Build, rota e
+tatica vivem muito em video, e `WebFetch` numa pagina de video devolve so a
+navegacao.
+
+A skill documenta o caminho condicional (`yt-dlp` no PATH, senao a fonte e
+inalcancavel e isso e a resposta), com quatro pontos medidos em 2026-09-07,
+reproduzindo e corrigindo [#6](https://github.com/4nrry/agent-plugins/issues/6):
+
+- A forma estreita `--sub-lang en` e **dependente do video**, nao quebrada.
+- Afirme saida nao-vazia: as rotas sem instalacao dao **200 com corpo vazio**.
+- Junte na **fronteira de evento**. O defeito do join ingenuo tambem e por
+  trilha: uma tinha 0 de 6 eventos com espaco nas bordas e perdeu 5 de 39
+  palavras; outra tinha 338 de 677 e perdeu zero.
+- A dependencia **deriva**: o aviso de 2026-08-18 era runtime JS ausente; hoje,
+  mesma maquina e mesma versao, o aviso e `impersonation`.
+
+Video entra no ramo META e **nunca no FACTUAL** — nao por corrupcao de ASR
+(nomes proprios sobreviveram: `Anubis` 28x num guia medido), mas porque a
+transcricao **nao tem ancora de versao**. Ela traz numeros sem dizer a que build
+pertencem, entao falha a tripla `(valor, versao, data)` pela coluna do meio. E a
+busca do YouTube nao ordena por recencia: os dois primeiros resultados de uma
+consulta de build eram de 2024-10 e 2025-01, anteriores ao 1.0.
+
 O que subiu no lugar e o **passo zero**: ler o changelog primario e listar o que
 tocou o subsistema antes de abrir qualquer guia. Sozinho, invalidou conteudo em
 **10 de 10** categorias, com 53 itens nomeados — e cerca de um quarto eram

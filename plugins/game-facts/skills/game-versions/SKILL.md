@@ -152,6 +152,73 @@ Amarras:
   senao, **declare irresolvido e mostre os dois lados**. Deixar uma divergencia
   de pe e a saida correta, nao um consenso sintetizado.
 
+### Video, e o buraco na camada de comunidade
+
+O degrau 4 do ramo META — forum e comunidade — foi medido como **em grande parte
+inalcancavel** neste ambiente: Reddit nao devolveu uma thread real em nenhuma das
+10 categorias, `site:reddit.com` foi substituido por `steamcommunity.com` em pelo
+menos 7 delas, e Fandom devolveu HTTP 402 em 2 de 2. Muito do conteudo de build,
+rota e chefe vive em video, e `WebFetch` numa pagina de video devolve so a
+navegacao do site, nunca a legenda.
+
+Ha um caminho, e ele e **condicional**: se `yt-dlp` estiver no PATH, a trilha de
+legenda e recuperavel. Ausente, a fonte e inalcancavel — e isso **e** a resposta.
+Detecte a capacidade, nunca assuma, e **nunca instale nem instrua a instalar**.
+
+```bash
+command -v yt-dlp >/dev/null || { echo "video: fonte inalcancavel"; exit 0; }
+
+yt-dlp --skip-download --write-subs --write-auto-subs \
+       --sub-langs 'en.*' --sub-format json3 -o 'v.%(ext)s' "$URL"
+```
+
+Quatro coisas que essa invocacao carrega, cada uma medida:
+
+- **A forma estreita `--write-auto-sub --sub-lang en` e dependente do video, nao
+  quebrada.** Ela acerta quando existe trilha manual em ingles e falha quando o
+  ingles so existe no pool automatico, onde a trilha se chama `en-en` e escapa do
+  filtro. Reproduzido em 2026-09-07: zero arquivo no video de teste
+  `jNQXAC9IVRw`, tres trilhas com a forma acima.
+- **Afirme saida nao-vazia; nao confie no codigo de saida.** As rotas sem
+  instalacao (curl na `baseUrl`, Invidious) devolvem **HTTP 200 com corpo
+  vazio**. Script ingenuo grava 0 byte e reporta sucesso.
+- **Renderize juntando na fronteira de evento**, nunca `"".join()` sobre os
+  segmentos. Se o defeito aparece depende da trilha: uma trilha medida tinha
+  **0 de 6** eventos com espaco nas bordas e o join ingenuo perdeu 5 de 39
+  palavras; outra tinha **338 de 677** e nao perdeu nenhuma. Juntar por evento
+  esta certo nos dois casos.
+- **A dependencia esta derivando.** Em 2026-08-18 o aviso era de runtime JS
+  ausente; em 2026-09-07, na mesma maquina e mesma versao do yt-dlp, o aviso e
+  outro (`impersonation`). Conte com quebra, nao com estabilidade.
+
+Nao existe plano B portatil, medido: `curl` na `baseUrl` do `captionTracks` deu
+200 com 0 byte, Invidious deu 200/0 byte e 403, Piped deu 526, e o
+`youtube-transcript-api` esta ~19 meses sem release e expoe uma excecao
+`PoTokenRequired` — reconhece a barreira sem resolve-la. Metadado de legenda e
+livre; **conteudo e fechado**.
+
+**Onde video entra e onde nao entra:**
+
+Entra no ramo **META** — rota, tatica, "como as pessoas realmente fazem", a forma
+de uma build. A data de upload e uma data de verdade, entao a cerca de patch se
+aplica igual.
+
+**Nao entra no ramo FACTUAL.** Nao porque o ASR corrompa nome proprio: medido num
+guia real, os nomes sobreviveram bem (`Anubis` 28x, alem de `Artisan`,
+`Serenity`, `Musclehead`, `Work Slave`) — e ausencia nao se distingue de "nunca
+foi dito" sem assistir. A razao e outra e mais forte: **a transcricao nao tem
+ancora de versao nenhuma.** Ela traz numeros — no guia medido, `70`, `40`, `20`,
+`115`, `117` — sem nada que diga a que build pertencem. Um numero de la falha a
+tripla `(valor, versao, data)` pela coluna do meio, sempre.
+
+E a busca do YouTube **nao ordena por recencia**: os dois primeiros resultados
+para uma consulta de build de Palworld eram de 2024-10-05 e 2025-01-30, ambos
+anteriores ao 1.0 inteiro. Ordene por data voce mesmo, ou aplique a cerca de
+patch antes de ler.
+
+Legenda automatica e saida de ASR. Cite dela com parcimonia, e nunca como fonte
+primaria citavel palavra por palavra.
+
 ### O que o levantamento derrubou
 
 Cinco coisas que parecem obvias e que os dados contradizem. Elas estao aqui
