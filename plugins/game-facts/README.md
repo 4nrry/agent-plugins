@@ -203,6 +203,42 @@ instruido a marcar obsoleto na duvida, entao 10/10 e o vies pedido, nao um
 achado — o que vale sao os 53 itens nomeados, cada um checavel. E o metadado de
 fonte foi julgado por agente, nao conferido a mao pagina por pagina.
 
+### Primeiro uso real, 2026-09-08
+
+Uma pergunta de verdade — quais Pals farmam "organ" na base — rodada como
+fan-out de 11 agentes seguindo as regras da skill. **23 fontes, zero
+posteriores ao patch** do dia anterior. O que o uso mostrou:
+
+- **O passo zero pagou, mas nao onde se esperava.** Ele nao achou nada sobre o
+  item em 1.0.1-1.0.4. O valor foi matar duas fontes que entrariam como fato
+  (foruns de 2024 e 2025, anteriores a um rework que o changelog de 1.0
+  nomeia) e rebaixar uma terceira que declara versao pre-1.0. Sem ele, quatro
+  listas teriam saido com confianca identica.
+- **O ramo LOCAL foi a parte mais util, e inverteu a recomendacao.** A chave
+  que governa o subsistema perguntado estava a 1.5x no `.ini` da maquina, e
+  outra chave a 2.0x buffava a rota concorrente. Nenhuma fonte externa poderia
+  ter dito isso. O disco tambem encerrou um conflito que a web deixou aberto.
+- **Um degrau da hierarquia simplesmente nao existe para esse jogo.** Nao ha
+  documentacao oficial de mecanica — so patch notes. A hierarquia desaba de
+  "changelog oficial" direto para "wiki comunitaria", e toda a substancia vive
+  num degrau so. Os buracos da resposta nao sao falha de busca: o dado nao
+  existe publicado.
+
+E duas falhas da propria skill, ambas corrigidas nesta versao:
+
+1. **A cerca de patch nao tinha saida.** Com o patch de ontem, 18 de 18 fontes
+   falharam o criterio de recencia enquanto o changelog auditado provava que
+   nada relevante mudara. A regra forcava a resposta a soar mais insegura que a
+   evidencia. Agora a cerca se satisfaz por fonte posterior **ou** por auditoria
+   negativa, com o rotulo mais fraco que essa via autoriza.
+2. **Nao havia degrau para fonte unica disfarcada de consenso.** Uma tabela
+   inteira saiu de um dominio so mais "sintese de busca" — o buscador resumindo
+   paginas que copiaram a mesma origem. Quem pegou foram os verificadores, nao
+   a skill. Agora ha teste de origem contra dominio, e "resumo de buscador nao
+   e fonte" e regra explicita.
+
+Custo: o bloco injetado foi de 2143 para 2760 bytes.
+
 O que falta medir e o que decide se o plugin serve: se o usuario para de digitar
 a versao no prompt.
 

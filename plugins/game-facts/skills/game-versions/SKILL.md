@@ -76,6 +76,32 @@ contra isso. So o diff do changelog protege.**
 Disso sai a **cerca de patch**: a data do ultimo patch que tocou o subsistema.
 Fonte anterior a essa data e suspeita por construcao, por melhor que seja.
 
+#### A cerca tem duas saidas, e ignorar a segunda produz resposta covarde
+
+A regra "prefira fonte posterior ao patch" quebra justamente onde parece mais
+necessaria: **quando o patch e de ontem**. Wiki leva dias para atualizar, entao
+nenhuma fonte satisfaz o criterio, e a resposta sai soando insegura enquanto a
+evidencia real diz o contrario.
+
+Medido em 2026-09-08, um dia depois de um patch: **18 de 18 fontes falharam o
+criterio de recencia**, e o changelog auditado mostrava que nenhuma versao desde
+a mais antiga daquelas fontes tocava o subsistema perguntado.
+
+A cerca se satisfaz de duas formas, e as duas valem:
+
+1. **Fonte posterior** ao ultimo patch que tocou o subsistema; ou
+2. **Auditoria negativa** — voce leu o changelog de todas as versoes entre a
+   data da fonte e hoje, e nomeou as versoes, e nenhuma toca o subsistema.
+
+A segunda e mais fraca num ponto especifico, e o texto tem que dizer isso:
+**ausencia no changelog nao e prova de ausencia de mudanca**, porque
+rebalanceamento numerico costuma nao aparecer em changelog nenhum. Entao a via
+(2) autoriza escrever *"sem mudanca conhecida desde <data da fonte>"*, e nunca
+*"atual"*.
+
+O que **nao** vale como saida: nao ter procurado. Sem o changelog lido e as
+versoes nomeadas, sobra so a via (1).
+
 ### Roteamento, antes de qualquer busca
 
 ```
@@ -105,6 +131,34 @@ mas "que valores a comunidade recomenda" e META. **Mesmo arquivo, mesma chave,
 duas perguntas, dois ramos.** A doc oficial confirma a assimetria pelo lado de
 fora — ela da a mecanica e o aviso de carga, e deliberadamente nunca da o valor
 recomendado.
+
+### Fonte unica disfarcada de consenso
+
+Contar fontes e o erro mais facil de cometer aqui, porque o disfarce e bom:
+cinco paginas dizendo a mesma coisa parecem cinco confirmacoes e costumam ser
+**uma origem copiada cinco vezes**. Ja aconteceu duas vezes nas medicoes deste
+plugin — cinco dominios de calculadora repetindo um numero que uma sexta fonte
+chama de mito ja refutado, e uma tabela de niveis saindo inteira de um dominio
+so mais "sintese de busca".
+
+Tres testes. O segundo e o que quase ninguem aplica:
+
+1. **Tipo diferente.** Triangulacao so conta entre tipos: wiki + changelog +
+   forum sao tres. Tres blogs de hosting sao um.
+2. **Resumo de buscador NAO e fonte.** O bloco que o buscador sintetiza vem de
+   paginas que voce nao abriu, e funde varias numa afirmacao sem dono. Se voce
+   nao abriu a pagina, escreva "nao verificado" — nunca o nome do site.
+   Aconteceu numa medicao: o resumo atribuiu a um site uma alegacao que, ao
+   abrir o artigo, era de outro.
+3. **Origem, nao dominio.** Antes de contar duas fontes como duas, pergunte de
+   onde cada uma tirou. Numero identico ate o decimal em paginas de idades
+   diferentes e sinal de copia, nao de confirmacao independente.
+
+E o corolario que evita o ruido oposto: um numero repetido por muitas fontes
+sem nenhuma exibir a tripla nao vira fato por popularidade, mas tambem nao
+merece um "nao confirmado" seco. **Diga o que voce sabe**: *"repetido por N
+fontes entre <data> e <data>, nenhuma datada e versionada"*. Isso e informacao;
+o "nao confirmado" sozinho joga fora a unica coisa medida.
 
 ### Ramo FACTUAL
 
