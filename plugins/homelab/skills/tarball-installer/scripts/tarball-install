@@ -224,9 +224,18 @@ else
 fi
 
 refresh_caches() {
-    command -v update-desktop-database >/dev/null && $SUDO update-desktop-database "$APPDIR" 2>/dev/null || true
-    command -v gtk-update-icon-cache   >/dev/null && $SUDO gtk-update-icon-cache -qtf "$ICONDIR/hicolor" 2>/dev/null || true
-    command -v kbuildsycoca6           >/dev/null && kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+    # `if` em vez de `A && B || true`: a segunda forma dispara SC2015 no
+    # linter do CI, que e mais estrito que o desta maquina. Comportamento
+    # identico — cada refresh e best-effort e nunca derruba a instalacao.
+    if command -v update-desktop-database >/dev/null; then
+        $SUDO update-desktop-database "$APPDIR" 2>/dev/null || true
+    fi
+    if command -v gtk-update-icon-cache >/dev/null; then
+        $SUDO gtk-update-icon-cache -qtf "$ICONDIR/hicolor" 2>/dev/null || true
+    fi
+    if command -v kbuildsycoca6 >/dev/null; then
+        kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+    fi
 }
 
 if [ "$LIST" = 1 ]; then
@@ -309,12 +318,13 @@ if [ "$USE_VENDOR" = 1 ] && [ "$MAKE_DESKTOP" = 1 ] && [ -z "$VENDOR_REL" ]; the
     # -type f não é decoração: o JBR que a JetBrains embarca tem diretórios
     # chamados java.desktop e jdk.unsupported.desktop (módulos do JDK), e sem
     # isso a busca traria um deles em vez de uma entrada de menu.
-    VENDOR_REL="$(cd "$ROOT" && {
+    VENDOR_REL="$(cd "$ROOT" 2>/dev/null || exit 0
+    {
         find . -maxdepth 1 -type f -name "$NAME.desktop" -printf '%P\n'
         find . -maxdepth 1 -type f -name '*.desktop' -printf '%P\n'
         find . -maxdepth 5 -type f -path '*/applications/*.desktop' -printf '%P\n'
         find . -maxdepth 5 -type f -name '*.desktop' ! -path '*/locale/*' -printf '%P\n'
-    } 2>/dev/null | head -1 || true)"
+    } 2>/dev/null | head -1)"
 fi
 [ "$USE_VENDOR" = 1 ] || VENDOR_REL=""
 case "$VENDOR_REL" in
@@ -453,7 +463,9 @@ if [ "$MAKE_DESKTOP" = 1 ]; then
         fi
     } | { replace "$APPDIR/$NAME.desktop"; $SUDO tee "$APPDIR/$NAME.desktop" >/dev/null; }
     $SUDO chmod 644 "$APPDIR/$NAME.desktop"
-    command -v desktop-file-validate >/dev/null && desktop-file-validate "$APPDIR/$NAME.desktop" || true
+    if command -v desktop-file-validate >/dev/null; then
+        desktop-file-validate "$APPDIR/$NAME.desktop" || true
+    fi
 fi
 
 refresh_caches
