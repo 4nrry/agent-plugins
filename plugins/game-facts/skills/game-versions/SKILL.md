@@ -55,50 +55,185 @@ marketing nao foi determinada. Nao converta um no outro.
 
 ## Onde buscar, e em que ordem
 
-O hook injeta a URL pronta. Ela **nao e chamada** por ele: rede em hook custa
-latencia em todo prompt, inclusive nos que nao tem jogo nenhum. Quem busca e
-voce, quando a pergunta exigir.
+Esta secao nao e opiniao: saiu de um levantamento de **80 fontes** sobre 10
+arquetipos de pergunta de um jogo so, num dia so. As ressalvas do metodo estao
+no fim da secao, e elas importam.
 
-```bash
-curl -sS --max-time 20 \
-  "https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=<APPID>&count=5&maxlength=1500" \
-| jq -r '.appnews.newsitems[]
-         | select(.feedname=="steam_community_announcements")
-         | "\(.date|strftime("%Y-%m-%d"))  \(.title)\n\(.contents)\n\(.url)"'
+### Passo zero, obrigatorio, antes de abrir qualquer guia
+
+**Leia o changelog primario e liste toda entrada que toca o subsistema da
+pergunta**, andando para tras ate o ultimo patch que mexeu nele. Uma a duas
+chamadas. No levantamento, so esse passo produziu **53 invalidacoes em 10 de 10
+categorias**.
+
+Cerca de um quarto delas eram **correcoes de bug** — a fonte mediu com
+honestidade uma build quebrada. Um exemplo do que isso significa: a passiva
+`Mercy Hit` nao se aplicava a ataques de Pal montado, e foi corrigida na 1.0.4.
+Todo guia de combate de fim de jogo escrito antes disso avaliou aquela passiva
+num estado que nao existe mais. **Nenhum grau de qualidade editorial protege
+contra isso. So o diff do changelog protege.**
+
+Disso sai a **cerca de patch**: a data do ultimo patch que tocou o subsistema.
+Fonte anterior a essa data e suspeita por construcao, por melhor que seja.
+
+### Roteamento, antes de qualquer busca
+
+```
+Pede um valor DESTA instancia (chave, estado atual, o que aconteceu aqui)?
+  -> LOCAL: leia o arquivo. Zero rede. Fim.
+Pede um dado embarcado no jogo (default, nivel, custo, o que mudou)?
+  -> FACTUAL
+Pede ordenacao, superlativo, rota, ou "vale a pena"?
+  -> META
 ```
 
-Publico, sem chave. O `select` importa: o feed mistura imprensa (PC Gamer,
-PCGamesN) com anuncio do estudio, e materia de site de jogo nao e patch notes.
+Pergunta hibrida — "que valor eu devo usar para X?" — e **FACTUAL** para o
+intervalo e a mecanica, e **META** para a recomendacao. Responda os dois
+separados e rotulados; nunca funda num paragrafo so.
 
-Verificado em 2026-09-07: `appid=1623730` devolveu
-`v1.0.4: Balance Adjustments & Bug Fixes`, autor `pocketpair_dev`, datado do
-mesmo dia do `LastUpdated` do manifesto — e o corpo trazia mudanca de chave de
-config (`Added "Fish Behavior During Fishing Minigames" to World Settings`).
+Tres testes mecanicos para saber se o disco responde:
 
-**Ferramenta nao tem feed.** O appid do Palworld Dedicated Server (2394010)
-devolve lista vazia; as notas do servidor saem no appid do cliente. Vale para
-dedicated server, SDK e editor em geral.
+1. **Divergencia entre instancias.** Dois jogadores no mesmo patch teriam
+   respostas diferentes? Sim -> estado local, leia o disco.
+2. **Forma da resposta.** E um `chave=valor` ou uma linha de estado? -> local.
+   E um superlativo, uma ordenacao, uma porcentagem de mecanica? -> nunca local.
+3. **Arquivo dono.** O dado e escrito pelo servidor/jogador (ini, sav, log) ou
+   embarcado pelo desenvolvedor (pak)? So o primeiro grupo esta no disco.
 
-A ordem, quando for preciso ir para fora:
+O caso que define a fronteira: `PalWorldSettings.ini` esta no disco do usuario,
+mas "que valores a comunidade recomenda" e META. **Mesmo arquivo, mesma chave,
+duas perguntas, dois ramos.** A doc oficial confirma a assimetria pelo lado de
+fora — ela da a mecanica e o aviso de carga, e deliberadamente nunca da o valor
+recomendado.
 
-| ordem | fonte | vale para |
-|---|---|---|
-| 1 | arquivo no disco (config, save, `Default*.ini`) | **sempre ganha** |
-| 2 | saida do proprio jogo (log, journal) | versao de marketing |
-| 3 | notas oficiais na Steam, pelo `appid` | o que mudou, datado |
-| 4 | doc oficial do estudio | mecanica documentada |
-| 5 | wiki da comunidade | mecanica estavel; **nunca** numero ou valor padrao |
-| 6 | blog de hosting | ultima instancia, sempre marcado como tal |
+### Ramo FACTUAL
 
-Wiki cai no degrau 5 por um motivo mecanico, nao por desprezo: **pagina de wiki
-quase nunca diz de que versao fala.** Ela e boa para o que patch raramente toca
-— onde acha um item, combinacao de breeding, arvore de missao — e ruim
-exatamente para numero, valor padrao e nome de chave, que e o que muda a cada
-patch e o que costuma estar sendo perguntado.
+1. **Disco local**, se a pergunta e sobre esta instancia.
+2. **Nota de patch oficial**, da mais nova para tras. **E o unico relogio.**
+3. **Doc oficial**, so para semantica, mecanica e aviso — nunca para "que valor
+   usar". Carimbe como doc viva sem timestamp: no levantamento,
+   `docs.palworldgame.com` apareceu em 4 categorias e tinha data em **0 delas**.
+4. **Pagina de wiki que exiba last-edited E tag de versao.**
+5. **Todo o resto**: corroboracao, nunca portador unico de um numero.
 
-Blog de hosting fica por ultimo porque se contradiz e nao data: para Palworld,
-guias divergem sobre o proprio padrao de `DeathPenalty`, e uns afirmam que o 1.0
-trouxe server clustering enquanto outros negam.
+Amarras:
+
+- Todo numero sai com a tripla **(valor, versao, data-da-fonte)**. Faltando
+  qualquer um dos tres, diga o buraco em vez do numero.
+- Fonte que declara a versao V mas tem data anterior ao lancamento de V esta
+  **desqualificada**, nao corroborando. Aconteceu em 3 dos 47 selos de versao.
+- Prefira API JSON a pagina renderizada por JS — mas **revalide a data que a API
+  devolve**: uma consulta do levantamento voltou com a v1.0.4 datada de janeiro
+  de 2025, anterior ao proprio 1.0. Oficial tambem devolve data impossivel.
+
+### Ramo META
+
+1. **Changelog primario primeiro**, sempre — passo zero.
+2. **Site de jogos com data E versao.** Foi o melhor tipo meta do corpus.
+3. **Wiki**, para taxonomia, nomes, estrutura e fluxo. Foi a camada que
+   sobreviveu a verificacao em 6 dos 10 vereditos.
+4. **Forum e comunidade**, so para "e assim que se comporta de verdade", e
+   tratando a data da thread como **piso** do conteudo, nunca como rotulo: uma
+   thread de 2024 continha resposta citando dados do 1.0.
+5. **Blog de hosting, por ultimo.**
+
+Amarras:
+
+- Toda resposta meta abre com a cerca: *"valido para a build X; fontes de Y a Z;
+  N de M anteriores a build X."* No levantamento, essa linha caberia em 10/10.
+- Superlativo sem versao e data nao e dito. Uma das categorias devolveu **tres
+  combos de passiva mutuamente exclusivos, cada um apresentado como "o
+  melhor"**, nenhum reconhecendo os outros.
+- Numero comportamental medido pela comunidade e **relato**, nao dado, a menos
+  que venha com `n` e metodo. Diferenca que cabe no ruido de uma amostra de ~100
+  e folclore.
+- Conflito **nao se resolve por maioria**. Ordem de desempate: o changelog
+  decide; senao, vence a fonte mais nova que o ultimo patch do subsistema;
+  senao, **declare irresolvido e mostre os dois lados**. Deixar uma divergencia
+  de pe e a saida correta, nao um consenso sintetizado.
+
+### O que o levantamento derrubou
+
+Cinco coisas que parecem obvias e que os dados contradizem. Elas estao aqui
+porque a versao anterior desta skill afirmava tres delas.
+
+**"Tem data" nao e sinal de frescor.** 84% do corpus tinha data e ainda assim
+90% era anterior ao patch vigente. A variavel que discrimina e `data > ultimo
+patch do subsistema`, que valia para **10%**, nao `tem data`, que valia para 84%.
+
+**Concordancia entre fontes nao eleva confianca.** Das 41 contradicoes
+registradas, **voto de maioria resolveu zero**. Pior: o maior aglomerado de
+concordancia do corpus eram cinco dominios distintos repetindo um numero que uma
+sexta fonte chama de mito ja testado e refutado — eram uma fonte copiada cinco
+vezes. **Triangulacao so conta entre tipos diferentes de fonte.**
+
+**Numero de fontes nao e proxy de rigor.** A categoria com **14 fontes**, a
+maior amostra, recebeu o **pior** veredito. A que teve 10 fontes, das quais 3
+posteriores ao patch, foi a unica em que o verificador **confirmou** uma
+afirmacao. O limiar util e **>= 3 fontes posteriores ao ultimo patch relevante**,
+com teto de ~6 no total. Nao existindo essas 3, a resposta sai rotulada como
+retrato historico, nao como estado atual.
+
+**Wiki nao merece o ultimo degrau, e proibi-la para numero e erro.** Wiki teve
+data em 87,5% das paginas — acima de blog de hosting (77%) e acima da propria
+fonte oficial (67%) — e forneceu 3 das 8 paginas pos-patch do corpus inteiro,
+empatada com a oficial. Blog de hosting forneceu **zero de 22**. E wiki foi o
+**unico tipo com proveniencia de versao por conteudo** ("introduzido na 0.1.2.0",
+changelog por chefe com numero de patch) — que foi exatamente o metadado que
+permitiu **rejeitar a propria wiki** em dois casos. Proibir numero de wiki joga
+fora o unico carimbo de safra por pagina que existe.
+
+Mas tambem nao e "confie na wiki": a pagina de breeding nao tinha data **nem**
+versao e era a portadora unica dos numeros centrais. A regra que os dados
+sustentam e **por pagina, nao por dominio**:
+
+> Use um numero de wiki se e somente se a pagina exibir last-edited **E** (tag
+> de versao **OU** data posterior ao ultimo patch que tocou o subsistema).
+
+**"Oficial primeiro, sempre" e largo demais.** A oficial ganhou em versao (92%)
+e **perdeu em data** (67%), atras de wiki, forum e site de jogos. Tres modos de
+falha documentados: doc viva sem timestamp, pagina de patch notes irrecuperavel
+por fetch, e API oficial devolvendo data impossivel. E **nenhuma das 12 fontes
+oficiais respondeu uma unica pergunta meta**. O enunciado correto e mais estreito
+e mais forte: *a nota de patch e o unico relogio e a unica arbitra de
+contradicao; o dominio oficial nao e a resposta.*
+
+### Armadilhas de coleta
+
+- **O buscador substitui o dominio calado.** `site:reddit.com` devolveu
+  `steamcommunity.com` em pelo menos 7 das 10 categorias, e numa delas a thread
+  "sobre a 1.0" discutia um patch de dois anos e meio antes. Registre a
+  substituicao; nunca sirva o substituto como se fosse o pedido.
+- **Reddit nao e alcancavel por automacao aqui.** Zero das 10 categorias obteve
+  uma thread real. Rotear para la produz exatamente a substituicao acima.
+- **Fandom devolveu HTTP 402** em 2 de 2 tentativas. Morto como fonte
+  automatizada.
+- **Rodape "atualizado para X" nao prova nada.** Uma fonte trazia rodape de 1.0
+  com o corpo citando cinco torres, quando o jogo tem nove.
+- **Nunca cite como lida uma fonte que so foi vista pelo resumo do buscador.**
+  Aconteceu no levantamento: o resumo atribuiu a um site uma alegacao que, ao
+  abrir, era de outro.
+- **Audite a propria lista de fontes contra a propria alegacao de recencia.**
+  Um dos agentes afirmou que "nenhuma fonte reflete esse patch" tendo citado uma
+  fonte datada daquele mesmo dia.
+
+### O que este levantamento nao mede
+
+Ele vale como orientacao, nao como estatistica publicavel:
+
+- **Um jogo, um dia, 10 perguntas.** Palworld em 2026-09-07, horas depois de um
+  patch — o que exagera a taxa de obsolescencia contra um dia comum.
+- **Todas as 10 perguntas eram META ou FACTUAL, nenhuma era LOCAL.** Por isso
+  `respondivel_localmente` deu 0 de 10. O ramo LOCAL acima e derivado dos tres
+  testes, **nao medido**.
+- **`sensibilidade_versao` deu "alta" em 10 de 10**, entao nao ha correlacao
+  alta-contra-baixa a extrair. O gradiente que sobrou e por recencia de fonte.
+- **O verificador foi instruido a marcar obsoleto na duvida.** Que ele tenha
+  marcado 10/10 e o vies pedido, nao uma descoberta. O que vale sao os **53
+  itens especificos** que ele nomeou, cada um checavel contra o changelog.
+- **Metadado de fonte foi julgado por agente**, nao conferido a mao pagina por
+  pagina.
+
 
 ## O que fazer antes de responder
 

@@ -73,12 +73,51 @@ O hook **nao** chama essa URL. Ele roda a cada prompt, e rede ali seria
 latencia em todo prompt, inclusive nos que nao mencionam jogo nenhum. Ele monta
 e entrega; quem busca e o agente, se a pergunta exigir.
 
-A hierarquia completa fica na skill. O resumo: arquivo no disco > saida do
-proprio jogo > notas oficiais > doc do estudio > wiki > blog de hosting. Wiki
-fica em quinto por um motivo mecanico e nao por desprezo — **pagina de wiki
-quase nunca diz de que versao fala**, e ela e boa justamente para o que patch
-nao toca (onde acha um item, breeding) e ruim para numero e valor padrao, que e
-o que costuma estar sendo perguntado.
+## A hierarquia de fonte, medida
+
+A primeira versao desta secao era opiniao: uma lista unica com wiki no quinto
+degrau e proibida para numero. Um levantamento de **80 fontes** sobre 10
+arquetipos de pergunta derrubou tres afirmacoes dela, e a skill foi reescrita
+com os dados.
+
+| tipo | n | com data | declara versao | pos-patch |
+|---|---|---|---|---|
+| blog-hosting | 22 | 77% | 64% | **0** |
+| wiki | 16 | **88%** | 56% | **3** |
+| site-de-jogos | 14 | **100%** | 79% | 2 |
+| oficial | 12 | 67% | **92%** | 3 |
+| forum | 12 | 100% | 17% | 0 |
+| reddit | 2 | 0% | 0% | 0 |
+| **geral** | **80** | **84%** | **59%** | **8** |
+
+O que caiu:
+
+- **"Tem data" era o sinal errado.** 84% tinham data e 90% eram pre-patch. O que
+  discrimina e `data > ultimo patch do subsistema`: 10%, nao 84%.
+- **Concordancia nao eleva confianca.** Voto de maioria resolveu **0 de 41**
+  contradicoes, e o maior aglomerado do corpus eram cinco dominios repetindo um
+  numero que uma sexta fonte chama de mito refutado — uma fonte copiada cinco
+  vezes. Triangulacao so conta entre tipos diferentes.
+- **Volume nao e rigor.** A categoria com 14 fontes teve o **pior** veredito; a
+  com 10 fontes, das quais 3 pos-patch, foi a unica com uma afirmacao
+  **confirmada**. O limiar util e >= 3 fontes pos-patch, teto de ~6 no total.
+- **Wiki nao merecia o quinto degrau.** Data em 88% das paginas, acima de blog
+  de hosting e acima da propria oficial; 3 das 8 paginas pos-patch do corpus,
+  empatada com a oficial, contra **0 de 22** dos blogs de hosting. E foi o unico
+  tipo com proveniencia de versao **por conteudo** — o que permitiu rejeitar a
+  propria wiki em dois casos. A regra certa e por pagina: *use um numero de wiki
+  se e so se a pagina exibir last-edited E (tag de versao OU data pos-patch)*.
+- **"Oficial primeiro" era largo demais.** Oficial venceu em versao (92%) e
+  perdeu em data (67%). E **0 das 12 fontes oficiais respondeu uma pergunta
+  meta** — a doc da a mecanica e o aviso de carga, e deliberadamente nunca da o
+  valor recomendado. O enunciado correto: *a nota de patch e o unico relogio e a
+  unica arbitra de contradicao; o dominio oficial nao e a resposta.*
+
+O que subiu no lugar e o **passo zero**: ler o changelog primario e listar o que
+tocou o subsistema antes de abrir qualquer guia. Sozinho, invalidou conteudo em
+**10 de 10** categorias, com 53 itens nomeados — e cerca de um quarto eram
+correcoes de bug, onde a fonte mediu com honestidade uma build quebrada. Nenhum
+grau de qualidade editorial pega isso; so o diff do changelog pega.
 
 Corolario que tambem esta no texto: cliente e servidor dedicado sao appids
 diferentes que atualizam em momentos diferentes. Nesta maquina, em 2026-09-07,
@@ -115,7 +154,7 @@ casamento acima vem do raciocinio, nao de um eval.
 
 O que existe e comportamento verificado, que `just check` reexecuta:
 
-- `steam_games.py --self-test`: **25 asserções** — parse dos cinco campos,
+- `steam_games.py --self-test`: **28 asserções** — parse dos cinco campos,
   filtro de runtime e Proton, ordenacao, `StateFlags` integro contra pendente,
   as seis linhas da tabela de casamento acima, e a montagem da URL de notas
   pelo appid.
@@ -123,6 +162,19 @@ O que existe e comportamento verificado, que `just check` reexecuta:
   `appid=1623730` e `appid=105600`: filtra a imprensa e devolve so o estudio.
 - Exercitado contra a biblioteca real desta maquina: 15 appmanifests no disco,
   **7 jogos** reportados, 8 runtimes/Proton filtrados.
+
+- Levantamento de fontes, 2026-09-07: 22 agentes, 10 arquetipos de pergunta,
+  **80 fontes** com metadado por fonte, verificacao adversarial contra as notas
+  oficiais da v1.0.4. Produziu a tabela acima e as regras da skill.
+
+**Ressalvas do levantamento, que estao tambem na skill:** um jogo, um dia, horas
+depois de um patch — o que exagera a obsolescencia contra um dia comum. As 10
+perguntas eram META ou FACTUAL e **nenhuma era LOCAL**, entao o ramo local da
+skill e derivado dos tres testes, nao medido. `sensibilidade_versao` deu "alta"
+em 10/10, entao nao ha correlacao alta-contra-baixa a extrair. O verificador foi
+instruido a marcar obsoleto na duvida, entao 10/10 e o vies pedido, nao um
+achado — o que vale sao os 53 itens nomeados, cada um checavel. E o metadado de
+fonte foi julgado por agente, nao conferido a mao pagina por pagina.
 
 O que falta medir e o que decide se o plugin serve: se o usuario para de digitar
 a versao no prompt.

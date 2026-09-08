@@ -164,11 +164,23 @@ def render(hits: list[dict]) -> str:
         "quando. Nao apresente lembranca de treino como estado atual do jogo.",
         "4. Havendo arquivo de config ou save no disco, ele ganha da sua "
         "memoria e ganha de qualquer guia. Leia o arquivo.",
-        "5. Precisando de fonte externa, siga a ordem: arquivo no disco > saida "
-        "do proprio jogo > notas oficiais acima > doc do estudio > wiki da "
-        "comunidade (so mecanica estavel, NUNCA numero ou valor padrao) > blog de "
-        "hosting (ultima instancia, sempre marcado como tal). Wiki de jogo quase "
-        "nunca diz de que versao a pagina fala.",
+        "5. Roteie a pergunta antes de buscar. Valor DESTA instancia (chave, "
+        "estado atual) -> leia o disco, zero rede. Dado embarcado (default, "
+        "nivel, custo, o que mudou) -> FACTUAL. Ordenacao, superlativo, rota, "
+        "\"vale a pena\" -> META. Hibrida responde os dois ramos separados e "
+        "rotulados.",
+        "6. Passo zero dos dois ramos: leia as notas oficiais acima e liste o que "
+        "tocou o subsistema da pergunta, ate o ultimo patch que mexeu nele. "
+        "Medido em levantamento de 80 fontes: so esse passo invalidou conteudo em "
+        "10 de 10 categorias, e ~1/4 eram correcoes de bug — a fonte mediu com "
+        "honestidade uma build quebrada, e nenhuma qualidade editorial pega isso.",
+        "7. Ao pesar fontes: \"tem data\" nao e sinal de frescor (84% tinham data, "
+        "90% eram pre-patch); o que discrimina e data POSTERIOR ao ultimo patch do "
+        "subsistema. Concordancia nao eleva confianca — maioria resolveu 0 de 41 "
+        "contradicoes, e o maior aglomerado era uma fonte copiada cinco vezes; "
+        "triangule entre TIPOS diferentes. Numero de wiki vale se e so se a pagina "
+        "exibir last-edited E (tag de versao OU data pos-patch) — por pagina, nao "
+        "por dominio. Detalhe e ressalvas do metodo na SKILL.md.",
     ]
     return "\n".join(linhas)
 
@@ -261,8 +273,13 @@ def _self_test() -> int:
               "count deveria entrar na URL")
         check("api.steampowered.com" in bloco,
               "render deveria citar as notas oficiais do jogo casado")
-        check("wiki da comunidade" in bloco and "NUNCA numero" in bloco,
-              "render perdeu a hierarquia de fonte (regra 5)")
+        check("FACTUAL" in bloco and "META" in bloco,
+              "render perdeu o roteamento (regra 5)")
+        check("Passo zero" in bloco, "render perdeu o passo zero (regra 6)")
+        check("last-edited" in bloco and "por dominio" in bloco,
+              "render perdeu o portao de wiki por pagina (regra 7)")
+        check("0 de 41" in bloco,
+              "render perdeu o dado que derruba voto de maioria")
 
     for f in falhas:
         print(f"FALHA: {f}", file=sys.stderr)
