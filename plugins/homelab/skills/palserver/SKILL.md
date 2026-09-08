@@ -147,17 +147,43 @@ tar czf ~/palworld-backup/save-$(date +%Y%m%d-%H%M%S).tar.gz \
 Restaurar exige o servidor **parado**. Para forcar um save antes de copiar com o
 servidor no ar, use a rota REST `save` ou o comando `/Save`.
 
-## Restart periodico
+## Restart: por sintoma, nao por relogio
 
-A memoria do PalServer cresce com o uptime e nao estabiliza. Um restart diario
-por timer resolve na pratica.
+Uma versao anterior desta skill afirmava que a memoria do PalServer cresce com o
+uptime, nao estabiliza, e que um restart diario por timer resolve. **A medicao
+que sustentava isso nao se repetiu**, na mesma maquina: 0,59 GB com 11h39 no ar,
+contra 2,13 GB com 2h medidos duas semanas antes — um quarto da memoria com
+quase seis vezes o uptime.
+
+Isso nao prova o contrario. Prova que **uptime sozinho nao prediz RSS**, e que a
+carga (jogadores online, densidade de spawn, raids) explica mais do que o tempo
+no ar. As leituras nao foram isoladas por variavel, entao a unica conclusao
+honesta e que nao existe taxa de crescimento para citar — nem para cima, nem
+para baixo.
 
 **A doc oficial da Pocketpair nao recomenda restart periodico** — a pratica vem
-de hosts e de medicao local. Meça na sua maquina antes de decidir o intervalo, em
-vez de copiar o numero de outra pessoa (`references/hardware-rede.md` mostra
-como).
+de hosts. Um restart agendado que nao responde a sintoma nenhum e cerimonia com
+custo: derruba quem estiver jogando, e sem `AdminPassword` nao ha como avisar.
 
-Escolha um horario de baixa ocupacao e evite `Persistent=true` num timer de
+O gatilho util e sintoma, em ordem:
+
+1. **Jogador reclamando de rubber-banding ou lag com Pals trabalhando.** E o
+   unico sinal que importa; numero so confirma.
+2. **RSS ou CPU acima de qualquer coisa que voce ja tenha medido** nessa
+   instalacao. Nao ha limiar universal para citar — o seu sai da sua propria
+   serie (`references/hardware-rede.md` mostra como levantar).
+3. **Save parado.** Com jogador online, o `Level.sav` muda a cada `AutoSaveSpan`
+   segundos. Parado com gente dentro = autosave travado.
+
+`Signal 11` no journal **nao** entra na lista: `Restart=on-failure` ja cobre.
+
+Para o reinicio manual, `systemctl --user restart palworld` **e seguro** — a
+armadilha do ini so existe quando ha edicao a preservar, porque o stop grava em
+disco o que estava em memoria e o start le de volta. Restart sem edicao devolve a
+mesma config.
+
+Se ainda assim quiser agendar, escolha um horario de baixa ocupacao — e note que
+"maquina ligada" nao e "ninguem jogando" — e evite `Persistent=true` num timer de
 usuario: ele dispara o restart logo apos o boot, derrubando um servidor que
 acabou de subir.
 

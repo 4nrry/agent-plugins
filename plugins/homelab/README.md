@@ -80,6 +80,27 @@ Multiplas instancias, restart periodico e a unit do systemd tambem sao
 derivados: a doc oficial nao cobre nenhum dos tres, e o texto diz isso onde
 aparecem.
 
+## Uma alegacao retirada
+
+A 0.1.0 afirmava que a memoria do PalServer cresce com o uptime, nao estabiliza,
+e que um restart diario por timer resolve. **A serie medida nao sustenta.** Na
+mesma maquina, a leitura de maior uptime foi a mais leve:
+
+| uptime | RSS | contexto |
+|---|---|---|
+| 2h | 2,13 GB | jogadores online |
+| 6h10 | 2,40 GB | apos dobrar a densidade de spawn |
+| 14h | 2,20 GB | jogadores online |
+| 11h39 | **0,59 GB** | ocioso |
+
+Isso nao prova o contrario, e o texto nao troca uma alegacao por outra: as
+variaveis nunca foram isoladas. O que a serie sustenta e que **uptime sozinho
+nao prediz RSS** e que carga explica mais que tempo. A skill passa a mandar
+reiniciar **por sintoma** — jogador reclamando de rubber-banding, numeros acima
+de qualquer coisa ja medida naquela instalacao, save parado com gente dentro —
+e nao por relogio. O molde de maquina ganhou colunas de jogadores online e data,
+porque uma tabela so com uptime e RSS registra a variavel errada.
+
 ## Estado da medicao
 
 **Nao ha run records.** Pela regra zero do [`bench/PROTOCOL.md`](../../bench/PROTOCOL.md),

@@ -27,13 +27,27 @@ pesado: some o consumo dos dois.
 
 ## Consumo: ordem de grandeza
 
-O RSS do PalServer **cresce com o uptime e nao estabiliza**. A faixa observada em
-uma maquina real foi ~1,0 GB ao subir chegando a ~1,7-2,1 GB depois de algumas
-horas, com CPU em torno de 1,3 nucleos sustentados. A Pocketpair afirma ter
-corrigido vazamentos no 1.0; o crescimento persiste.
+A faixa observada numa maquina real ficou entre **0,6 e 2,4 GB**, com CPU de
+0,4 a 2,1 nucleos. Dentro dessa faixa, **o uptime nao explicou o RSS**:
 
-Trate esses numeros como ordem de grandeza, **nao como constante** — variam com
-mundo, jogadores e versao. Meça a sua.
+| uptime | RSS | contexto |
+|---|---|---|
+| 2h | 2,13 GB | jogadores online |
+| 4h | 1,47 GB (pico 1,80) | sessao anterior |
+| 6h10 | 2,40 GB | logo apos dobrar a densidade de spawn |
+| 14h | 2,20 GB | jogadores online |
+| 20h | 1,73 GB | sessao anterior |
+| 11h39 | **0,59 GB** | servidor ocioso |
+
+A leitura mais longa e a mais leve. Uma versao anterior deste texto afirmava que
+o RSS "cresce com o uptime e nao estabiliza" — a serie acima **nao sustenta a
+afirmacao**, e tambem nao sustenta a oposta. O que ela sugere e que **carga
+explica mais que tempo**: as leituras altas tem jogadores dentro ou densidade de
+spawn dobrada, e a mais baixa esta ociosa.
+
+As variaveis nunca foram isoladas, entao trate isto como faixa observada e nao
+como curva. **Meça a sua**, e desconfie de qualquer numero — inclusive destes —
+que venha sem dizer quantos jogadores estavam online.
 
 ## Como medir de verdade
 
