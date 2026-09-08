@@ -15,11 +15,33 @@ jobs:
       - name: Install just
         uses: extractions/setup-just@v4
 
-      # shellcheck ships on ubuntu-latest runners. validate.py reports it as a
-      # skipped check rather than failing when absent, so assert it is here —
-      # otherwise a runner image change would silently stop checking the hooks.
-      - name: Assert shellcheck is available
-        run: shellcheck --version
+      # shellcheck is pinned, not taken from the image. Unpinned, this gate was
+      # not reproducible: ubuntu-latest shipped 0.9.0 while the development
+      # machine had 0.11.0, and a `just check` that passed locally failed here
+      # on SC2015 — a check 0.11.0 no longer emits at all, not even with
+      # `-i SC2015`. Pinning to the version used for development is what makes
+      # a local run mean something. The cost is stated rather than hidden:
+      # 0.11.0 does not carry SC2015, so this gate does not check it either.
+      #
+      # The install also replaces the old "assert it is available" step. That
+      # step existed so an image change could not silently stop checking the
+      # scripts; a pinned download with a checksum fails loudly instead, which
+      # covers the same risk and the image no longer decides the version.
+      - name: Install pinned shellcheck
+        env:
+          SC_VERSION: v0.11.0
+          SC_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+        run: |
+          curl -sSL --fail --max-time 120 -o sc.tar.xz \
+            "https://github.com/koalaman/shellcheck/releases/download/${SC_VERSION}/shellcheck-${SC_VERSION}.linux.x86_64.tar.xz"
+          echo "${SC_SHA256}  sc.tar.xz" | sha256sum -c -
+          tar -xf sc.tar.xz
+          sudo install -m 0755 "shellcheck-${SC_VERSION}/shellcheck" /usr/local/bin/shellcheck
+          rm -rf sc.tar.xz "shellcheck-${SC_VERSION}"
+          # which -a, not which: the image ships its own in /usr/bin, and only
+          # the resolution order decides which one validate.py actually runs.
+          which -a shellcheck
+          shellcheck --version
 
       # Python is stdlib-only here by design: no pip install step, so a clone
       # runs the same check with nothing set up.
