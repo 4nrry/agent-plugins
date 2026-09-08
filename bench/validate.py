@@ -297,8 +297,34 @@ def check_claims_hashes() -> None:
             warn(rel(claims), f"cites {head}…{tail}, which matches no file in the repo")
 
 
+def is_shell_script(p: pathlib.Path) -> bool:
+    """A shell script, by extension OR by shebang.
+
+    `*.sh` alone is not the set: a script meant to be a command on PATH is
+    named without an extension, and `tarball-install` is 21 KB of bash that
+    entered the repo outside this gate because of it. Only files with no
+    suffix (or .sh/.bash) are sniffed, so this does not read every JSON record
+    in bench/ to answer the question.
+    """
+    if ".git" in p.parts or not p.is_file():
+        return False
+    if p.suffix in (".sh", ".bash"):
+        return True
+    if p.suffix:
+        return False
+    try:
+        first = p.open("rb").readline(200)
+    except OSError:
+        return False
+    return first.startswith(b"#!") and (b"bash" in first or b"/sh" in first
+                                        or first.rstrip().endswith(b" sh"))
+
+
 def check_shell() -> None:
     """8. shellcheck over every tracked shell script, at `style`.
+
+    "Tracked shell script" is by shebang as well as by extension — see
+    is_shell_script. Extension alone missed a 21 KB bundled command.
 
     Not `warning`: SC2006 — backticks where $() belongs — is severity `style`,
     and a `warning` gate let through an unescaped backtick inside a
@@ -311,8 +337,7 @@ def check_shell() -> None:
     `# shellcheck disable=<code>`.
     """
     global checks_run
-    scripts = sorted(REPO.rglob("*.sh"))
-    scripts = [s for s in scripts if ".git" not in s.parts]
+    scripts = sorted(s for s in REPO.rglob("*") if is_shell_script(s))
     if not shutil.which("shellcheck"):
         return warn("shellcheck", f"not installed — {len(scripts)} script(s) unchecked")
     for s in scripts:

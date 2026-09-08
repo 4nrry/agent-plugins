@@ -1,0 +1,476 @@
+#!/usr/bin/env bash
+# tarball-install — instala tarballs de aplicações de forma padronizada no Ubuntu/Kubuntu.
+#
+# Layout criado (modo usuário, padrão):
+#   ~/.local/opt/<app>/<versao>/     arquivos da aplicação
+#   ~/.local/opt/<app>/current  ->   symlink para a versão ativa
+#   ~/.local/bin/<app>               wrapper executável (fica no PATH)
+#   ~/.local/share/applications/<app>.desktop
+#   ~/.local/share/icons/hicolor/<size>x<size>/apps/<app>.png
+#
+# Modo --system: mesma estrutura em /opt/<app>, /usr/local/bin,
+#                /usr/local/share/applications, /usr/local/share/icons.
+#
+# Desinstalar: tarball-install --uninstall <app>
+set -euo pipefail
+
+SCRIPT_VERSION=1.4
+
+die() { echo "erro: $*" >&2; exit 1; }
+info() { echo ":: $*"; }
+
+# Sob `set -u`, ler $2 de uma opção sem valor aborta com "unbound variable".
+# need_arg troca isso por uma mensagem que diz o que faltou.
+need_arg() { # $1 = flag, $2 = número de argumentos restantes ($#)
+    [ "$2" -ge 2 ] || die "a opção $1 precisa de um valor — veja --help"
+}
+
+# Escrever por cima de um symlink segue o link: com um atalho quebrado o
+# comando falha, e com um atalho válido sobrescreve o arquivo errado.
+# Todo destino é removido antes de ser regravado.
+replace() { $SUDO rm -f "$1"; }
+
+# Diretório do hicolor para um PNG: lê a dimensão real da imagem (o nome do
+# arquivo nem sempre diz), e arredonda para um tamanho padrão do tema — um
+# diretório fora da escala oficial é ignorado por parte dos ambientes.
+icon_size() { # $1 = arquivo -> "128x128"
+    local px std
+    px="$(file -b "$1" 2>/dev/null | grep -o '[0-9]\+ x [0-9]\+' | head -1 | cut -d' ' -f1)"
+    [ -n "$px" ] || px="$(basename "$1" | grep -o '[0-9]\{2,3\}' | tail -1)"
+    [ -n "$px" ] || px=128
+    for std in 16 22 24 32 48 64 72 96 128 192 256 512; do
+        [ "$px" -le "$std" ] && { echo "${std}x${std}"; return; }
+    done
+    echo "512x512"
+}
+
+# Reduz um PNG. Devolve 1 se não houver com o que redimensionar na máquina.
+scale_icon() { # $1 = origem, $2 = destino, $3 = lado em pixels
+    if command -v magick >/dev/null 2>&1; then
+        $SUDO magick "$1" -resize "${3}x${3}" "$2" 2>/dev/null
+    elif command -v convert >/dev/null 2>&1; then
+        $SUDO convert "$1" -resize "${3}x${3}" "$2" 2>/dev/null
+    elif python3 -c 'import PIL' 2>/dev/null; then
+        $SUDO python3 -c 'import sys
+from PIL import Image
+lado = int(sys.argv[3])
+Image.open(sys.argv[1]).resize((lado, lado)).save(sys.argv[2])' "$1" "$2" "$3" 2>/dev/null
+    else
+        return 1
+    fi
+}
+
+# Devolve só os argumentos de uma linha Exec=, descartando o programa. Cobre os
+# prefixos de ambiente (`env VAR=1 prog %f`) e o programa entre aspas.
+strip_program() { # $1 = valor de Exec= -> "%f", "--flag %U", ""
+    local v="$1" tok rest
+    while [ -n "$v" ]; do
+        case "$v" in
+            \"*) rest="${v#*\"}"; rest="${rest#*\"}"; echo "${rest# }"; return ;;
+        esac
+        tok="${v%%[[:space:]]*}"
+        rest=""
+        case "$v" in *[[:space:]]*) rest="${v#*[[:space:]]}" ;; esac
+        case "$tok" in
+            env|*=*) v="$rest" ;;        # prefixo de ambiente: segue procurando
+            *)       echo "$rest"; return ;;
+        esac
+    done
+    echo ""
+}
+
+entry_has() { # $1 = chave -> 0 se já existe no grupo [Desktop Entry] montado
+    local k="$1" l
+    for l in "${ENTRY[@]:-}"; do [ "${l%%=*}" = "$k" ] && return 0; done
+    return 1
+}
+
+# Reaproveita o .desktop oficial do vendor: tudo que é metadado (Keywords,
+# GenericName e Comment traduzidos, PrefersNonDefaultGPU, X-*) é mantido, e só
+# o que aponta para o binário — Exec, TryExec, Icon — é reescrito para a
+# instalação. As flags da linha de comando continuam tendo a última palavra.
+parse_vendor() { # $1 = arquivo .desktop; preenche ENTRY[], TAIL[], VENDOR_ACTIONS
+    local src="$1" line key val group="" a
+    ENTRY=(); TAIL=(); VENDOR_ACTIONS=""
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        case "$line" in
+            \[*\]) group="$line"
+                   [ "$group" = "[Desktop Entry]" ] || TAIL+=("" "$line")
+                   continue ;;
+        esac
+        key="${line%%=*}"; val="${line#*=}"
+        # comentários e linhas em branco não têm efeito e só atrapalhariam a
+        # ordem do arquivo montado, já que as chaves que faltam entram no fim
+        [ "$key" != "$line" ] || continue
+        if [ "$group" != "[Desktop Entry]" ]; then
+            case "$key" in
+                Exec) a="$(strip_program "$val")"; TAIL+=("Exec=$BINDIR/$NAME${a:+ $a}") ;;
+                *)    TAIL+=("$line") ;;
+            esac
+            continue
+        fi
+        case "$key" in
+            Exec)  if [ -n "$EXEC_ARGS" ]; then a="$EXEC_ARGS"; else a="$(strip_program "$val")"; fi
+                   ENTRY+=("Exec=$BINDIR/$NAME${a:+ $a}") ;;
+            TryExec) ENTRY+=("TryExec=$BINDIR/$NAME") ;;
+            Icon)  if [ -n "$ICON_VALUE" ]; then ENTRY+=("Icon=$ICON_VALUE")
+                   # sem ícone instalado, um caminho absoluto do vendor apontaria
+                   # para dentro do tarball original; um nome simples ainda pode
+                   # ser resolvido pelo tema, então esse é mantido.
+                   elif [ "${val#/}" = "$val" ]; then ENTRY+=("$line"); fi ;;
+            # Path apontaria para a árvore de build do vendor e DBusActivatable
+            # exige um serviço D-Bus que esta instalação não registra.
+            Path|DBusActivatable) : ;;
+            Name|Name\[*\])       [ -n "$TITLE_SET" ]      || ENTRY+=("$line") ;;
+            Comment|Comment\[*\]) [ -n "$COMMENT" ]        || ENTRY+=("$line") ;;
+            Categories)           [ -n "$CATEGORIES_SET" ] || ENTRY+=("$line") ;;
+            MimeType)             [ -n "$MIME" ]           || ENTRY+=("$line") ;;
+            StartupWMClass)       [ -n "$WMCLASS_SET" ]    || ENTRY+=("$line") ;;
+            Terminal)             [ "$TERMINAL" = "true" ] || ENTRY+=("$line") ;;
+            Actions)              VENDOR_ACTIONS="${val%;};" ;;
+            *) ENTRY+=("$line") ;;
+        esac
+    done < "$src"
+}
+
+usage() {
+    cat <<'EOF'
+uso: tarball-install [opções] <arquivo.tar.{xz,gz,bz2,zst}>
+     tarball-install --uninstall <app>
+     tarball-install --list
+
+opções:
+  -n, --name <slug>        id da aplicação (default: derivado do nome do tarball)
+  -N, --title <texto>      nome exibido no menu (default: o slug capitalizado)
+  -e, --exec <caminho>     binário relativo à raiz extraída (default: autodetecta)
+  -i, --icon <caminho>     ícone .png/.svg relativo à raiz extraída, ou caminho
+                           absoluto de um arquivo fora do tarball (default: autodetecta)
+  -V, --app-version <tag>  rótulo da versão do app (default: application.ini ou a data)
+  -a, --args <str>         argumentos no Exec= do .desktop (ex.: '%u')
+  -c, --categories <str>   Categories= (default: Utility;)
+  -m, --mime <str>         MimeType=
+  -C, --comment <texto>    Comment=
+  -A, --action <id|Nome|args>   ação extra no .desktop (pode repetir)
+      --terminal           roda em terminal (Terminal=true)
+      --no-desktop         não cria entrada de menu
+      --wm-class <str>     StartupWMClass= (default: o slug)
+  -D, --vendor-desktop <caminho>  .desktop oficial a reaproveitar, relativo à
+                           raiz extraída ou absoluto (default: autodetecta)
+      --no-vendor-desktop  ignora o .desktop do vendor e gera um do zero
+  -k, --keep <n>           versões a manter no total, incluindo a atual (default: 2)
+  -s, --system             instala para todos os usuários (/opt, precisa de sudo)
+      --version            mostra a versão deste script
+  -h, --help               esta ajuda
+EOF
+}
+
+# ---------- parsing ----------
+NAME=""; TITLE=""; EXEC_REL=""; ICON_REL=""; VERSION=""; EXEC_ARGS=""
+CATEGORIES="Utility;"; MIME=""; COMMENT=""; TERMINAL="false"; WMCLASS=""
+KEEP=2; SYSTEM=0; MAKE_DESKTOP=1; UNINSTALL=""; LIST=0; TARBALL=""
+VENDOR_REL=""; VENDOR_SET=""; USE_VENDOR=1
+# Título, categorias e wm-class têm default, então "não vazio" não distingue o
+# que o usuário pediu do que o script inventou — e só o que ele pediu pode
+# sobrescrever o .desktop do vendor.
+TITLE_SET=""; CATEGORIES_SET=""; WMCLASS_SET=""
+declare -a ACTIONS=() ENTRY=() TAIL=()
+VENDOR_ACTIONS=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -n|--name)        need_arg "$1" $#; NAME="$2"; shift 2 ;;
+        -N|--title)       need_arg "$1" $#; TITLE="$2"; TITLE_SET=1; shift 2 ;;
+        -e|--exec)        need_arg "$1" $#; EXEC_REL="$2"; shift 2 ;;
+        -i|--icon)        need_arg "$1" $#; ICON_REL="$2"; shift 2 ;;
+        -V|--app-version) need_arg "$1" $#; VERSION="$2"; shift 2 ;;
+        -a|--args)        need_arg "$1" $#; EXEC_ARGS="$2"; shift 2 ;;
+        -c|--categories)  need_arg "$1" $#; CATEGORIES="$2"; CATEGORIES_SET=1; shift 2 ;;
+        -m|--mime)        need_arg "$1" $#; MIME="$2"; shift 2 ;;
+        -C|--comment)     need_arg "$1" $#; COMMENT="$2"; shift 2 ;;
+        -A|--action)      need_arg "$1" $#; ACTIONS+=("$2"); shift 2 ;;
+        --wm-class)       need_arg "$1" $#; WMCLASS="$2"; WMCLASS_SET=1; shift 2 ;;
+        --terminal)       TERMINAL="true"; shift ;;
+        --no-desktop)     MAKE_DESKTOP=0; shift ;;
+        -D|--vendor-desktop) need_arg "$1" $#; VENDOR_REL="$2"; VENDOR_SET=1; shift 2 ;;
+        --no-vendor-desktop) USE_VENDOR=0; shift ;;
+        -k|--keep)        need_arg "$1" $#; KEEP="$2"; shift 2 ;;
+        -s|--system)      SYSTEM=1; shift ;;
+        --uninstall)      need_arg "$1" $#; UNINSTALL="$2"; shift 2 ;;
+        --list)           LIST=1; shift ;;
+        # --version sozinho mostra a versão do script; seguido de um valor é
+        # quase certamente a intenção antiga de rotular a versão do app, então
+        # o script diz qual flag usar em vez de ignorar o valor em silêncio.
+        --version)
+            if [ $# -ge 2 ] && [ "${2#-}" = "$2" ]; then
+                die "para rotular a versão do app use --app-version $2; --version sozinho mostra a versão do script"
+            fi
+            echo "tarball-install $SCRIPT_VERSION"; exit 0 ;;
+        -h|--help)        usage; exit 0 ;;
+        -*)              die "opção desconhecida: $1" ;;
+        *)               TARBALL="$1"; shift ;;
+    esac
+done
+
+# ---------- destinos ----------
+if [ "$SYSTEM" = 1 ]; then
+    PREFIX=/opt; BINDIR=/usr/local/bin
+    APPDIR=/usr/local/share/applications; ICONDIR=/usr/local/share/icons
+    SUDO=sudo
+else
+    PREFIX="$HOME/.local/opt"; BINDIR="$HOME/.local/bin"
+    APPDIR="$HOME/.local/share/applications"; ICONDIR="$HOME/.local/share/icons"
+    SUDO=""
+fi
+
+refresh_caches() {
+    command -v update-desktop-database >/dev/null && $SUDO update-desktop-database "$APPDIR" 2>/dev/null || true
+    command -v gtk-update-icon-cache   >/dev/null && $SUDO gtk-update-icon-cache -qtf "$ICONDIR/hicolor" 2>/dev/null || true
+    command -v kbuildsycoca6           >/dev/null && kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+}
+
+if [ "$LIST" = 1 ]; then
+    for base in "$HOME/.local/opt" /opt; do
+        [ -d "$base" ] || continue
+        for d in "$base"/*/; do
+            [ -L "${d}current" ] || continue
+            printf '%-24s %s -> %s\n' "$(basename "$d")" "$base" "$(basename "$(readlink -f "${d}current")")"
+        done
+    done
+    exit 0
+fi
+
+if [ -n "$UNINSTALL" ]; then
+    app="$UNINSTALL"
+    [ -d "$PREFIX/$app" ] || die "não instalado em $PREFIX/$app (use --system se instalou em /opt)"
+    $SUDO rm -rf "$PREFIX/$app" "$BINDIR/$app" "$APPDIR/$app.desktop"
+    $SUDO find "$ICONDIR/hicolor" -name "$app.png" -o -name "$app.svg" 2>/dev/null | while read -r f; do $SUDO rm -f "$f"; done
+    refresh_caches
+    info "removido: $app (perfis/configs em ~/.config e ~/.$app não são tocados)"
+    exit 0
+fi
+
+[ -n "$TARBALL" ] || { usage; exit 1; }
+[ -f "$TARBALL" ] || die "arquivo não encontrado: $TARBALL"
+TARBALL="$(readlink -f "$TARBALL")"
+
+# ---------- extração em área temporária ----------
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+info "extraindo $(basename "$TARBALL")"
+tar -xf "$TARBALL" -C "$WORK"
+
+# se o tarball tem um único diretório raiz, usa ele como raiz da aplicação
+mapfile -t entries < <(find "$WORK" -mindepth 1 -maxdepth 1)
+if [ "${#entries[@]}" -eq 1 ] && [ -d "${entries[0]}" ]; then
+    ROOT="${entries[0]}"
+else
+    ROOT="$WORK"
+fi
+
+# ---------- nome / versão / binário / ícone ----------
+if [ -z "$NAME" ]; then
+    NAME="$(basename "$TARBALL")"
+    NAME="${NAME%%.tar.*}"                      # tira .tar.xz
+    NAME="${NAME%%-linux*}"; NAME="${NAME%%.linux*}"
+    NAME="$(echo "$NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')"
+fi
+[ -n "$TITLE" ] || TITLE="$(echo "${NAME^}" | tr '-' ' ')"
+[ -n "$WMCLASS" ] || WMCLASS="$NAME"
+
+if [ -z "$VERSION" ]; then
+    if [ -f "$ROOT/application.ini" ]; then
+        VERSION="$(sed -n 's/^Version=//p' "$ROOT/application.ini" | head -1)"
+    fi
+    [ -n "$VERSION" ] || VERSION="$(date +%Y%m%d)"
+fi
+
+if [ -z "$EXEC_REL" ]; then
+    if [ -x "$ROOT/$NAME" ] && [ -f "$ROOT/$NAME" ]; then
+        EXEC_REL="$NAME"
+    else
+        EXEC_REL="$(cd "$ROOT" && find . -maxdepth 2 -type f -perm -u+x \
+                    ! -name '*.so*' ! -name '*.sh' -printf '%P\n' | head -1)"
+    fi
+fi
+[ -n "$EXEC_REL" ] || die "não achei o executável; passe -e <caminho-relativo>"
+[ -x "$ROOT/$EXEC_REL" ] || die "não é executável: $EXEC_REL"
+
+if [ -z "$ICON_REL" ]; then
+    ICON_REL="$(cd "$ROOT" && find . \( -name '*128*.png' -o -name "$NAME.png" -o -name "$NAME.svg" \) \
+                -not -path '*/locale/*' -printf '%P\n' 2>/dev/null | head -1)"
+fi
+
+# Muitos projetos (Blender, VS Code, GIMP) já embarcam o .desktop que publicam
+# nos repositórios oficiais, com traduções, Keywords e chaves que ninguém
+# lembraria de passar na mão — PrefersNonDefaultGPU, por exemplo, é o que faz o
+# menu oferecer a placa dedicada. Procurar por ele custa nada e ganha tudo isso.
+if [ "$USE_VENDOR" = 1 ] && [ "$MAKE_DESKTOP" = 1 ] && [ -z "$VENDOR_REL" ]; then
+    # -type f não é decoração: o JBR que a JetBrains embarca tem diretórios
+    # chamados java.desktop e jdk.unsupported.desktop (módulos do JDK), e sem
+    # isso a busca traria um deles em vez de uma entrada de menu.
+    VENDOR_REL="$(cd "$ROOT" && {
+        find . -maxdepth 1 -type f -name "$NAME.desktop" -printf '%P\n'
+        find . -maxdepth 1 -type f -name '*.desktop' -printf '%P\n'
+        find . -maxdepth 5 -type f -path '*/applications/*.desktop' -printf '%P\n'
+        find . -maxdepth 5 -type f -name '*.desktop' ! -path '*/locale/*' -printf '%P\n'
+    } 2>/dev/null | head -1 || true)"
+fi
+[ "$USE_VENDOR" = 1 ] || VENDOR_REL=""
+case "$VENDOR_REL" in
+    "") VENDOR_SRC="" ;;
+    /*) VENDOR_SRC="$VENDOR_REL" ;;
+    *)  VENDOR_SRC="$ROOT/$VENDOR_REL" ;;
+esac
+# um caminho passado à mão que não existe é erro; um palpite da autodetecção que
+# não serve só volta ao comportamento de gerar a entrada do zero
+if [ -n "$VENDOR_SRC" ] && [ ! -f "$VENDOR_SRC" ]; then
+    [ -z "$VENDOR_SET" ] || die ".desktop não encontrado: $VENDOR_REL"
+    VENDOR_SRC=""
+fi
+
+# ---------- instalação ----------
+DEST="$PREFIX/$NAME/$VERSION"
+[ ! -e "$DEST" ] || DEST="$DEST-$(date +%H%M%S)"
+info "instalando em $DEST"
+$SUDO mkdir -p "$PREFIX/$NAME" "$BINDIR" "$APPDIR"
+$SUDO cp -a "$ROOT/." "$DEST/" 2>/dev/null || { $SUDO mkdir -p "$DEST"; $SUDO cp -a "$ROOT/." "$DEST/"; }
+[ "$SYSTEM" = 1 ] && $SUDO chown -R root:root "$DEST"
+
+# Se `current` for um diretório de verdade — típico de instalação manual antiga —
+# o ln criaria o link DENTRO dele em vez de substituí-lo. Parar aqui é melhor do
+# que remover sozinho um diretório que pode ser a instalação em uso do usuário.
+if [ -e "$PREFIX/$NAME/current" ] && [ ! -L "$PREFIX/$NAME/current" ]; then
+    die "$PREFIX/$NAME/current existe e não é um symlink (instalação antiga fora do padrão). Mova ou remova esse diretório e rode de novo; a versão nova já está em $DEST"
+fi
+$SUDO ln -sfn "$DEST" "$PREFIX/$NAME/current"
+
+CURRENT="$PREFIX/$NAME/current"
+replace "$BINDIR/$NAME"
+$SUDO tee "$BINDIR/$NAME" >/dev/null <<EOF
+#!/bin/sh
+exec "$CURRENT/$EXEC_REL" "\$@"
+EOF
+$SUDO chmod 755 "$BINDIR/$NAME"
+
+ICON_VALUE=""
+# --icon aceita um caminho relativo à raiz extraída ou um caminho absoluto para
+# um arquivo fora do tarball — útil quando o app não traz o ícone solto (Electron
+# costuma guardá-lo dentro do app.asar) e você extraiu o PNG por conta própria.
+case "$ICON_REL" in
+    "")  ICON_SRC="" ;;
+    /*)  ICON_SRC="$ICON_REL"
+         [ -f "$ICON_SRC" ] || die "ícone não encontrado: $ICON_SRC" ;;
+    *)   ICON_SRC="$DEST/$ICON_REL" ;;
+esac
+
+NATIVE=""
+if [ -n "$ICON_SRC" ] && [ -f "$ICON_SRC" ]; then
+    case "$ICON_SRC" in
+        *.svg) tgt="$ICONDIR/hicolor/scalable/apps/$NAME.svg" ;;
+        *)     NATIVE="$(icon_size "$ICON_SRC")"
+               tgt="$ICONDIR/hicolor/$NATIVE/apps/$NAME.png" ;;
+    esac
+    if [ "$(readlink -f "$ICON_SRC")" = "$(readlink -f "$tgt" 2>/dev/null)" ]; then
+        # o ícone já é o próprio destino (reinstalação apontando para o hicolor):
+        # copiar sobre si mesmo destruiria o arquivo, então só reaproveita
+        ICON_VALUE="$NAME"
+    else
+        $SUDO mkdir -p "$(dirname "$tgt")"
+        replace "$tgt"
+        $SUDO cp -f "$ICON_SRC" "$tgt"
+        ICON_VALUE="$NAME"
+    fi
+fi
+
+# Instalar só num tamanho grande é uma armadilha silenciosa: quando o menu pede
+# 32 ou 48px e não encontra tamanho utilizável, a regra de fallback do
+# freedesktop corta o nome no hífen — "antigravity-ide" vira "antigravity" — e o
+# app aparece com o ícone de OUTRO programa, o que parece cache mas não é.
+if [ -n "$ICON_VALUE" ] && [ -n "$NATIVE" ]; then
+    for s in 128 256; do
+        [ "${NATIVE%%x*}" -gt "$s" ] || continue
+        t="$ICONDIR/hicolor/${s}x${s}/apps/$NAME.png"
+        $SUDO mkdir -p "$(dirname "$t")"
+        replace "$t"
+        scale_icon "$ICON_SRC" "$t" "$s" || {
+            info "aviso: ícone só ficou em $NATIVE — instale imagemagick ou python3-pil"
+            info "       para gerar 128 e 256, senão o menu pode mostrar o ícone de outro app"
+            break
+        }
+    done
+fi
+
+if [ "$MAKE_DESKTOP" = 1 ]; then
+    EXEC_LINE="$BINDIR/$NAME"
+    [ -n "$EXEC_ARGS" ] && EXEC_LINE="$EXEC_LINE $EXEC_ARGS"
+
+    if [ -n "$VENDOR_SRC" ]; then
+        info "reaproveitando o .desktop oficial: ${VENDOR_REL:-$VENDOR_SRC}"
+        parse_vendor "$VENDOR_SRC"
+    fi
+
+    # o que foi pedido explicitamente na linha de comando entra por cima
+    [ -n "$TITLE_SET" ]      && ENTRY+=("Name=$TITLE")
+    [ -n "$COMMENT" ]        && ENTRY+=("Comment=$COMMENT")
+    [ -n "$CATEGORIES_SET" ] && ENTRY+=("Categories=$CATEGORIES")
+    [ -n "$MIME" ]           && ENTRY+=("MimeType=$MIME")
+    [ -n "$WMCLASS_SET" ]    && ENTRY+=("StartupWMClass=$WMCLASS")
+    [ "$TERMINAL" = "true" ] && ENTRY+=("Terminal=true")
+
+    # e o restante preenche só o que ainda faltar — sem vendor, isso monta a
+    # entrada inteira, que é o comportamento de sempre
+    entry_has Type           || ENTRY+=("Type=Application")
+    entry_has Name           || ENTRY+=("Name=$TITLE")
+    entry_has Exec           || ENTRY+=("Exec=$EXEC_LINE")
+    entry_has Icon           || [ -z "$ICON_VALUE" ] || ENTRY+=("Icon=$ICON_VALUE")
+    entry_has Terminal       || ENTRY+=("Terminal=$TERMINAL")
+    entry_has StartupNotify  || ENTRY+=("StartupNotify=true")
+    entry_has StartupWMClass || ENTRY+=("StartupWMClass=$WMCLASS")
+    entry_has Categories     || ENTRY+=("Categories=$CATEGORIES")
+    entry_has MimeType       || [ -z "$MIME" ]    || ENTRY+=("MimeType=$MIME")
+    entry_has Comment        || [ -z "$COMMENT" ] || ENTRY+=("Comment=$COMMENT")
+
+    ACT_IDS="$VENDOR_ACTIONS"
+    if [ "${#ACTIONS[@]}" -gt 0 ]; then
+        for a in "${ACTIONS[@]}"; do ACT_IDS="$ACT_IDS${a%%|*};"; done
+    fi
+    [ -n "$ACT_IDS" ] && ENTRY+=("Actions=$ACT_IDS")
+
+    {
+        echo "[Desktop Entry]"
+        for l in "${ENTRY[@]}"; do echo "$l"; done
+        if [ "${#TAIL[@]}" -gt 0 ]; then
+            for l in "${TAIL[@]}"; do echo "$l"; done
+        fi
+        if [ "${#ACTIONS[@]}" -gt 0 ]; then
+            for a in "${ACTIONS[@]}"; do
+                aid="${a%%|*}"; rest="${a#*|}"; alabel="${rest%%|*}"; aargs="${rest#*|}"
+                echo ""; echo "[Desktop Action $aid]"
+                echo "Name=$alabel"
+                echo "Exec=$BINDIR/$NAME $aargs"
+            done
+        fi
+    } | { replace "$APPDIR/$NAME.desktop"; $SUDO tee "$APPDIR/$NAME.desktop" >/dev/null; }
+    $SUDO chmod 644 "$APPDIR/$NAME.desktop"
+    command -v desktop-file-validate >/dev/null && desktop-file-validate "$APPDIR/$NAME.desktop" || true
+fi
+
+refresh_caches
+
+# ---------- limpeza de versões antigas ----------
+keep_from="$(readlink -f "$CURRENT")"
+mapfile -t olds < <(find "$PREFIX/$NAME" -mindepth 1 -maxdepth 1 -type d ! -path "$keep_from" -printf '%T@ %p\n' \
+                    | sort -rn | tail -n +$((KEEP)) | cut -d' ' -f2-)
+for o in "${olds[@]:-}"; do
+    [ -n "$o" ] || continue
+    info "removendo versão antiga: $(basename "$o")"
+    $SUDO rm -rf "$o"
+done
+
+echo
+info "$TITLE $VERSION instalado"
+echo "   app:      $DEST  (current -> $(basename "$keep_from"))"
+echo "   comando:  $BINDIR/$NAME"
+[ "$MAKE_DESKTOP" = 1 ] && echo "   menu:     $APPDIR/$NAME.desktop"
+echo "   remover:  tarball-install --uninstall $NAME$([ "$SYSTEM" = 1 ] && echo ' --system')"

@@ -1,14 +1,16 @@
 # Homelab
 
-Servicos self-hosted numa maquina Linux. Uma skill hoje — PalServer dedicado — e
-espaco para as proximas, que sao do mesmo feitio: coisa que roda na sua maquina,
-onde a doc oficial para antes de chegar no ponto em que voce quebra a cara.
+Servicos e software que voce mesmo mantem numa maquina Linux, no ponto em que a
+doc oficial para e voce quebra a cara. Tres skills, um feitio: falha que nao
+levanta erro.
 
 ## Componentes
 
 | componente | o que faz |
 |---|---|
 | `skills/palserver/` | Operar um servidor dedicado de Palworld: instalar, subir por systemd, editar o ini sem perder a edicao, admin por REST API, acesso dos jogadores, backup, atualizar apos patch, segundo servidor, guilda. |
+| `skills/wireguard-networkmanager/` | Importar `.conf` de provedor no NetworkManager e usar pelo applet do Plasma, sem cliente do provedor nem keyring. Escolha de servidor, importacao, verificacao de vazamento, remocao. Dois scripts. |
+| `skills/tarball-installer/` | Instalar tarball de aplicativo com um layout so: diretorio versionado, symlink `current`, wrapper no PATH, `.desktop` validado e icone no hicolor. Um script empacotado, mais um guia de troubleshooting. |
 
 ## O que ele nao faz, de proposito
 
@@ -29,6 +31,12 @@ para documentar.
 **Nao ensina Palworld.** Nada sobre Pals, base, boss ou progressao. A skill
 comeca onde o jogo termina: o processo, o arquivo de config, a unit do systemd.
 
+**Nao promete kill switch.** O caminho de WireGuard pelo NetworkManager nao tem
+um. Se o tunel cair, o trafego volta pela rota normal em silencio, sem aviso na
+tela. E por isso que o script de importacao deixa `autoconnect no`: melhor a VPN
+existir so quando escolhida do que subir sozinha e dar uma sensacao de protecao
+que nao se sustenta. Quem precisa de kill switch precisa do cliente do provedor.
+
 ## As armadilhas que sustentam a skill
 
 Cada uma custou uma sessao de depuracao antes de virar paragrafo:
@@ -42,6 +50,12 @@ Cada uma custou uma sessao de depuracao antes de virar paragrafo:
 | Duas ferramentas, um manifesto | Instalou pelo cliente Steam e depois apontou o steamcmd para a mesma pasta: as duas disputam o `appmanifest_2394010.acf`. |
 | Folclore de early access | `-useperfthreads -NoAsyncLoadingThread -UseMultithreadForDS` circula em todo guia. A doc oficial diz que na v1.0+ **deixar sem** esses parametros pode melhorar a performance. |
 | Guilda nao tem lado servidor | Nenhum dos 13 comandos de admin toca em guilda, e a REST API tambem nao. Passou o Guild Master sem querer, so a outra pessoa devolve. |
+| VPN que passa no teste e vaza | Config com `AllowedIPs = 0.0.0.0/0` e sem `::/0` poe o IPv4 no tunel — o teste de IP passa — enquanto todo o trafego IPv6 continua saindo com o endereco real. Metade da navegacao vaza e nada avisa. |
+| A rota padrao nao aparece onde voce olha | O NM usa policy routing: a default do tunel vai para uma tabela propria, entao `ip route show default` segue mostrando o Wi-Fi com tudo dentro do tunel. |
+| Nome de arquivo vira nome de interface | Maximo 15 caracteres. `Book4Ultra-US-FREE-122.conf` e recusado com "The name of the WireGuard config must be a valid interface name". |
+| Auto-updater contra `/opt` | App que se atualiza sozinho (Firefox e forks, VS Code, JetBrains, Obsidian) escreve no proprio diretorio de instalacao. Root-owned em `/opt` faz isso falhar, e os "consertos" usuais sao piores que o problema. |
+| Icone grande demais some do menu | O tamanho no hicolor sai das dimensoes reais da imagem, nao do nome do arquivo. Icone so em tamanho grande faz o menu cair no icone de **outro** app quando os nomes compartilham prefixo. |
+| `~/.local/bin` fora do PATH | O `~/.profile` do Ubuntu adiciona o diretorio condicionalmente **no login**. Diretorio criado ha cinco minutos ainda nao esta no PATH do shell atual. |
 
 ## Documentado contra observado
 
