@@ -47,11 +47,58 @@ Onde a versao de marketing realmente aparece:
 - **Tela de titulo ou menu de opcoes**, para jogo com interface.
 - **Arquivo de versao no diretorio de instalacao** — varia por engine, nao ha
   regra geral.
-- **Consulta externa** (SteamDB pelo `appid`, patch notes do estudio), que exige
-  rede e vale a pena declarar como tal.
+- **Notas oficiais na Steam**, pelo `appid` — ver a secao abaixo. E a fonte que
+  liga o buildid do disco ao numero que o jogador ve.
 
 Se nenhuma dessas estiver disponivel, reporte o `buildid` e diga que a versao de
 marketing nao foi determinada. Nao converta um no outro.
+
+## Onde buscar, e em que ordem
+
+O hook injeta a URL pronta. Ela **nao e chamada** por ele: rede em hook custa
+latencia em todo prompt, inclusive nos que nao tem jogo nenhum. Quem busca e
+voce, quando a pergunta exigir.
+
+```bash
+curl -sS --max-time 20 \
+  "https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=<APPID>&count=5&maxlength=1500" \
+| jq -r '.appnews.newsitems[]
+         | select(.feedname=="steam_community_announcements")
+         | "\(.date|strftime("%Y-%m-%d"))  \(.title)\n\(.contents)\n\(.url)"'
+```
+
+Publico, sem chave. O `select` importa: o feed mistura imprensa (PC Gamer,
+PCGamesN) com anuncio do estudio, e materia de site de jogo nao e patch notes.
+
+Verificado em 2026-09-07: `appid=1623730` devolveu
+`v1.0.4: Balance Adjustments & Bug Fixes`, autor `pocketpair_dev`, datado do
+mesmo dia do `LastUpdated` do manifesto — e o corpo trazia mudanca de chave de
+config (`Added "Fish Behavior During Fishing Minigames" to World Settings`).
+
+**Ferramenta nao tem feed.** O appid do Palworld Dedicated Server (2394010)
+devolve lista vazia; as notas do servidor saem no appid do cliente. Vale para
+dedicated server, SDK e editor em geral.
+
+A ordem, quando for preciso ir para fora:
+
+| ordem | fonte | vale para |
+|---|---|---|
+| 1 | arquivo no disco (config, save, `Default*.ini`) | **sempre ganha** |
+| 2 | saida do proprio jogo (log, journal) | versao de marketing |
+| 3 | notas oficiais na Steam, pelo `appid` | o que mudou, datado |
+| 4 | doc oficial do estudio | mecanica documentada |
+| 5 | wiki da comunidade | mecanica estavel; **nunca** numero ou valor padrao |
+| 6 | blog de hosting | ultima instancia, sempre marcado como tal |
+
+Wiki cai no degrau 5 por um motivo mecanico, nao por desprezo: **pagina de wiki
+quase nunca diz de que versao fala.** Ela e boa para o que patch raramente toca
+— onde acha um item, combinacao de breeding, arvore de missao — e ruim
+exatamente para numero, valor padrao e nome de chave, que e o que muda a cada
+patch e o que costuma estar sendo perguntado.
+
+Blog de hosting fica por ultimo porque se contradiz e nao data: para Palworld,
+guias divergem sobre o proprio padrao de `DeathPenalty`, e uns afirmam que o 1.0
+trouxe server clustering enquanto outros negam.
 
 ## O que fazer antes de responder
 

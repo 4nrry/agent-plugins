@@ -13,7 +13,7 @@ versao esta no disco, entao ela sai do disco.
 | componente | o que faz |
 |---|---|
 | `hooks/inject-game-version.sh` | `UserPromptSubmit`. Casa o prompt contra os jogos instalados e injeta appid, buildid e data. Falha aberto. |
-| `scripts/steam_games.py` | O detector e o casamento de nome, isolados para serem testaveis. `--self-test`, `--json`, `--match-stdin`. |
+| `scripts/steam_games.py` | O detector, o casamento de nome e a URL de notas oficiais, isolados para serem testaveis. `--self-test`, `--json`, `--match-stdin`. |
 | `skills/game-versions/` | O contexto inteiro: como fixar versao, onde achar a de marketing, jogo fora da Steam, e a regra de que o arquivo local ganha. |
 
 ## Por que hook, e nao so skill
@@ -46,6 +46,39 @@ comum, nem isso existe.
 Por isso o hook injeta o buildid e uma instrucao explicita de **nao converter**
 um no outro. Um numero de versao inventado sai plausivel, e plausivel e pior do
 que ausente.
+
+## Onde o agente busca, quando o disco nao basta
+
+O disco diz **qual** build esta instalada. Nao diz o que mudou nela. Para isso
+o hook injeta, junto, a URL das notas oficiais do proprio jogo — montada a
+partir do `appid` que ele ja tem:
+
+```
+https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=1623730&count=5&maxlength=1500
+```
+
+Publico, sem chave, e **datado**. Verificado em 2026-09-07: devolveu
+`v1.0.4: Balance Adjustments & Bug Fixes`, autor `pocketpair_dev`, do mesmo dia
+do `LastUpdated` do manifesto — fechando a ponte entre `buildid=25094871` e o
+`v1.0.4` que o jogador ve. O corpo trazia ate chave de config nova
+(`Added "Fish Behavior During Fishing Minigames" to World Settings`).
+
+Duas coisas medidas junto: o feed **mistura imprensa** com anuncio do estudio
+(PC Gamer e PCGamesN aparecem lado a lado com o `pocketpair_dev`), entao a skill
+publica o `select(.feedname=="steam_community_announcements")` junto; e
+**ferramenta nao tem feed** — o appid do Palworld Dedicated Server devolve lista
+vazia, as notas dele saem no appid do cliente.
+
+O hook **nao** chama essa URL. Ele roda a cada prompt, e rede ali seria
+latencia em todo prompt, inclusive nos que nao mencionam jogo nenhum. Ele monta
+e entrega; quem busca e o agente, se a pergunta exigir.
+
+A hierarquia completa fica na skill. O resumo: arquivo no disco > saida do
+proprio jogo > notas oficiais > doc do estudio > wiki > blog de hosting. Wiki
+fica em quinto por um motivo mecanico e nao por desprezo — **pagina de wiki
+quase nunca diz de que versao fala**, e ela e boa justamente para o que patch
+nao toca (onde acha um item, breeding) e ruim para numero e valor padrao, que e
+o que costuma estar sendo perguntado.
 
 Corolario que tambem esta no texto: cliente e servidor dedicado sao appids
 diferentes que atualizam em momentos diferentes. Nesta maquina, em 2026-09-07,
@@ -82,9 +115,12 @@ casamento acima vem do raciocinio, nao de um eval.
 
 O que existe e comportamento verificado, que `just check` reexecuta:
 
-- `steam_games.py --self-test`: **20 asserções** — parse dos cinco campos,
+- `steam_games.py --self-test`: **25 asserções** — parse dos cinco campos,
   filtro de runtime e Proton, ordenacao, `StateFlags` integro contra pendente,
-  e as seis linhas da tabela de casamento acima.
+  as seis linhas da tabela de casamento acima, e a montagem da URL de notas
+  pelo appid.
+- O `curl`+`jq` publicado na skill foi executado como esta escrito, contra
+  `appid=1623730` e `appid=105600`: filtra a imprensa e devolve so o estudio.
 - Exercitado contra a biblioteca real desta maquina: 15 appmanifests no disco,
   **7 jogos** reportados, 8 runtimes/Proton filtrados.
 

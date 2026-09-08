@@ -14,7 +14,7 @@ Sem dependencia externa: stdlib apenas, igual ao resto do repositorio.
 
     steam_games.py --json          lista os jogos instalados
     steam_games.py --match-stdin   le um prompt na stdin, imprime o bloco
-    steam_games.py --self-test     exercita parse, filtro e casamento
+    steam_games.py --self-test     exercita parse, filtro, casamento e URL
 """
 
 import json
@@ -120,6 +120,22 @@ def match(prompt: str, games: list[dict]) -> list[dict]:
     return hits
 
 
+# Feed oficial do estudio na Steam. Sem chave, publico, e datado — a unica
+# fonte que liga o buildid do disco a versao que o jogador ve. `count` baixo
+# porque o feed mistura imprensa (PC Gamer, PCGamesN) com anuncio do estudio;
+# quem filtra e quem consome, por feedname == "steam_community_announcements".
+NEWS_API = "https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/"
+
+
+def news_url(appid: str, count: int = 5, maxlength: int = 1500) -> str:
+    """URL das notas oficiais desse appid. Nao faz rede: so monta.
+
+    Rede fica fora deste script de proposito — ele roda no hook, a cada prompt,
+    e latencia de rede em todo prompt custa mais do que a dica vale.
+    """
+    return f"{NEWS_API}?appid={appid}&count={count}&maxlength={maxlength}"
+
+
 def render(hits: list[dict]) -> str:
     import datetime as _dt
 
@@ -134,6 +150,7 @@ def render(hits: list[dict]) -> str:
         estado = "" if g["state_ok"] else "  [StateFlags != 4: instalacao incompleta ou update pendente]"
         linhas.append(f"  {g['name']}  appid={g['appid']}  buildid={g['buildid']}  "
                       f"atualizado={quando}{estado}")
+        linhas.append(f"      notas oficiais: {news_url(g['appid'])}")
     linhas += [
         "",
         "1. `buildid` NAO e a versao de marketing. O .acf nao guarda \"1.0.4\" em "
@@ -147,6 +164,11 @@ def render(hits: list[dict]) -> str:
         "quando. Nao apresente lembranca de treino como estado atual do jogo.",
         "4. Havendo arquivo de config ou save no disco, ele ganha da sua "
         "memoria e ganha de qualquer guia. Leia o arquivo.",
+        "5. Precisando de fonte externa, siga a ordem: arquivo no disco > saida "
+        "do proprio jogo > notas oficiais acima > doc do estudio > wiki da "
+        "comunidade (so mecanica estavel, NUNCA numero ou valor padrao) > blog de "
+        "hosting (ultima instancia, sempre marcado como tal). Wiki de jogo quase "
+        "nunca diz de que versao a pagina fala.",
     ]
     return "\n".join(linhas)
 
@@ -226,6 +248,21 @@ def _self_test() -> int:
         bloco = render(match("terraria", jogos))
         check("buildid=24893155" in bloco, "render nao trouxe o buildid")
         check("NAO e a versao de marketing" in bloco, "render perdeu a regra 1")
+
+        # --- notas oficiais: a URL e montada, nunca buscada ---
+        u = news_url("1623730")
+        check(u.startswith("https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/"),
+              f"endpoint errado: {u}")
+        check("appid=1623730" in u, f"appid nao entrou na URL: {u}")
+        check("&count=" in u and "&maxlength=" in u, f"faltou count/maxlength: {u}")
+        check(news_url("105600") != news_url("1623730"),
+              "appids diferentes deveriam gerar URLs diferentes")
+        check(news_url("1623730", count=1) != news_url("1623730", count=5),
+              "count deveria entrar na URL")
+        check("api.steampowered.com" in bloco,
+              "render deveria citar as notas oficiais do jogo casado")
+        check("wiki da comunidade" in bloco and "NUNCA numero" in bloco,
+              "render perdeu a hierarquia de fonte (regra 5)")
 
     for f in falhas:
         print(f"FALHA: {f}", file=sys.stderr)
