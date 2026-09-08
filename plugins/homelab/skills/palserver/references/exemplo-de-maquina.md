@@ -107,20 +107,25 @@ Firewall local: `<ufw/nftables ativo? o que libera?>`.
 
 ## Consumo medido
 
-| Uptime | RSS |
-|---|---|
-| ao subir | `<N>` GB |
-| 2h | `<N>` GB |
-| 4h | `<N>` GB |
-| 20h | `<N>` GB |
+| Uptime | RSS | CPU | Jogadores online | Data |
+|---|---|---|---|---|
+| ao subir | `<N>` GB | `<N>`% | `<N>` | `<AAAA-MM-DD>` |
+| `<N>`h | `<N>` GB | `<N>`% | `<N>` | `<AAAA-MM-DD>` |
 
-CPU `<N>` nucleos sustentados, `<N>` threads.
+**As colunas de jogadores e data nao sao enfeite — sao o motivo da tabela
+existir.** Numa maquina medida, a leitura de maior uptime foi a **mais leve**
+(0,59 GB em 11h39, ociosa) e a de 2h foi mais que o triplo (2,13 GB, com gente
+dentro). Uptime sozinho nao explicou nada; carga explicou. Uma tabela so com
+uptime e RSS registra a variavel errada.
 
-Duas armadilhas ao preencher esta tabela:
+Tres armadilhas ao preencher:
 
 - **Uptime de processo nao prova continuidade.** Um `Signal 11` no meio reseta a
   curva sem aviso. Confira `journalctl --user -u palworld | grep -c 'Game
   version is'` antes de concluir qualquer coisa.
+- **Uma parada comandada nao e um crash.** Mudanca de config e atualizacao
+  tambem reiniciam o processo; separe as duas no historico ou a serie vira
+  ficcao.
 - Se duas medicoes discordarem, **registre as duas** e diga qual e de quando.
   Uma curva contraditoria e um dado; uma curva limpa que voce alisou nao e.
 
