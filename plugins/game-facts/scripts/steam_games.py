@@ -174,13 +174,22 @@ def render(hits: list[dict]) -> str:
         "Medido em levantamento de 80 fontes: so esse passo invalidou conteudo em "
         "10 de 10 categorias, e ~1/4 eram correcoes de bug — a fonte mediu com "
         "honestidade uma build quebrada, e nenhuma qualidade editorial pega isso.",
-        "7. Ao pesar fontes: \"tem data\" nao e sinal de frescor (84% tinham data, "
-        "90% eram pre-patch); o que discrimina e data POSTERIOR ao ultimo patch do "
-        "subsistema. Concordancia nao eleva confianca — maioria resolveu 0 de 41 "
-        "contradicoes, e o maior aglomerado era uma fonte copiada cinco vezes; "
-        "triangule entre TIPOS diferentes. Numero de wiki vale se e so se a pagina "
-        "exibir last-edited E (tag de versao OU data pos-patch) — por pagina, nao "
-        "por dominio. Detalhe e ressalvas do metodo na SKILL.md.",
+        "7. A cerca de patch tem DUAS saidas, e exigir so a primeira produz "
+        "resposta covarde: (a) fonte posterior ao patch, ou (b) AUDITORIA "
+        "NEGATIVA — changelog lido, versoes nomeadas, nenhuma toca o subsistema. "
+        "Com patch de ontem ninguem satisfaz (a): medido, 18 de 18 falharam. A "
+        "via (b) autoriza dizer \"sem mudanca conhecida desde <data da fonte>\", "
+        "nunca \"atual\" — ausencia no changelog nao e prova, rebalanceamento "
+        "numerico costuma nao aparecer nele. Nao ter procurado nao e saida.",
+        "8. Ao pesar fontes: \"tem data\" nao e sinal de frescor (84% tinham data, "
+        "90% eram pre-patch). Concordancia nao eleva confianca — maioria resolveu "
+        "0 de 41 contradicoes, e o maior aglomerado era uma fonte copiada cinco "
+        "vezes. Triangule entre TIPOS diferentes e conte ORIGEM, nao dominio: "
+        "numero identico ate o decimal em paginas de idades diferentes e copia. "
+        "RESUMO DE BUSCADOR NAO E FONTE — nao abriu a pagina, escreva \"nao "
+        "verificado\", nunca o nome do site. Numero de wiki vale se e so se a "
+        "pagina exibir last-edited E (tag de versao OU data pos-patch), por "
+        "pagina e nao por dominio. Detalhe e ressalvas do metodo na SKILL.md.",
     ]
     return "\n".join(linhas)
 
@@ -277,9 +286,17 @@ def _self_test() -> int:
               "render perdeu o roteamento (regra 5)")
         check("Passo zero" in bloco, "render perdeu o passo zero (regra 6)")
         check("last-edited" in bloco and "por dominio" in bloco,
-              "render perdeu o portao de wiki por pagina (regra 7)")
+              "render perdeu o portao de wiki por pagina")
         check("0 de 41" in bloco,
               "render perdeu o dado que derruba voto de maioria")
+        check("AUDITORIA NEGATIVA" in bloco and "18 de 18" in bloco,
+              "render perdeu a segunda saida da cerca de patch (regra 7)")
+        check("sem mudanca conhecida desde" in bloco,
+              "render perdeu o rotulo que a auditoria negativa autoriza")
+        check("RESUMO DE BUSCADOR NAO E FONTE" in bloco,
+              "render perdeu a regra de resumo de buscador (regra 8)")
+        check("conte ORIGEM, nao dominio" in bloco,
+              "render perdeu o teste de origem contra dominio")
 
     for f in falhas:
         print(f"FALHA: {f}", file=sys.stderr)
