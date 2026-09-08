@@ -30,6 +30,7 @@ SELF_TEST_TIMEOUT = 120
 failures: list[str] = []
 warnings: list[str] = []
 checks_run = 0
+tools: dict[str, str] = {}
 
 
 def fail(where: str, msg: str) -> None:
@@ -297,6 +298,31 @@ def check_claims_hashes() -> None:
             warn(rel(claims), f"cites {head}…{tail}, which matches no file in the repo")
 
 
+def tool_version(name: str) -> str:
+    """What the tool reports for --version, or a marker when it cannot say.
+
+    Reported with the summary because `--version` is the only thing that tells
+    two binaries of the same name apart, and this gate has already been fooled
+    by that: a run passed locally and failed in CI because the local shellcheck
+    (0.11.0) does not emit SC2015 at all — not even with `-i SC2015` — while
+    the runner's does. A version nobody prints is a version nobody compares.
+
+    This reports; it does not enforce. Pinning a minimum would fail the build
+    on a machine whose only sin is an older distro, and the CI runner is the
+    authority on what green means either way.
+    """
+    try:
+        proc = subprocess.run([name, "--version"], capture_output=True,
+                              text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return "unknown (did not run)"
+    for line in proc.stdout.splitlines():
+        if line.lower().startswith("version:"):
+            return line.split(":", 1)[1].strip()
+    first = proc.stdout.strip().splitlines()
+    return first[0][:60] if first else "unknown (no output)"
+
+
 def is_shell_script(p: pathlib.Path) -> bool:
     """A shell script, by extension OR by shebang.
 
@@ -339,7 +365,9 @@ def check_shell() -> None:
     global checks_run
     scripts = sorted(s for s in REPO.rglob("*") if is_shell_script(s))
     if not shutil.which("shellcheck"):
+        tools["shellcheck"] = "absent"
         return warn("shellcheck", f"not installed — {len(scripts)} script(s) unchecked")
+    tools["shellcheck"] = tool_version("shellcheck")
     for s in scripts:
         checks_run += 1
         proc = subprocess.run(["shellcheck", "-S", "style", str(s)],
@@ -388,6 +416,9 @@ def main() -> int:
         print(f"warn  {w}")
     for f in failures:
         print(f"FAIL  {f}")
+
+    for name, ver in sorted(tools.items()):
+        print(f"tool  {name} {ver}")
 
     print(f"\n{checks_run} checks, {len(failures)} failed, {len(warnings)} warning(s)")
     return 1 if failures else 0
