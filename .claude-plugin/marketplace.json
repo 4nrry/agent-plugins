@@ -11,6 +11,10 @@
       "source": "./plugins/agent-fleet"
     },
     {
+      "name": "game-facts",
+      "source": "./plugins/game-facts"
+    },
+    {
       "name": "homelab",
       "source": "./plugins/homelab"
     },

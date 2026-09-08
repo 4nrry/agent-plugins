@@ -1,0 +1,15 @@
+{
+  "description": "UserPromptSubmit sem `if`, de proposito: o filtro nao e uma permission rule, e o casamento do nome do jogo contra os appmanifests instalados. Um `if` aqui teria que carregar uma lista fixa de jogos, que envelhece calada — a lista vem do disco a cada disparo. Custo por prompt: uma leitura dos .acf, sem rede.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/inject-game-version.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

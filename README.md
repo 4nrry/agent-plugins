@@ -23,6 +23,7 @@ Or paste `4nrry/agent-plugins` into the Claude Desktop **Add marketplace** dialo
 | Plugin | What it is |
 |---|---|
 | [agent-fleet](plugins/agent-fleet/) | Rules for multi-agent work — model routing per phase, fan-out sizing, output schemas, and citation verification. Two hooks, because the prose alone measurably did not fire. |
+| [game-facts](plugins/game-facts/) | Pins the installed game's version before the agent answers from training memory. A UserPromptSubmit hook reads Steam appmanifests and injects appid, buildid and update date — so the version never has to be typed into the prompt. |
 | [homelab](plugins/homelab/) | Self-hosted services on a Linux box. Today: a Palworld dedicated server — the config the server erases on shutdown, the Steam update that swaps the binary under a running process, and what has no server side at all. Machine state stays out of the repo. |
 | [mobile-agent](plugins/mobile-agent/) | What breaks silently in a mobile app: the device layer (adb, emulator, UI dumps) and the bundler layer (Expo, Metro, prebuild). Six narrow PreToolUse guards that warn and never block. |
 
