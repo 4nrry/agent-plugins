@@ -1,0 +1,17 @@
+{
+  "description": "Uma guarda so, estreita, que avisa e nunca bloqueia. O `if` segura exatamente uma permission rule, como no mobile-agent: um handler por condicao.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(vipsthumbnail *)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-vipsthumbnail.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

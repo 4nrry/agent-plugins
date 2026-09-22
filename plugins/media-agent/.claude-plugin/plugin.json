@@ -1,0 +1,11 @@
+{
+  "name": "media-agent",
+  "displayName": "Media Agent",
+  "version": "0.1.0",
+  "author": {
+    "name": "4nrry",
+    "url": "https://github.com/4nrry"
+  },
+  "license": "MIT",
+  "description": "Producao de midia por agente numa maquina propria com GPU de 8 GB — locucao, trilha, banco de imagens e video, retoque de imagem, turntable 3D e o render do video — e o que quebra sem levantar erro em cada etapa. Cinco skills. Locucao: TTS local sai a -24..-30 LUFS e some atras da trilha, entao cada frase passa por loudnorm a -16 antes de entrar; a pronuncia de sigla e nome proprio vai num campo `say` separado do texto da legenda; e o plano gratuito da ElevenLabs e licenca nao comercial, a voz da biblioteca devolve `paid_plan_required` e o 192 kbps exige um plano acima do Starter. Trilha e bancos: ACE-Step 1.5 carrega um LM de 1,7B mesmo com `thinking=false` e estoura 8 GB — o toml empacotado desliga cada `use_cot_*`; Jamendo e gratis so para uso nao comercial, Pixabay nao serve musica pela API, Openverse filtra `license_type=commercial`, a CDN do Pexels responde 403 sem User-Agent, e CC-BY e credito obrigatorio por item. Retoque com ComfyUI sem interface: os modelos mais citados para upscale (4x-UltraSharp) e fundo (RMBG-2.0) sao nao comerciais, e a skill lista os equivalentes livres; LaMa para tirar logo, difusao so para por coisa nova; um job por vez na GPU. Turntable no Blender headless: `get_devices()` segfaulta com Arc integrada, `get_devices_for_type` nao; Blender 5 nao tem `action.fcurves`. Remotion: licenca por numero de funcionarios (ate 3), TransitionSeries recusa Fragment, legenda deriva do JSON da locucao e nao de transcricao. Um hook PreToolUse que avisa quando `vipsthumbnail -o` vai gravar ao lado do arquivo de origem em vez de onde voce acha. Sem alegacao de melhoria: nao ha run records, e pela regra zero do bench/PROTOCOL.md uma alegacao sem registro e marketing."
+}

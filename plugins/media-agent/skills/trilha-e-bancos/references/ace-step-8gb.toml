@@ -1,0 +1,31 @@
+# ACE-Step 1.5 em GPU de 8 GB: trilha instrumental de fundo, sem o LM auxiliar.
+# Uso: cd <clone do ACE-Step-1.5> && uv run python cli.py --config /caminho/ace-step-8gb.toml
+#
+# O que faz caber: use_cot_* = false (senao o LM de 1,7B e carregado mesmo com
+# thinking = false), use_format/sample_mode = false, offload_* = true.
+save_dir = "/ABSOLUTO/fora/do/clone"
+audio_format = "wav"
+task_type = "text2music"
+caption = "calm ambient corporate background music, warm analog pad, soft piano notes, subtle low pulse, no drums, minimal, cinematic, slow evolving"
+instrumental = true
+lyrics = ""
+duration = 40
+bpm = 70
+keyscale = "A major"
+timesignature = "4"
+vocal_language = "en"
+inference_steps = 8
+guidance_scale = 7.0
+seed = 7
+use_random_seed = false
+batch_size = 1
+thinking = false
+device = "auto"
+offload_to_cpu = true
+offload_dit_to_cpu = true
+use_cot_metas = false
+use_cot_caption = false
+use_cot_lyrics = false
+use_cot_language = false
+use_format = false
+sample_mode = false

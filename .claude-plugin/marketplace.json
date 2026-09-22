@@ -19,6 +19,10 @@
       "source": "./plugins/homelab"
     },
     {
+      "name": "media-agent",
+      "source": "./plugins/media-agent"
+    },
+    {
       "name": "mobile-agent",
       "source": "./plugins/mobile-agent"
     }
