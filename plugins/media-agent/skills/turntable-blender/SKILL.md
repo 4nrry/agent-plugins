@@ -18,6 +18,11 @@ blender -b -P "${CLAUDE_PLUGIN_ROOT}/skills/turntable-blender/scripts/turntable.
 antes de gastar minutos. `--frames 120` a 30 fps e uma volta em 4 s; no video
 use so o trecho que a cena pede.
 
+Se o plano pede a camera se movendo em vez de o modelo girar, ou o mesmo
+movimento em varios formatos, veja a secao de Three.js na skill
+`video-remotion`: ~7 s contra ~6 min para os mesmos 120 frames, com
+iluminacao visivelmente mais pobre.
+
 ## O que quebra sem erro util
 
 - **`prefs.get_devices()` segfaulta** em maquina com GPU Intel Arc integrada
