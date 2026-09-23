@@ -54,6 +54,46 @@ antes e troque a imagem por frame.
   no root e de `npm ci` naquele pacote, senao os componentes vem sem estilo e
   sem erro.
 
+## Transicao cruzada com texto
+
+`fade()` do `TransitionSeries` sobrepoe as duas cenas por T frames; se as duas
+tem titulo, aparecem dois textos um sobre o outro no meio da transicao. Visto
+num Reels so de tipografia. Saida: envolver o conteudo de cada cena (menos a
+primeira) num `<Sequence from={T} layout="none">`, para a cena nova entrar
+depois que a anterior sumiu sobre o fundo.
+
+## Modelo 3D dentro do video: Three.js ou Blender
+
+`@remotion/three` poe uma cena Three.js (React Three Fiber) dentro da
+composicao, dirigida por `useCurrentFrame`. Medido com o mesmo `.glb` e a mesma
+camera do `turntable.py` (skill `turntable-blender`), RTX 4070 Laptop:
+
+| | Blender Cycles | Three.js no Remotion |
+|---|---|---|
+| giro de 120 frames a 900 px | ~6 min | ~7 s |
+| plano de 5 s 1080x1920 com a camera em movimento | animar no Blender e renderizar de novo | ~8 s, e o movimento e codigo |
+| visual | cor saturada, sombra suave, reflexo | cor mais palida, sombra chapada, cara de tempo real |
+
+Use Blender para o heroi do produto e o giro que fica na tela; use Three.js
+para plano de apoio com camera que acompanha a legenda ("quatro entradas para
+sensores" enquanto a camera chega nos prensa-cabos) e para o mesmo movimento
+reenquadrado em 16:9, 9:16 e 4:5. Componente verificado, com giro e dolly:
+`references/glb-turntable.tsx`. As quatro coisas que deram quadro vazio ou
+cor errada antes de funcionar:
+
+- **`--gl=swangle` desenha vazio**, sem erro nenhum. Use `--gl=angle` ou
+  `--gl=vulkan` (os dois funcionaram). No Studio tudo aparece, porque o
+  navegador tem GPU: o erro so existe no render.
+- **GLB carregado dentro do `ThreeCanvas`** nao segura o `delayRender`: o
+  reconciler do R3F nao e o do Remotion. Carregue fora, passe o objeto como
+  prop, e so chame `continueRender` depois de `advance()` do R3F com o modelo
+  na cena. Liberar no callback do loader deu frame 0 vazio; liberar num
+  `useFrame` deu timeout de 28 s em render com varias abas.
+- **Luz dentro do grupo que gira** gira junto e lava a cor das faces que se
+  afastam da key. O modelo gira, a luz fica.
+- **`near`/`far` fixos** cortam o modelo quando a unidade do GLB nao e a que
+  voce supoe; calcule a partir do bounding box.
+
 ## Formatos a partir de um fonte
 
 - Um `Film` recebe `fmt = fmtOf(w, h)` e as cenas leem `fmt.portrait`,
@@ -63,6 +103,9 @@ antes e troque a imagem por frame.
   um layout novo.
 - 4:5 (feed do Instagram) precisa de empilhamento: o que era lado a lado vira
   coluna; sem isso o titulo cobre a legenda.
+- Reels 9:16: a interface do Instagram cobre o topo e sobretudo a base.
+  Texto dentro de 250 px do topo e 420 px da base, em 1080x1920, nao ficou
+  embaixo de nada no teste; e margem pratica, nao numero oficial.
 - Carrossel: uma composicao cujo frame `i` e o slide `i` congelado
   (`Sequence` com `from` negativo para ir ao estado final), renderizada com
   `remotion still --frame i`; `magick` junta em PDF para o LinkedIn.
@@ -75,6 +118,8 @@ montage`) pega sobreposicao e corte de texto que o preview a 50% esconde.
 
 ## O que nao foi verificado
 
+- Three.js em GPU AMD/Intel ou sem GPU: o teste foi so NVIDIA com `angle`
+  e `vulkan`.
 - Render distribuido (Lambda) e o comportamento de `OffthreadVideo` la.
 - Que a interpretacao de "funcionario" do Remotion cobre co-fundador sem
   vinculo; a skill apenas relata as duas redacoes.

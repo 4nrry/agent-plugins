@@ -82,6 +82,18 @@ Pesos (nomes que os workflows esperam): `z_image_turbo_bf16.safetensors` em
 `1038lab/Lama` `big-lama.pt` em `models/RMBG/Lama`. ~19 GB. Os dois ultimos o no
 baixa sozinho no primeiro uso; pre-baixar so evita o primeiro job lento.
 
+## Upscale de video: SeedVR2 nao compensa em 8 GB
+
+SeedVR2 (ByteDance, Apache-2.0 no codigo e nos pesos) pelo no
+`numz/ComfyUI-SeedVR2_VideoUpscaler` (Apache-2.0, tem CLI propria). Em 8 GB
+so rodou com o 3B GGUF Q8, BlockSwap 32, `--swap_io_components`, offload de
+DiT e VAE para CPU, tiles de VAE de 512 px e lote de 9 frames; lote de 33
+estoura a memoria no decoder do VAE. Medido em 36 frames 540p para 1080p:
+292 s (~8 s por frame), pico de 7,8 GB de VRAM e 10 GB de RAM. Um minuto de
+video leva horas, e o resultado inventa detalhe: SSIM contra o 1080p real de
+0,65, contra 0,84 do bicubico. Serve para salvar video de terceiros em baixa
+resolucao, nao para b-roll que ja e 1080p.
+
 ## Formato API versus formato da interface
 
 O JSON que a interface salva (`nodes`, `links`, subgraphs) nao e o que o

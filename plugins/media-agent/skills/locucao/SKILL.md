@@ -71,7 +71,16 @@ Ouca as vozes antes de decidir: nesta colecao, quatro TTS locais foram
 descartados de ouvido por quem fala a lingua, e a metrica de qualidade nao
 substitui isso.
 
-## 4. Chaves
+## 4. Voz de uma pessoa real
+
+Nao gere voz sintetica falando como uma pessoa real que aparece no video (a
+professora, o fundador), nem clone a voz dela a partir de audio publico, sem
+que ela grave ou autorize. Texto na tela na primeira pessoa, com a foto dela,
+e o que a propria pessoa ja publica no site e funciona: Reels e assistido sem
+som na maior parte do tempo. Se ela quiser narracao, ela grava; o pipeline
+desta skill (uma frase por arquivo, -16 LUFS, JSON de duracoes) serve igual.
+
+## 5. Chaves
 
 Chave de API vem do ambiente, nunca de arquivo no repositorio nem da linha de
 comando (`ps` mostra). Um gerenciador de segredos com `run` (bws, 1Password,
