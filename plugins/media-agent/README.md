@@ -3,7 +3,7 @@
 Producao de midia por agente numa maquina propria — locucao, trilha, banco de
 imagens e video, retoque, turntable 3D e o render do filme — no ponto em que a
 GPU tem 8 GB, a empresa precisa de licenca comercial e a ferramenta nao avisa
-que voce acabou de violar uma das duas. Cinco skills e um hook, um feitio:
+que voce acabou de violar uma das duas. Seis skills, um servidor MCP e um hook, um feitio:
 falha que nao levanta erro.
 
 Saiu de uma producao real: um video institucional de 64 s com locucao pt-BR,
@@ -20,6 +20,7 @@ Laptop de 8 GB.
 | `skills/retoque-comfyui/` | ComfyUI como servidor, sem interface: tirar fundo, upscale, remover logo, inpaint e still, so com modelos de licenca comercial. Dois scripts (`comfy-run.py`, `comfy-serve.sh`) e cinco workflows em formato API. |
 | `skills/turntable-blender/` | Giro 360 de um `.glb` em Cycles/GPU headless, PNG RGBA. Um script (`turntable.py`). |
 | `skills/video-remotion/` | Video como codigo: Remotion ou HTML + Chrome + ffmpeg, legenda derivada da locucao, quatro formatos e carrossel de um fonte so, e a regra de licenca do Remotion. So texto. |
+| `skills/edicao-kinocut/` + `.mcp.json` | Registra o MCP do Kinocut (Apache-2.0, local, `uvx`, fixado em 1.15.1) para editar video pronto com resposta em JSON, e diz quando usar ele, ffmpeg na mao ou re-render. So texto mais a definicao do servidor. |
 | `hooks/guard-vipsthumbnail.sh` | PreToolUse em `Bash(vipsthumbnail *)`: avisa quando `-o NOME` sem barra vai gravar no diretorio do arquivo de entrada. Avisa, nao bloqueia. |
 
 ## O que ele nao faz, de proposito
@@ -63,6 +64,7 @@ substitua.
 | `TransitionSeries` e Fragment | `<>...</>` dentro de `.map` da erro obscuro; `flatMap` devolvendo `[Transition, Sequence]` resolve. |
 | ECharts dentro do Remotion | O grafico anima por relogio, nao por frame. Ou `delayRender` de ~1,5 s por frame, ou canvas a mao. |
 | `vipsthumbnail -o nome.png` | `-o` e formato de nome: sem barra grava ao lado do arquivo de **entrada**. O thumbnail nasceu untracked dentro de outro repositorio e o cwd ficou vazio. Virou o hook. |
+| Kinocut: comando que e casca | Sao 196 ferramentas, e parte nao faz nada: `sound-qa-loudness` na 1.15.1 nao aceita argumento e so imprime o uso. Rode uma vez num arquivo real antes de montar fluxo em cima. |
 | `bws run` re-parseia | Junta os argumentos numa string e passa a um shell; prompt com espaco vira erro de sintaxe do `sh`. `printf '%q '` em cada argumento e `--shell bash`. |
 
 ## Documentado contra observado
@@ -93,6 +95,11 @@ nenhuma. O que existe e comportamento verificado, nao eficacia medida:
 - `guard-vipsthumbnail.sh` exercitado com stdin simulado: casa `-o nome.png`,
   nao casa `-o ./nome.png` nem `-o /tmp/x.png`.
 - `turntable.py` renderizou 120 frames de um glb real em CUDA no Blender 5.2.
+- Kinocut 1.15.1 pelo mesmo comando do `.mcp.json`: o servidor respondeu
+  `tools/list` com 196 ferramentas; pela CLI, `info` leu 64,4 s em 1920x1080,
+  `trim` cortou 15,000 s, arquivo inexistente voltou como erro estruturado, e
+  `normalize-audio` levou uma voz de -28,6 a -16,5 LUFS (o `vo-normalize.sh`
+  chega a -16,0..-16,2 no mesmo tipo de arquivo).
 
 O que falta medir: se as skills mudam o resultado de um agente que nao as tem.
 Isso pede arms pareados e nao foi feito.

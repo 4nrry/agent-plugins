@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "kinocut": {
+      "command": "uvx",
+      "args": ["--from", "kinocut==1.15.1", "kino", "--mcp"]
+    }
+  }
+}
