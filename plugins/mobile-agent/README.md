@@ -27,8 +27,9 @@ erro.
 | componente | o que faz |
 |---|---|
 | `skills/android-device/` | Camada de aparelho: dump de UI, superficie de GL, screenshot, tuneis, processos. |
-| `skills/expo-metro/` | Camada de bundler: prebuild silencioso, porta do Metro, node_modules ausente, `EXPO_PUBLIC_`. |
-| `hooks/` | Seis guardas `PreToolUse`, cada um com seu `if`. Avisam, nunca bloqueiam. |
+| `skills/expo-metro/` | Camada de bundler: prebuild silencioso, porta do Metro, node_modules ausente, `EXPO_PUBLIC_`, SDK que nao chega ao shell, modulo nativo que o JS nao sente faltar. |
+| `skills/espelhar-celular/` | Ver e controlar o aparelho fisico no PC (scrcpy pela depuracao sem fio) sem instalar um segundo adb; o que nao serve (KDE Connect, Phone Link, DeX). |
+| `hooks/` | Doze guardas `PreToolUse`, cada um com seu `if`. Avisam, nunca bloqueiam. |
 | `commands/preflight.md` | `/mobile-agent:preflight` — checa o que ja esta de pe. |
 | `scripts/adb-ui.sh` | Inspecionar e tocar a tela por texto, sem ler screenshot. |
 | `scripts/adb_ui.py` | O parser da arvore, isolado para ser testavel. `--self-test`. |
@@ -49,15 +50,18 @@ destino de quem quiser o contexto inteiro.
 
 Cada handler carrega o proprio `if`, que segura exatamente uma permission rule —
 *"There is no `&&`, `||`, or list syntax for combining rules"*. Por isso sao
-seis handlers, e duas formas de invocar o mesmo comando viram dois handlers.
+doze handlers, e cada forma de invocar o mesmo comando vira um handler (o apt
+tem quatro: com e sem `sudo`, `apt` e `apt-get`).
 
 | `if` | por que |
 |---|---|
 | `Bash(adb kill-server)` | derruba os tuneis de todas as sessoes; o sintoma imita backend fora do ar |
+| `Bash(apt install *)`, `Bash(apt-get install *)`, e os dois com `sudo` | `scrcpy` do apt depende do pacote `adb`, que vai para `/usr/bin` na frente do adb do SDK: dois servidores se matando |
+| `Bash(scrcpy *)`, `Bash(scrcpy)` | sem `ADB=`, o scrcpy usa o adb que achar; se nao for o do resto da sessao, os tuneis caem e o sintoma aparece no app |
 | `Bash(pkill *)` | `-f` casa a propria linha de comando: mata o proprio shell |
 | `Bash(pgrep *)` | idem, e o lado que so reporta: um processo que e voce mesmo |
 | `Bash(adb shell uiautomator *)` | dump para arquivo pode servir a arvore da rodada anterior |
-| `Bash(npx expo run:*)` | com o diretorio nativo presente, o prebuild nao roda |
+| `Bash(npx expo run:*)` | com o diretorio nativo presente, o prebuild nao roda; e, no Android, se `ANDROID_HOME` esta vazio e nao ha `sdk.dir`, o Gradle vai parar em "SDK location not found" |
 | `Bash(expo run:*)` | idem, sem `npx` |
 
 Todos **avisam e saem 0**. Nenhum bloqueia: um hook que barra o comando do
@@ -80,7 +84,19 @@ Bluetooth **e** documentado; que o scan volta vazio sem erro, nao e.
 alegacao de melhoria sem registro e marketing — entao esta versao nao faz
 nenhuma. O que existe e comportamento verificado, nao eficacia medida:
 
-- Guardas exercitados com stdin simulado: 17 casos entre casar e nao casar.
+- Guardas exercitados com stdin simulado: 17 casos entre casar e nao casar na
+  0.1.0; mais 19 na 0.2.0 (apt, scrcpy e a nota do SDK no `expo run`), num
+  ambiente falso — SDK, scrcpy e adb de mentira num diretorio temporario —
+  para o resultado nao depender da maquina.
+- `espelhar-celular`: a prova sem janela rodou contra um S20 real por Wi-Fi —
+  12 s de `--no-playback --record` deram 10 MB, com `adb reverse --list`
+  intacto depois. E `apt-get install -s scrcpy` no Ubuntu 26.04 listou o
+  pacote `adb` 34.0.5 ao lado do scrcpy 3.3.4, que e a premissa do guarda.
+- `expo-metro`, modulo nativo: a verificacao por `expo-modules-autolinking
+  resolve` listou `expo-haptics` ao lado de `expo-device` e `expo-secure-store`
+  num projeto real, depois de `grep` em `android/` nao achar nada — e o
+  `expo run:android` sem `ANDROID_HOME` parou em "SDK location not found"
+  depois do prebuild, como a skill descreve.
 - `adb_ui.py --self-test`: 7 casos, incluindo dump vazio, sem aparelho.
 - `adb-ui.sh` exercitado contra emulador real: `dump` devolveu 14 rotulos com
   bounds, `tap "Chrome"` acertou e trocou de activity, `shot` produziu 58 KB.

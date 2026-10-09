@@ -41,6 +41,68 @@ Um falso positivo comum ao procurar isso no log: as tarefas `> Task :algo:preBui
 do Gradle **nao** sao o prebuild do Expo. E coincidencia de nome, e um `grep
 prebuild` no log dispara nelas.
 
+## O SDK nao chega ao shell nao interativo
+
+**Observado (2026-10-08).** `expo run:android` passou pelo prebuild, entrou no
+Gradle e parou em `SDK location not found. Define a valid SDK location with an
+ANDROID_HOME environment variable or by setting the sdk.dir path in your
+project's local properties file`. O `ANDROID_HOME` estava no `~/.bashrc` — e o
+`~/.bashrc` do Ubuntu retorna cedo quando o shell nao e interativo, que e o
+shell de qualquer ferramenta de agente. A variavel chega vazia e o erro so
+aparece minutos depois, no fim do caminho.
+
+**Documentado:** o Gradle do Android le `ANDROID_HOME` ou `sdk.dir` em
+`local.properties`, nesta ordem de preferencia (a mensagem acima e a propria
+doc). Duas saidas, e a primeira vale para qualquer ferramenta que o projeto
+chame:
+
+```bash
+export ANDROID_HOME="$HOME/Android/Sdk" JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export PATH="$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator"
+npx expo run:android
+```
+
+Ou `sdk.dir=/home/<voce>/Android/Sdk` em `android/local.properties` — que o
+`prebuild --clean` apaga junto com o diretorio, entao nao sobrevive ao item
+anterior. O guarda do `expo run:*` avisa quando os dois faltam.
+
+O mesmo vale para o `emulator`: por caminho absoluto, ou a variavel antes.
+
+## Modulo nativo novo: o JS nao reclama
+
+Entrou um pacote com codigo nativo (`expo-haptics`, por exemplo). O `npm
+install` passa, o `tsc` passa, o Fast Refresh entrega o JS, e o aparelho roda
+o build antigo, **sem o modulo** — e nada quebra na cara.
+
+**Documentado:** modulos Expo que podem faltar sao carregados por
+`requireOptionalNativeModule`, que devolve `null` em vez de lancar. Um wrapper
+com `try/catch` por cima, que e o certo para nao derrubar o app, esconde o
+resto: a funcao roda, nao vibra, nao avisa.
+
+A ordem que funciona, com o diretorio nativo ja presente:
+
+```bash
+npx expo prebuild --platform android --clean   # o run:android NAO faz isso
+npx expo run:android                           # recompila e reinstala
+```
+
+E prove que o modulo entrou, porque o build nao deixa rastro facil — o Gradle
+nao cria `node_modules/<pacote>/android/build`, e `grep` em `android/` nao
+acha o nome. O que responde e o resolvedor do autolinking, que e o que o
+Gradle consultou:
+
+```bash
+npx expo-modules-autolinking resolve -p android --json | jq -r '.modules[].packageName'
+```
+
+Se o pacote novo aparece ao lado dos que ja funcionam, entrou pelo mesmo
+caminho que eles.
+
+**Observado:** o build deixa residentes o daemon do Gradle e o do Kotlin
+(medido: 4 GB e 2 GB de RSS depois de um `BUILD SUCCESSFUL`). Nao e erro, e
+custo. `./gradlew --stop` em `android/` encerra o do Gradle; o do Kotlin se
+desliga sozinho depois de duas horas, ou pelo PID.
+
 ## Um Metro por porta, e a porta e do primeiro
 
 O bundler escuta 8081 por padrao — documentado do lado do React Native

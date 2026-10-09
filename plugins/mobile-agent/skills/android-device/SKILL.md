@@ -115,6 +115,24 @@ client, certos caracteres disparam atalho de desenvolvedor e recarregam o bundle
 no meio do fluxo. Se acontecer, digite em pedacos, cortando antes do caractere
 problematico.
 
+## Aparelho fisico sem cabo: conecte pelo nome
+
+A depuracao sem fio (Android 11+) poe o aparelho na rede como um servico mDNS.
+Depois do pareamento, a conexao que funciona e **pelo nome do servico**:
+
+```bash
+adb mdns services                       # adb-<serial>-xxxx  _adb-tls-connect._tcp  IP:porta
+adb connect adb-<serial>-xxxx._adb-tls-connect._tcp
+```
+
+**Observado, nao documentado:** `adb connect IP:porta` com o mesmo IP e porta
+que o mDNS acabou de listar falhou, e pelo nome conectou — mesmo aparelho,
+mesma rede, mesmo minuto. A doc descreve os dois caminhos sem distingui-los.
+
+Tudo o que vale por USB vale aqui: `adb reverse`, `screencap`, `input`, e o
+scrcpy para ver a tela (skill `espelhar-celular`). O hub USB que reenumera
+derruba o cabo; o Wi-Fi nao.
+
 ## Os tuneis caem sozinhos
 
 `adb reverse` e o mecanismo oficial de forwarding do device para o host, e a doc

@@ -34,6 +34,36 @@
             "type": "command",
             "if": "Bash(expo run:*)",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-expo-run.sh"
+          },
+          {
+            "type": "command",
+            "if": "Bash(apt install *)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-apt-adb.sh"
+          },
+          {
+            "type": "command",
+            "if": "Bash(apt-get install *)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-apt-adb.sh"
+          },
+          {
+            "type": "command",
+            "if": "Bash(sudo apt install *)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-apt-adb.sh"
+          },
+          {
+            "type": "command",
+            "if": "Bash(sudo apt-get install *)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-apt-adb.sh"
+          },
+          {
+            "type": "command",
+            "if": "Bash(scrcpy *)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-scrcpy.sh"
+          },
+          {
+            "type": "command",
+            "if": "Bash(scrcpy)",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-scrcpy.sh"
           }
         ]
       }
