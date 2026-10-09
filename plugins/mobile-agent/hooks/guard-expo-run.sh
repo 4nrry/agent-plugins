@@ -39,7 +39,23 @@ case "$sub" in
 esac
 [[ -n "$base" && -d "$base/$plat" ]] || exit 0
 
-jq -n --arg p "$plat" '{
+# Segundo aviso, so no Android: o Gradle precisa achar o SDK, e num shell NAO
+# interativo o `~/.bashrc` costuma retornar cedo — ANDROID_HOME chega vazio. O
+# build cai em "SDK location not found", depois do prebuild, depois de minutos.
+# Observado em 2026-10-08. O `android/local.properties` com `sdk.dir` cobre o
+# caso; sem ele e sem a variavel, avisa.
+sdk_nota=""
+if [[ "$plat" == "android" && -z "${ANDROID_HOME:-}" ]]; then
+  if ! grep -qs '^sdk\.dir=' "$base/android/local.properties"; then
+    printf -v sdk_nota '%s' \
+      $'\n\nE ANDROID_HOME esta VAZIO neste ambiente (shell nao interativo nao le o ' \
+      $'~/.bashrc inteiro) e nao ha sdk.dir em android/local.properties: o Gradle ' \
+      $'vai parar em \'SDK location not found\'. Exporte antes, na mesma linha:\n' \
+      $'  export ANDROID_HOME=$HOME/Android/Sdk JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64'
+  fi
+fi
+
+jq -n --arg p "$plat" --arg sdk "$sdk_nota" '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
     additionalContext: (
@@ -51,7 +67,7 @@ jq -n --arg p "$plat" '{
       "Se voce mexeu em alguma dessas coisas, rode antes:\n" +
       "  npx expo prebuild --platform " + $p + " --clean\n" +
       "Se mexeu so em JS/TS, pode seguir: o Fast Refresh cobre e nao ha o que " +
-      "regenerar."
+      "regenerar." + $sdk
     )
   }
 }' 2>/dev/null || exit 0
