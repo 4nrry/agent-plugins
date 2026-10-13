@@ -23,15 +23,21 @@ com os modelos gratis do Zen. Mesmo veredito, mesmas regras de caminho, escopo
 e comando, guard mais fraco no shell; detalhes em
 [Backend opencode](#backend-opencode).
 
+Terceiro backend, opcional: o **GitHub Copilot CLI** (`"backend": "copilot"`),
+sem shell nenhum para o modelo e o gate inteiro do nosso lado. No plano Free
+so o `--model auto` funciona e cada run gasta AI credits; detalhes em
+[Backend copilot](#backend-copilot).
+
 **O codigo sai da maquina.** Delegar ou pedir review manda o prompt, os
-arquivos que o worker ler e o diff para a Google, e gasta a quota do agy. A
+arquivos que o worker ler e o diff para a Google (ou para o provedor do
+backend escolhido), e gasta a quota do agy (ou os creditos do Copilot). A
 skill manda o Claude perguntar antes do primeiro run na sessao.
 
 ## Componentes
 
 | componente | o que faz |
 |---|---|
-| `scripts/agy_worker.py` | `delegate`, `review`, `gate`, os handlers de hook do agy, o guard e o loop do opencode, e `--self-test`. Um arquivo |
+| `scripts/agy_worker.py` | `delegate`, `review`, `gate`, os handlers de hook do agy, o guard e o loop do opencode, os hooks do Copilot, e `--self-test`. Um arquivo |
 | `skills/agy-worker/` | quando delegar e quando nao, como escrever a task, como ler o veredito, a revisao obrigatoria |
 | `skills/agy-worker/task.example.json` | uma task completa; o self-test a valida |
 | `commands/delegate.md`, `commands/review.md` | `/agy-worker:delegate` e `/agy-worker:review` |
@@ -221,6 +227,69 @@ positivo do guard, `apply_patch` (os modelos testados so usaram `write` e
 `OPENCODE_CONFIG_CONTENT` que o usuario ja tenha no ambiente (o do run o
 substitui).
 
+## Backend copilot
+
+Requer o `copilot` (GitHub Copilot CLI) no PATH e logado; so foi exercitado no
+**1.0.96**, numa conta **Copilot Free** (outra versao vira aviso). Para quando
+se quer um terceiro par de maos e se aceita gastar AI credits: no Free nao ha
+quota gratis a poupar, cada run custa.
+
+| | agy | copilot |
+|---|---|---|
+| guard | `.agents/hooks.json` | `.github/hooks/agy-worker-<run>.json`, escrito no comeco do run e removido no fim (inclusive SIGTERM/SIGHUP); recusa se ja existir, ou se sobrar um `agy-worker-*.json` de run morto; o `git status` pos-run ignora exatamente esse arquivo |
+| carga dos hooks | automatica | so com `COPILOT_ALLOW_ALL=true` no ambiente do processo; `--allow-all-tools` e `trustedFolders` nao carregam (lab) |
+| politica | `decide_pre` | a mesma: `hook cp-pre` traduz `view`, `glob`, `grep`, `apply_patch` (patch cru, um alvo por arquivo), `create`, `edit` para a ferramenta do agy; ferramenta desconhecida, `task`, MCP, rede e qualquer shell sao negados; qualquer coisa que nao seja allow nega |
+| shell | lista do agy | **nenhum**: `--excluded-tools bash task`. Chamada de shell ou de `task` no stream de eventos reprova o run |
+| gate | no `finish` e no Stop | no `agentStop`, que devolve `block` com a saida do gate ate `max_gate_attempts` (no maximo 8: o CLI ignora o hook depois de 8 bloqueios seguidos); com gate verde e relatorio ausente na mensagem final, bloqueia de novo pedindo so o relatorio, no maximo 2 vezes |
+| relatorio | `--json-schema` | o ultimo objeto JSON da ultima `assistant.message` |
+| sucesso | envelope + gate | evento `result` com `exitCode` 0, nenhum evento de erro, nenhuma chamada de shell/`task`, algum hook nosso registrado, relatorio, gate, escopo, HEAD; o exit 0 nao conta |
+| custo | quota do agy | `usage` no veredito: `ai_credits` (de `totalNanoAiu`; 1 credito = 1e9 nanoAIU e inferido, nao documentado), `premium_requests`, `served_models` |
+| review | `--mode plan` | escopo vazio (toda escrita negada no hook) e `--excluded-tools bash task apply_patch` |
+| modelo | `agy models` | so `auto`; outro modelo e recusado, salvo `"copilot_model_override": true` na task (ou `--copilot-model-override` no review), caminho **nao testado** para plano pago |
+
+Outras flags de todo run: `--allow-all-tools` (exigida pelo `-p`),
+`--disallow-temp-dir`, `--no-ask-user`, `--no-auto-update`,
+`--disable-builtin-mcps`, `--max-ai-credits 30` (o minimo aceito; serve so de
+freio para um run que dispare, nao de orcamento), `--usage-output-file` e
+`--log-dir` no run dir. Ambiente: `COPILOT_ALLOW_ALL=true`, `NX_DAEMON=false`,
+`AGY_WORKER_RUN`. O `COPILOT_HOME` continua o do usuario: isola-lo perdeu o
+login no lab.
+
+O que o lab mostrou (copilot 1.0.95/1.0.96, 2026-10-13, n=1 por caso, notas
+no scratchpad da sessao, **nao commitadas**) e o que o script faz por causa
+disso:
+
+| observado | consequencia |
+|---|---|
+| exit 0 com tarefa falhada (escrita negada, modelo dizendo "Incomplete") | o sucesso vem dos eventos JSONL e do gate |
+| hooks de `.github/hooks/*.json` so carregam com `COPILOT_ALLOW_ALL=true` | o run seta, so no ambiente do processo; isso tambem carrega skills, plugins e MCP servers do repo, e hooks do proprio repo rodam junto (o veredito avisa quais) |
+| `preToolUse` com `permissionDecision: deny` nega, inclusive `../x` e `src/../x`, e dentro de subagentes | e o guard |
+| `agentStop` com `decision: block` e `reason` forca outra volta; `stop_hook_active` na reentrada | e o gate |
+| timeout de hook **libera** (fail open, docs) | o `cp-pre` nao roda gate (0,05 a 0,07 s por chamada em 10 execucoes locais do handler, contra um timeout de 30 s); erro dentro do handler nega; um gate que estoure o timeout do `agentStop` deixa parar, e o gate final do veredito pega |
+| excluir so `bash` levou a 2826 chamadas de `task` e ~5,5 creditos | `bash` e `task` sempre excluidos juntos |
+| `--max-ai-credits` abaixo de 30 e recusado | 30 como freio, nao como teto por run |
+| `--model X` recusado para os 32 modelos do catalogo nesta conta; o Auto roteia para gpt-5.6-luna | so `auto` |
+| `--usage-output-file` traz creditos e o modelo servido | vai no veredito |
+| hooks tambem carregam de `.github/copilot/settings*.json` e `.claude/settings*.json` (docs) | escrita nesses caminhos e em `.github/hooks/` e negada, e um escopo que os cubra e recusado |
+
+Smoke tests, n=1 cada, `--model auto` (servido: gpt-5.6-luna), repo
+descartavel com um modulo Python e `unittest`, 2026-10-13. Nao sao run records:
+
+| run | resultado |
+|---|---|
+| delegate (`slugify` + 3 testes) com um check que falha so na 1a vez | `ok`, 21 s, 0,529 AI credits, 2 premium requests. `sessionStart` disparou; `agentStop` bloqueou com o gate vermelho, a 2a parada passou com gate verde. Ferramentas: 2 `view` (arquivos inexistentes, falha normal), 1 `apply_patch` com caminhos absolutos dentro do escopo; nenhuma negacao, nenhum shell. O relatorio diz `python3 -m unittest ... PASS` em `checks_run`, coisa que o worker sem shell nao rodou: autodeclarado, como sempre |
+| review `--backend copilot --diff HEAD~1` | `ok`, 19 s, 0,411 AI credits, 1 premium request. So 2 `view`; arvore inalterada; `request_changes` com um finding correto (nenhum teste com pontuacao ou nao-ASCII) |
+
+Total: 0,94 AI credits nos dois. Antes deles, uma checagem de flags com
+modelo inexistente (recusada antes de chamar modelo, 0 creditos).
+
+Nao medido: uma negacao do guard num run real deste script (o lab mostrou a
+do mesmo mecanismo, com outro handler); `create`/`edit`/`grep` (o modelo so
+usou `view` e `apply_patch`); se o `agentStop` ve o stdout ja escrito quando
+pede o relatorio (se nao vir, nao pede; o pedido nunca foi exercitado); o que
+acontece quando os creditos acabam; qualidade contra os outros backends;
+plano pago e `copilot_model_override`; runs em paralelo.
+
 ## Por que nao ha workflow script
 
 A ideia era herdar do `agent-fleet` um workflow que abre varias delegacoes em
@@ -243,8 +312,8 @@ propria sessao (delegate, revisao, commit, proxima), nao um fan-out.
 
 ## Verificacao
 
-`just check` roda `agy_worker.py --self-test`: 209 assercoes sem chamar o agy
-nem o opencode,
+`just check` roda `agy_worker.py --self-test`: 298 assercoes sem chamar o agy,
+o opencode nem o copilot,
 num repo git temporario. Cobrem as decisoes do guard (allowlist de ferramentas,
 caminho relativo e absoluto, symlink, `cd`/`Cwd`, `.git` pelo shell, git com
 opcoes globais e com aspas, redirecionamento, `&`, `finish`, gate isento so sem
@@ -262,3 +331,13 @@ com alvo fora do escopo e ferramenta desconhecida), as negacoes extras do shell
 so nesse backend, o review negando todo shell, o handler `oc-pre` quebrado
 negando, os eventos que saem 0 e sao falha, a extracao do relatorio, a
 restauracao exata do `opencode.json` e o plugin gerado apontando para o script.
+Do copilot: a regra do modelo (`auto` ou override), os campos da task, o
+prompt sem shell, a traducao de cada ferramenta (inclusive `apply_patch` cru
+com `..`, `src/..`, `Move to` e alvo no arquivo de hooks), shell, `task`, MCP e
+ferramenta desconhecida negados, o contrato de saida do hook (allow sem
+saida, deny com `permissionDecision`), o `agentStop` bloqueando com gate
+vermelho, pedindo o relatorio com no maximo 2 pedidos e nao pedindo sem stream
+legivel, os handlers quebrados (o `cp-pre` nega), os eventos que saem 0 e sao
+falha, a leitura do `usage.json`, a linha de comando com `bash task`
+excluidos, e o arquivo de hooks gerado, ignorado so ele no escopo, nunca
+sobrescrito, removido com os diretorios que o run criou.

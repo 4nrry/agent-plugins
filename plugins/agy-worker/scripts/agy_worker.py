@@ -9,6 +9,7 @@ the guard rail between them. Subcommands:
   gate TASK.json       run the task's gate by hand (--baseline: commands only)
   hook pre|stop|start  agy workspace hook handlers (installed per run)
   hook oc-pre          the opencode guard plugin's handler (same policy)
+  hook cp-pre|cp-stop  GitHub Copilot CLI repo hooks (same policy, gate on agentStop)
   --self-test          exercises everything that does not need agy itself
 
 Why each check exists is in the plugin README; the short version is that agy
@@ -29,6 +30,13 @@ oc-pre`, which translates it and asks the same decide_pre. opencode has no
 stop hook and no --json-schema, so the gate loop (run, gate, `run -s` with the
 gate output) and the report parsing are here, and opencode.json's bytes are
 restored after every opencode process (it writes "$schema" into it).
+
+Third backend, `"backend": "copilot"` (GitHub Copilot CLI 1.0.96, Free plan,
+`--model auto` only): repo hooks in `.github/hooks/agy-worker-<run>.json`,
+loaded only because the run sets COPILOT_ALLOW_ALL=true, forward every tool
+call to `hook cp-pre` (same decide_pre) and run the gate on agentStop. The
+shell and subagents are removed from the model (`--excluded-tools bash task`),
+so every command of the gate runs here, never by the worker.
 """
 
 import argparse
@@ -70,12 +78,29 @@ SECRET_EXCEPTIONS = ("*.example", "*.sample", "*.template")
 # stopped without touching anything the user started.
 RUN_ENV = "AGY_WORKER_RUN"
 WORKER_ENV = {"NX_DAEMON": "false"}
-BACKENDS = ("agy", "opencode")
+BACKENDS = ("agy", "opencode", "copilot")
 OPENCODE_DEFAULT_MODEL = "opencode/longcat-2.5-preview-free"
 TESTED_OPENCODE_VERSION = "1.19.0"
 # opencode writes "$schema" into these, in the process cwd, on every run (seen
 # on 1.19.0 even with --dir); the driver restores their bytes after each run.
 OPENCODE_CONFIG_FILES = ("opencode.json", "opencode.jsonc")
+# GitHub Copilot CLI. Everything here was seen on 1.0.96 with a Free account
+# (scratchpad lab, 2026-10-13, n=1 per case), where only `--model auto` is
+# accepted and it routes to gpt-5.6-luna.
+TESTED_COPILOT_VERSION = "1.0.96"
+COPILOT_DEFAULT_MODEL = "auto"
+COPILOT_HOOK_DIR = ".github/hooks"
+COPILOT_HOOK_PREFIX = "agy-worker-"
+COPILOT_MAX_STOP_BLOCKS = 8          # the CLI overrides agentStop after 8 consecutive blocks (docs)
+COPILOT_MIN_AI_CREDITS = 30          # `--max-ai-credits` refuses less: a runaway backstop, not a budget
+COPILOT_REPORT_ASKS = 2              # extra agentStop blocks asking only for the missing report
+# Both, always: excluding only `bash` sent the model into 2826 `task`
+# subagent calls (~5.5 AI credits) in the lab.
+COPILOT_EXCLUDED_TOOLS = ["bash", "task"]
+COPILOT_REVIEW_EXCLUDED_TOOLS = COPILOT_EXCLUDED_TOOLS + ["apply_patch"]
+# Tool names seen in the lab that run or inspect a shell; any of them in the
+# event stream fails the run, and the hook denies them anyway.
+COPILOT_SHELL_TOOLS = {"bash", "write_bash", "read_bash", "stop_bash", "list_bash", "shell", "powershell"}
 TIMEOUT_MARKER = "[agy] print timeout"
 AUTO_DENY_MARKER = "auto-denied"
 NO_OUTPUT_MARKER = "run ended with no output"
@@ -167,6 +192,27 @@ OC_TOOLS = {
     "bash": ("run_command", {"command": "CommandLine", "workdir": "Cwd"}),
 }
 OC_INERT_TOOLS = {"todowrite", "todoread", "skill", "invalid"}   # no file or process effect
+# Copilot CLI tool -> (agy tool, {copilot arg: agy arg}). `view`, `glob` and
+# `apply_patch` (a raw patch string, not JSON) were seen in the lab; `grep`,
+# `create` and `edit` are the CLI's documented file tools, mapped the same way.
+CP_TOOLS = {
+    "view": ("view_file", {"path": "AbsolutePath"}),
+    "glob": ("find_by_name", {"path": "SearchDirectory", "pattern": "Pattern"}),
+    "grep": ("grep_search", {"path": "SearchPath", "pattern": "Query", "glob": "Includes"}),
+    "create": ("write_to_file", {"path": "TargetFile", "file_text": "CodeContent", "content": "CodeContent"}),
+    "edit": ("replace_file_content", {"path": "TargetFile", "old_str": "TargetContent",
+                                      "new_str": "ReplacementContent"}),
+    "str_replace": ("replace_file_content", {"path": "TargetFile", "old_str": "TargetContent",
+                                             "new_str": "ReplacementContent"}),
+}
+# Where Copilot loads hooks from inside a repo (hooks reference). A worker
+# that could write there could replace its own guard, so no scope may cover
+# them and the hook denies writes to them whatever the scope says.
+COPILOT_HOOK_PREFIXES = (".github/hooks/", ".github/copilot/", ".claude/")
+COPILOT_HOOK_SAMPLES = (".github/hooks/agy-worker-x.json", ".github/copilot/settings.json",
+                        ".github/copilot/settings.local.json", ".claude/settings.json",
+                        ".claude/settings.local.json")
+CP_INERT_TOOLS = {"report_intent", "think", "update_todo"}   # no file or process effect
 PATCH_TARGET = re.compile(r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to):\s*(.+?)\s*$", re.M)
 
 DEFAULT_REPORT_SCHEMA = {
@@ -356,6 +402,24 @@ def normalize_task(task: dict) -> dict:
         errs.append("scope cobre opencode.json(c), que o driver restaura depois de cada run do opencode")
     if not isinstance(task.get("disable_claude_code", False), bool):
         errs.append("disable_claude_code deve ser booleano")
+    if not isinstance(task.get("copilot_model_override", False), bool):
+        errs.append("copilot_model_override deve ser booleano")
+    max_attempts = task.get("max_gate_attempts", DEFAULT_MAX_GATE_ATTEMPTS)
+    credits = task.get("max_ai_credits", COPILOT_MIN_AI_CREDITS)
+    if not isinstance(credits, (int, float)) or isinstance(credits, bool) or credits < COPILOT_MIN_AI_CREDITS:
+        errs.append(f"max_ai_credits deve ser numero >= {COPILOT_MIN_AI_CREDITS} (minimo do copilot)")
+    if backend == "copilot":
+        model_err = copilot_model_problem(task.get("model", COPILOT_DEFAULT_MODEL),
+                                          task.get("copilot_model_override", False))
+        if model_err:
+            errs.append(model_err)
+        if isinstance(max_attempts, (int, str)) and str(max_attempts).isdigit() and \
+                int(max_attempts) > COPILOT_MAX_STOP_BLOCKS:
+            errs.append(f"max_gate_attempts {max_attempts} > {COPILOT_MAX_STOP_BLOCKS}: o copilot ignora o "
+                        f"agentStop depois de {COPILOT_MAX_STOP_BLOCKS} bloqueios seguidos")
+        if isinstance(scope, list) and any(in_globs(f, scope) for f in COPILOT_HOOK_SAMPLES):
+            errs.append("scope do copilot cobre um arquivo de onde o copilot carrega hooks "
+                        "(.github/hooks/, .github/copilot/settings*.json, .claude/settings*.json)")
     try:
         parse_duration(task.get("timeout", DEFAULT_TIMEOUT))
         parse_duration(task.get("gate_timeout", DEFAULT_GATE_TIMEOUT))
@@ -371,7 +435,10 @@ def normalize_task(task: dict) -> dict:
         "report_schema": schema,
         "backend": backend,
         "disable_claude_code": task.get("disable_claude_code", False),
-        "model": task.get("model", OPENCODE_DEFAULT_MODEL if backend == "opencode" else DEFAULT_MODEL),
+        "model": task.get("model", {"opencode": OPENCODE_DEFAULT_MODEL,
+                                    "copilot": COPILOT_DEFAULT_MODEL}.get(backend, DEFAULT_MODEL)),
+        "copilot_model_override": task.get("copilot_model_override", False),
+        "max_ai_credits": credits,
         "timeout": parse_duration(task.get("timeout", DEFAULT_TIMEOUT)),
         "gate_timeout": parse_duration(task.get("gate_timeout", DEFAULT_GATE_TIMEOUT)),
         "max_gate_attempts": int(task.get("max_gate_attempts", DEFAULT_MAX_GATE_ATTEMPTS)),
@@ -381,6 +448,18 @@ def normalize_task(task: dict) -> dict:
         "secret_globs": list(task.get("secret_globs", DEFAULT_SECRET_GLOBS)),
         "min_quota": float(task.get("min_quota", DEFAULT_MIN_QUOTA)),
     }
+
+
+def copilot_model_problem(model, override: bool):
+    """None when the model may be used with Copilot, else why not."""
+    if model == COPILOT_DEFAULT_MODEL:
+        return None
+    if override and isinstance(model, str) and model:
+        return None
+    return (f"copilot: modelo {model!r} recusado. Nesta conta (plano Free, copilot 1.0.96, 2026-10-13) so "
+            "`--model auto` funcionou: os 32 modelos do catalogo foram recusados com `--model`, e o Auto "
+            "roteou sempre para gpt-5.6-luna. Num plano pago, `\"copilot_model_override\": true` na task (ou "
+            "--copilot-model-override no review) libera outro modelo: caminho NAO testado.")
 
 
 def compose_prompt(task: dict, repo: str) -> str:
@@ -394,6 +473,12 @@ def compose_prompt(task: dict, repo: str) -> str:
     if g["checks"]:
         steps.append(f"checks: {lst(g['checks'])}")
     steps_txt = "\n".join(f"  {i}. {s}" for i, s in enumerate(steps, 1))
+    if task.get("backend") == "copilot":
+        run_yourself = ("You have NO shell tool: do not try to run commands, tests or formatters. When you "
+                        "stop, this gate runs automatically and, if it fails, you are shown its output and "
+                        "must continue.")
+    else:
+        run_yourself = "Run the format and check commands yourself before declaring done."
     note = "`{files}` stands for the allowed files you changed. " if any(
         "{files}" in c for c in g["format"] + g["checks"]) else ""
     side = (f"- These files may be changed by tools as a side effect: {lst(task['side_effects'])}. "
@@ -408,7 +493,7 @@ def compose_prompt(task: dict, repo: str) -> str:
 {side}- If a file outside the allowed list must change, do NOT work around it and do not fix unrelated things: say so in the report (`out_of_scope_needs`).
 - When you declare the task done, this gate runs; if any step fails you will be shown its output and must continue:
 {steps_txt}
-  {note}Run the format and check commands yourself before declaring done. The gate is fully described here; do not search the filesystem for it.
+  {note}{run_yourself} The gate is fully described here; do not search the filesystem for it.
 - Final report: fill every field of the required schema. List every behaviour divergence you introduced and why. Do not claim a check passed unless you saw it pass.
 {report_rule(task)}"""
 
@@ -416,10 +501,12 @@ def compose_prompt(task: dict, repo: str) -> str:
 def report_rule(task: dict) -> str:
     """opencode has no --json-schema: the report is the last JSON object in
     the final message, and the driver asks again if it is missing."""
-    if task.get("backend") != "opencode":
+    if task.get("backend") not in ("opencode", "copilot"):
         return ""
+    again = (" Every final message, including the one after gate feedback, must end with it."
+             if task.get("backend") == "copilot" else "")
     return ("- End your final message with the report as ONE JSON object (no prose after it) matching "
-            f"this JSON schema: {json.dumps(task['report_schema'], separators=(',', ':'))}\n")
+            f"this JSON schema: {json.dumps(task['report_schema'], separators=(',', ':'))}.{again}\n")
 
 
 # --------------------------------------------------------------------------
@@ -625,6 +712,51 @@ def oc_calls(tool: str, args: dict) -> list:
     return [{"toolCall": {"name": name, "args": mapped}}]
 
 
+def cp_calls(tool: str, args) -> list:
+    """A Copilot tool call as agy-shaped payloads for decide_pre, like
+    oc_calls. `apply_patch` arrives as the raw patch text (lab); one payload per
+    file it touches. Unknown tools keep their name, so the allowlist denies."""
+    if tool in CP_INERT_TOOLS:
+        return []
+    if isinstance(args, str):
+        try:
+            parsed = json.loads(args)
+        except ValueError:
+            parsed = None
+        args = parsed if isinstance(parsed, dict) else {"_raw": args}
+    if not isinstance(args, dict):
+        args = {}
+    if tool == "apply_patch":
+        text = "\n".join(v for v in args.values() if isinstance(v, str))
+        targets = PATCH_TARGET.findall(text)
+        return ([{"toolCall": {"name": "write_to_file", "args": {"TargetFile": t}}} for t in targets]
+                or [{"toolCall": {"name": "apply_patch", "args": {}}}])
+    name, keys = CP_TOOLS.get(tool, (tool, {}))
+    mapped = {keys.get(k, "Description" if k in ("description", "intent") else k): v
+              for k, v in args.items()}
+    return [{"toolCall": {"name": name, "args": mapped}}]
+
+
+def decide_cp(payload: dict, ctx: dict) -> dict:
+    """preToolUse for Copilot. The shell is excluded from the model; if a shell
+    tool shows up anyway it is denied here, before decide_pre could allow a
+    harmless-looking command, and the verdict fails the run."""
+    tool = str(payload.get("toolName", ""))
+    if tool in COPILOT_SHELL_TOOLS:
+        return deny(f"Ferramenta {tool} bloqueada: este worker nao tem shell. Edite com as ferramentas "
+                    "de arquivo; o gate roda sozinho quando voce para.")
+    for call in cp_calls(tool, payload.get("toolArgs")):
+        target = (call["toolCall"].get("args") or {}).get("TargetFile")
+        if isinstance(target, str) and target:
+            rel = os.path.relpath(resolve(target, ctx["repo"]), ctx["repo"])
+            if rel.startswith(COPILOT_HOOK_PREFIXES):
+                return deny(f"Escrita bloqueada em {rel}: o copilot carrega hooks dali.")
+        out = decide_pre(call, ctx)
+        if out["decision"] != "allow":
+            return out
+    return {"decision": "allow"}
+
+
 def decide_oc(payload: dict, ctx: dict) -> dict:
     args = payload.get("args") if isinstance(payload.get("args"), dict) else {}
     for call in oc_calls(str(payload.get("tool", "")), args):
@@ -638,7 +770,9 @@ def decide_oc(payload: dict, ctx: dict) -> dict:
 # tree inspection and the gate
 # --------------------------------------------------------------------------
 
-def changed_paths(repo: str) -> list:
+def changed_paths(repo: str, ignore=()) -> list:
+    """Changed and untracked paths, minus agy's hooks file and `ignore` (the
+    exact Copilot hooks file of the run, never a glob)."""
     out = git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all")
     recs = out.split("\0")
     paths, i = [], 0
@@ -653,7 +787,8 @@ def changed_paths(repo: str) -> list:
             if i < len(recs) and recs[i]:
                 paths.append(recs[i])
             i += 1
-    return [p for p in dict.fromkeys(paths) if p != HOOK_FILE]
+    skip = {HOOK_FILE, *ignore}
+    return [p for p in dict.fromkeys(paths) if p not in skip]
 
 
 def classify(paths, scope, side_effects) -> dict:
@@ -668,10 +803,10 @@ def classify(paths, scope, side_effects) -> dict:
     return out
 
 
-def fingerprint(repo: str, side_effects) -> str:
+def fingerprint(repo: str, side_effects, ignore=()) -> str:
     h = hashlib.sha256()
     tracked = set(git(repo, "ls-files", "-z").split("\0"))
-    for p in sorted(changed_paths(repo)):
+    for p in sorted(changed_paths(repo, ignore)):
         if in_globs(p, side_effects):
             continue
         h.update(p.encode() + b"\0")
@@ -757,7 +892,8 @@ def run_gate(repo: str, ctx: dict, baseline: bool = False):
     """Returns (passed, text, classification)."""
     lines, ok = [], True
     say = lines.append
-    cls = classify(changed_paths(repo), ctx["scope"], ctx.get("side_effects", []))
+    cls = classify(changed_paths(repo, ctx.get("ignore_paths", [])), ctx["scope"],
+                   ctx.get("side_effects", []))
     files = [f for f in cls["in_scope"] if os.path.exists(os.path.join(repo, f))]
     if not baseline:
         for p in cls["out_of_scope"]:
@@ -824,7 +960,7 @@ def gate_cached(rundir: str, ctx: dict, trigger: str):
     st_path = os.path.join(rundir, "gate-state.json")
     st = read_json(st_path, {"attempts": 0, "runs": 0})
     st["attempts"] += 1
-    fp = fingerprint(repo, ctx.get("side_effects", []))
+    fp = fingerprint(repo, ctx.get("side_effects", []), ctx.get("ignore_paths", []))
     if st.get("fingerprint") == fp and st.get("passed") is True:
         passed, text, cached = True, st["text"], True
     else:
@@ -834,7 +970,7 @@ def gate_cached(rundir: str, ctx: dict, trigger: str):
             fh.write(text + "\n")
         # Gate commands can themselves touch the tree (formatters, Nx config);
         # the cache key is the state *after* them, so an identical re-check hits.
-        fp = fingerprint(repo, ctx.get("side_effects", []))
+        fp = fingerprint(repo, ctx.get("side_effects", []), ctx.get("ignore_paths", []))
         st.update(fingerprint=fp, passed=passed, text=text)
         cached = False
     write_json(st_path, st)
@@ -878,6 +1014,21 @@ def hook_main(event: str, rundir: str) -> int:
                                  for k, v in (payload.get("args") or {}).items()
                                  if k not in ("content", "oldString", "newString", "patchText")}
             append_jsonl(log, entry)
+        elif event == "cp-pre":
+            out = decide_cp(payload, ctx)
+            entry = {"event": "pre", "tool": payload.get("toolName"), "decision": out["decision"]}
+            if out["decision"] != "allow":
+                entry["reason"] = out.get("reason", "")[:300]
+                args = payload.get("toolArgs")
+                entry["args"] = ({k: (v if len(str(v)) < 300 else str(v)[:300] + "…")
+                                  for k, v in args.items() if k not in ("file_text", "old_str", "new_str")}
+                                 if isinstance(args, dict) else str(args)[:300])
+            append_jsonl(log, entry)
+        elif event == "cp-stop":
+            out = cp_stop(rundir, ctx, payload)
+            append_jsonl(log, {"event": "stop", "reason": "agentStop",
+                               "stop_hook_active": payload.get("stop_hook_active"),
+                               "decision": out["decision"]})
         elif event == "pre":
             name = (payload.get("toolCall") or {}).get("name", "")
             if name in FINISH_TOOLS and ctx.get("mode") == "delegate":
@@ -921,9 +1072,79 @@ def hook_main(event: str, rundir: str) -> int:
         except OSError:
             pass
         out = ({"decision": "deny", "reason": f"guard interno falhou ({exc!r}); chamada negada por seguranca"}
-               if event in ("pre", "oc-pre") else {"decision": "stop"} if event == "stop" else {})
-    print(json.dumps(out, ensure_ascii=False))
+               if event in ("pre", "oc-pre", "cp-pre") else {"decision": "stop"} if event == "stop"
+               else {"decision": "allow"} if event == "cp-stop" else {})
+    print(cp_hook_output(event, out) if event in ("cp-pre", "cp-stop") else json.dumps(out, ensure_ascii=False))
     return 0
+
+
+def cp_hook_output(event: str, out: dict) -> str:
+    """Copilot's hook contract. preToolUse: a deny is `permissionDecision`
+    with a reason (lab: the model sees "Denied by preToolUse hook: <reason>");
+    an allow prints nothing, the lab-verified pass-through, so the CLI's own
+    path checks (`--disallow-temp-dir`) still apply. agentStop: `block` with
+    the reason as the next prompt, or `allow`."""
+    if event == "cp-pre":
+        if out.get("decision") == "allow":
+            return ""
+        return json.dumps({"permissionDecision": "deny",
+                           "permissionDecisionReason": out.get("reason") or "negado"}, ensure_ascii=False)
+    if out.get("decision") == "block":
+        return json.dumps({"decision": "block", "reason": out.get("reason", "")}, ensure_ascii=False)
+    return json.dumps({"decision": "allow"})
+
+
+def cp_final_text(stdout: str):
+    """The content of the last non-empty assistant.message in Copilot's JSONL,
+    or None when there is none."""
+    text = None
+    for line in stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(ev, dict) and ev.get("type") == "assistant.message":
+            content = (ev.get("data") or {}).get("content")
+            if isinstance(content, str) and content.strip():
+                text = content
+    return text
+
+
+def cp_stop(rundir: str, ctx: dict, payload: dict) -> dict:
+    """agentStop: the gate, then the report. The worker has no shell, so this
+    is the only place the gate runs before the final one. Blocks only while
+    the gate fails (up to max_gate_attempts) or, once green, while the final
+    message visibly lacks the report (up to COPILOT_REPORT_ASKS); when the
+    event stream cannot be read yet, the report is not asked for, so a
+    buffering CLI cannot loop the worker."""
+    if ctx.get("mode") != "delegate":
+        return {"decision": "allow"}
+    passed, text, n = gate_cached(rundir, ctx, "agentStop")
+    if not passed:
+        if n >= ctx["max_gate_attempts"]:
+            return {"decision": "allow"}
+        return {"decision": "block", "reason":
+                f"The gate FAILED (attempt {n} of {ctx['max_gate_attempts']}); the task is not done. Fix the "
+                "real cause with the file tools, without disabling tests, without forbidden shortcuts and "
+                "without leaving the allowed files. You have no shell: the gate runs again when you stop. "
+                "End your final message with the JSON report. Gate output:\n" + tail(text)}
+    try:
+        with open(ctx.get("events_file", ""), encoding="utf-8", errors="replace") as fh:
+            final = cp_final_text(fh.read())
+    except OSError:
+        final = None
+    problems = report_problems(extract_report(final), ctx.get("report_schema") or DEFAULT_REPORT_SCHEMA)
+    if final is None or not problems:
+        return {"decision": "allow"}
+    asks_path = os.path.join(rundir, "report-asks.json")
+    asks = read_json(asks_path, {"n": 0})
+    if asks["n"] >= COPILOT_REPORT_ASKS:
+        return {"decision": "allow"}
+    asks["n"] += 1
+    write_json(asks_path, asks)
+    return {"decision": "block", "reason":
+            "The gate passed. Now end your final message with the report as ONE JSON object matching the "
+            f"schema given before ({'; '.join(problems)}). Do not change any file."}
 
 
 # --------------------------------------------------------------------------
@@ -1442,6 +1663,194 @@ def drive_opencode(oc: str, task: dict, repo: str, rundir: str, prompt: str, ctx
 
 
 # --------------------------------------------------------------------------
+# GitHub Copilot CLI backend: repo hooks for one run, gate on agentStop
+# --------------------------------------------------------------------------
+
+def cp_hook_rel(run_id: str) -> str:
+    return f"{COPILOT_HOOK_DIR}/{COPILOT_HOOK_PREFIX}{run_id}.json"
+
+
+def refuse_cp_leftovers(repo: str) -> list:
+    """Refuses on a hooks file left by a dead run (COPILOT_ALLOW_ALL=true
+    would load it, pointing at a dead run dir); returns the repo's own hook
+    files, which load too and run with the same trust."""
+    d = os.path.join(repo, COPILOT_HOOK_DIR)
+    names = sorted(os.listdir(d)) if os.path.isdir(d) else []
+    ours = [n for n in names if n.startswith(COPILOT_HOOK_PREFIX) and n.endswith(".json")]
+    if ours:
+        paths = " ".join(shlex.quote(os.path.join(d, n)) for n in ours)
+        raise Refusal(f"sobra de um run do agy-worker em {COPILOT_HOOK_DIR}/ ({', '.join(ours)}), de um run "
+                      "que morreu sem limpar ou ainda em curso neste repo. Se nenhum `copilot` estiver "
+                      f"rodando aqui, remova so esses arquivos: rm {paths}")
+    return [f"{COPILOT_HOOK_DIR}/{n}" for n in names if n.endswith(".json")]
+
+
+def install_cp_hooks(repo: str, rundir: str, ctx: dict) -> tuple:
+    """Write .github/hooks/agy-worker-<run>.json. Returns (relative path,
+    directories created by us, deepest first), for remove_cp_hooks."""
+    rel = cp_hook_rel(ctx["run_id"])
+    path = os.path.join(repo, rel)
+    if os.path.lexists(path):
+        raise Refusal(f"{rel} ja existe; este script nao sobrescreve arquivo de hooks")
+    created, d = [], os.path.dirname(path)
+    while not os.path.isdir(d):
+        created.append(d)
+        d = os.path.dirname(d)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    base = f"{shlex.quote(sys.executable)} {shlex.quote(os.path.abspath(__file__))} hook"
+    st = shlex.quote(rundir)
+    gate_secs = ctx.get("gate_timeout", DEFAULT_GATE_TIMEOUT) * max(
+        1, len(ctx["gate"]["format"]) + len(ctx["gate"]["checks"])) + 60
+    # Hook timeouts fail OPEN in Copilot: preToolUse gets a generous 30 s for
+    # a handler that answers in well under one, and agentStop the whole gate.
+    spec = {"version": 1, "hooks": {
+        "sessionStart": [{"type": "command", "bash": f"{base} start --state {st}", "cwd": ".",
+                          "timeoutSec": 10}],
+        "preToolUse": [{"type": "command", "bash": f"{base} cp-pre --state {st}", "cwd": ".",
+                        "timeoutSec": 30}],
+        "agentStop": [{"type": "command", "bash": f"{base} cp-stop --state {st}", "cwd": ".",
+                       "timeoutSec": gate_secs}],
+    }}
+    with open(path, "x", encoding="utf-8") as fh:
+        json.dump(spec, fh, indent=2)
+    write_json(os.path.join(rundir, "hooks.installed.json"), spec)
+    return rel, created
+
+
+def remove_cp_hooks(repo: str, rel: str, created) -> None:
+    try:
+        os.remove(os.path.join(repo, rel))
+    except FileNotFoundError:
+        pass
+    for d in created:                       # deepest first; only if empty, never rm -r
+        try:
+            os.rmdir(d)
+        except OSError:
+            break
+
+
+def file_sha(path: str):
+    try:
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        return None
+
+
+def preflight_copilot() -> tuple:
+    """(binary, warnings). No model listing exists to check against without a
+    model call, so the model rule lives in copilot_model_problem."""
+    cp = shutil.which("copilot")
+    if not cp:
+        raise Refusal("copilot nao esta no PATH")
+    with tempfile.TemporaryDirectory(prefix="agy-worker-cp-") as cwd:
+        proc = subprocess.run([cp, "--version"], capture_output=True, text=True, timeout=60, cwd=cwd,
+                              stdin=subprocess.DEVNULL)
+    m = re.search(r"(\d+\.\d+\.\d+)", proc.stdout)
+    version = m.group(1) if m else "?"
+    warns = []
+    if version != TESTED_COPILOT_VERSION:
+        warns.append(f"copilot {version}; este script so foi exercitado no {TESTED_COPILOT_VERSION}. Carga "
+                     "dos hooks, nomes das ferramentas e formato dos eventos podem ter mudado")
+    return cp, warns
+
+
+def copilot_cmd(cp: str, prompt: str, model: str, rundir: str, excluded, max_credits) -> list:
+    return [cp, "-p", oc_message(prompt), "--model", model, "--output-format", "json",
+            "--allow-all-tools", "--excluded-tools", *excluded, "--disallow-temp-dir", "--no-ask-user",
+            "--no-auto-update", "--disable-builtin-mcps", "--max-ai-credits", str(max_credits),
+            "--usage-output-file", os.path.join(rundir, "usage.json"),
+            "--log-dir", os.path.join(rundir, "copilot-logs")]
+
+
+def copilot_env(run_id: str) -> dict:
+    """COPILOT_ALLOW_ALL must be exactly "true": that is what trusts the cwd
+    and loads its hooks (lab: --allow-all-tools and trustedFolders do not).
+    It also loads the repo's own skills, plugins and MCP servers. COPILOT_HOME
+    stays the user's: isolating it lost the login in the lab."""
+    return {**os.environ, **WORKER_ENV, "COPILOT_ALLOW_ALL": "true", "COPILOT_AUTO_UPDATE": "false",
+            "NO_COLOR": "1", RUN_ENV: run_id}
+
+
+def evaluate_cp(rc, stdout: str, stderr: str):
+    """(failures, info) for one `copilot -p --output-format json`. Exit 0 came
+    with failed work in the lab, so success is read from the events: a
+    `result` with exitCode 0, no shell or subagent call, no error event."""
+    fails, events = [], []
+    if rc == "wrapper-timeout":
+        fails.append("timeout: copilot nao terminou e foi encerrado")
+    elif rc != 0:
+        fails.append(f"copilot saiu com rc={rc}: {tail(stderr.strip(), 400)}")
+    for line in stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(ev, dict):
+            events.append(ev)
+    if not events:
+        fails.append("nenhum evento JSON no stdout")
+    results = [ev for ev in events if ev.get("type") == "result"]
+    if events and not results:
+        fails.append("nenhum evento result: o run foi cortado")
+    elif results and results[-1].get("exitCode") != 0:
+        fails.append(f"evento result com exitCode={results[-1].get('exitCode')!r}")
+    tools, failed = {}, 0
+    for ev in events:
+        data = ev.get("data") or {}
+        if ev.get("type") == "tool.execution_start":
+            name = str(data.get("toolName", ""))
+            tools[name] = tools.get(name, 0) + 1
+        elif ev.get("type") == "tool.execution_complete" and data.get("success") is False:
+            failed += 1
+        elif str(ev.get("type", "")).endswith("error"):
+            fails.append(f"evento {ev.get('type')}: {json.dumps(data)[:300]}")
+    shell = sorted(t for t in tools if t in COPILOT_SHELL_TOOLS)
+    if shell:
+        fails.append(f"chamada de shell observada ({shell}), apesar de --excluded-tools: o worker nao devia "
+                     "ter shell")
+    if "task" in tools:
+        fails.append(f"subagente observado ({tools['task']} chamadas de task), apesar de --excluded-tools")
+    usage = (results[-1].get("usage") if results else None) or {}
+    info = {"session": next((ev.get("sessionId") for ev in results if ev.get("sessionId")), None),
+            "text": cp_final_text(stdout) or "", "tools": tools, "tool_failures": failed,
+            "premium_requests": usage.get("premiumRequests")}
+    return fails, info
+
+
+def read_cp_usage(path: str):
+    """Credits and served model from --usage-output-file, or None. 1 AI credit
+    = 1e9 nanoAIU is inferred from the CLI footer, not documented."""
+    u = read_json(path)
+    if not isinstance(u, dict):
+        return None
+    nano = u.get("totalNanoAiu")
+    return {"ai_credits": round(nano / 1e9, 4) if isinstance(nano, (int, float)) else None,
+            "premium_requests": u.get("totalPremiumRequestCost"),
+            "served_models": sorted((u.get("modelMetrics") or {}).keys()),
+            "current_model": u.get("currentModel"), "ai_credits_status": u.get("aiCreditsStatus"),
+            "api_duration_ms": u.get("totalApiDurationMs")}
+
+
+def run_copilot(cp: str, prompt: str, model: str, repo: str, rundir: str, ctx: dict, timeout_s: int,
+                excluded, max_credits):
+    """Install the run's hooks, run copilot, always remove them. Returns
+    (rc, stdout, stderr, failures about the hooks file)."""
+    rel, created = install_cp_hooks(repo, rundir, ctx)
+    sha = file_sha(os.path.join(repo, rel))
+    fails = []
+    try:
+        rc, stdout, stderr = run_agy(copilot_cmd(cp, prompt, model, rundir, excluded, max_credits), repo,
+                                     rundir, timeout_s, name="copilot", env=copilot_env(ctx["run_id"]),
+                                     grace=30)
+    finally:
+        if file_sha(os.path.join(repo, rel)) != sha:
+            fails.append(f"o arquivo de hooks do run ({rel}) mudou durante o run: o guard pode ter sido trocado")
+        remove_cp_hooks(repo, rel, created)
+    return rc, stdout, stderr, fails
+
+
+# --------------------------------------------------------------------------
 # subcommands
 # --------------------------------------------------------------------------
 
@@ -1461,13 +1870,15 @@ def cmd_delegate(a) -> int:
     trap_signals()
     task = load_task(a.task, backend=a.backend, model=a.model)
     opencode = task["backend"] == "opencode"
+    copilot = task["backend"] == "copilot"
     repo = repo_root(a.repo or os.getcwd())
     git(repo, "rev-parse", "--verify", "HEAD")
+    other_cp_hooks = refuse_cp_leftovers(repo) if copilot else []
     dirty = changed_paths(repo)
     if dirty:
         raise Refusal("arvore suja; commite ou guarde antes (o diff do worker tem que ser so dele): "
                       + ", ".join(dirty[:10]))
-    if not opencode:
+    if task["backend"] == "agy":
         refuse_existing_hooks(repo)
     rundir = new_rundir(repo, "delegate")
     eprint(f"agy-worker: run dir {rundir}")
@@ -1478,10 +1889,18 @@ def cmd_delegate(a) -> int:
         finally:
             if restore_files(repo, saved):
                 eprint("agy-worker: o preflight do opencode reescreveu opencode.json; restaurado")
+    elif copilot:
+        cp, pre_warns = preflight_copilot()
+        if other_cp_hooks:
+            pre_warns.append(f"hooks do proprio repo em {COPILOT_HOOK_DIR}/ carregam junto com os do run, com "
+                             f"a mesma confianca (COPILOT_ALLOW_ALL=true): {other_cp_hooks}")
     else:
         pre_warns = preflight_agy(task["model"], task["min_quota"], not a.no_quota_probe, rundir)
     ctx = base_ctx(repo, task, "delegate")
     ctx["run_id"] = os.path.basename(rundir)
+    if copilot:
+        ctx.update(ignore_paths=[cp_hook_rel(ctx["run_id"])], report_schema=task["report_schema"],
+                   events_file=os.path.join(rundir, "copilot.stdout"))
     write_json(os.path.join(rundir, "ctx.json"), ctx)
     write_json(os.path.join(rundir, "task.json"), task)
     schema_path = os.path.join(rundir, "report.schema.json")
@@ -1496,6 +1915,21 @@ def cmd_delegate(a) -> int:
     if opencode:
         fails, warns, report, run_info = drive_opencode(oc, task, repo, rundir, prompt, ctx, saved)
         run_info["wall_seconds"] = round(time.time() - started)
+    elif copilot:
+        eprint(f"agy-worker: copilot rodando ({task['model']}, timeout {task['timeout']}s)…")
+        rc, stdout, stderr, fails = run_copilot(cp, prompt, task["model"], repo, rundir, ctx, task["timeout"],
+                                                COPILOT_EXCLUDED_TOOLS, task["max_ai_credits"])
+        run_fails, info = evaluate_cp(rc, stdout, stderr)
+        fails += run_fails
+        report = extract_report(info.pop("text"))
+        fails += report_problems(report, task["report_schema"])
+        if isinstance(report, dict) and report.get("status") in ("partial", "blocked"):
+            fails.append(f"o worker se declarou {report['status']!r}")
+        warns = []
+        usage = read_cp_usage(os.path.join(rundir, "usage.json"))
+        if usage is None:
+            warns.append("usage.json do copilot ausente ou ilegivel: creditos gastos desconhecidos")
+        run_info = {"rc": rc, "wall_seconds": round(time.time() - started), **info, "usage": usage}
     else:
         cmd = ["agy", "-p", prompt, "--model", task["model"], "--output-format", "json",
                "--json-schema", schema_path, "--print-timeout", f"{task['timeout']}s",
@@ -1514,11 +1948,18 @@ def cmd_delegate(a) -> int:
             if isinstance(env, dict) else {})}
     warns = pre_warns + warns
     tampered = diff_state(integ_before, integrity_state(repo, rundir))
+    ignore = ctx.get("ignore_paths", [])
     if tampered:
         fails.append("config, hooks ou flags de indice do git, ou o ctx.json do run, mudaram durante o "
                      f"run; o veredito abaixo nao e confiavel: {tampered}")
     events = guard_events(rundir)
-    if not any(e.get("event") == "session_start" for e in events):
+    if copilot:
+        # Any of our hooks answering proves the file loaded; sessionStart alone
+        # was never observed firing in the lab.
+        if not any(e.get("event") in ("session_start", "pre", "stop") for e in events):
+            fails.append("os hooks do agy-worker nao carregaram no copilot (nenhum evento de hook "
+                         "registrado): o run nao teve guard rails; trate o diff como nao confiavel")
+    elif not any(e.get("event") == "session_start" for e in events):
         fails.append(("o plugin de guard do opencode nao carregou" if opencode else
                       "os hooks do agy-worker nao carregaram") + " (nenhum SessionStart registrado): "
                      "o run nao teve guard rails; trate o diff como nao confiavel")
@@ -1526,17 +1967,17 @@ def cmd_delegate(a) -> int:
         fails.append("HEAD mudou durante o run (commit ou checkout passou pelo guard)")
     # The gate verdict that counts is the one for the tree as it is now.
     st = read_json(os.path.join(rundir, "gate-state.json"), {"attempts": 0})
-    fp = fingerprint(repo, task["side_effects"])
+    fp = fingerprint(repo, task["side_effects"], ignore)
     if st.get("fingerprint") == fp and st.get("passed") is True:
         passed, text, source = True, st["text"], "cached (estado identico ao ultimo gate verde do hook)"
     else:
         passed, text, _ = run_gate(repo, ctx)
         with open(os.path.join(rundir, "gate-final.log"), "w", encoding="utf-8") as fh:
             fh.write(text + "\n")
-        source = "final (rodado apos o agy)"
+        source = f"final (rodado apos o {task['backend']})"
     if not passed:
         fails.append("gate falhou no estado final da arvore")
-    cls = classify(changed_paths(repo), task["scope"], task["side_effects"])
+    cls = classify(changed_paths(repo, ignore), task["scope"], task["side_effects"])
     if cls["out_of_scope"]:
         fails.append(f"alteracoes fora do escopo: {cls['out_of_scope']}")
     if cls["side_effects"]:
@@ -1590,8 +2031,14 @@ def cmd_review(a) -> int:
         schema = read_json(a.schema)
         if not (isinstance(schema, dict) and schema.get("type") == "object"):
             raise Refusal(f"{a.schema}: schema precisa de raiz type=object")
-    opencode = a.backend == "opencode"
-    model = a.model or (OPENCODE_DEFAULT_MODEL if opencode else DEFAULT_MODEL)
+    opencode, copilot = a.backend == "opencode", a.backend == "copilot"
+    model = a.model or {"opencode": OPENCODE_DEFAULT_MODEL, "copilot": COPILOT_DEFAULT_MODEL}.get(
+        a.backend, DEFAULT_MODEL)
+    if copilot:
+        problem = copilot_model_problem(model, a.copilot_model_override)
+        if problem:
+            raise Refusal(problem)
+        other_cp_hooks = refuse_cp_leftovers(repo)
     timeout_s = parse_duration(a.timeout)
     diff_txt = ""
     if a.diff:
@@ -1610,6 +2057,10 @@ def cmd_review(a) -> int:
         finally:
             if restore_files(repo, saved):
                 eprint("agy-worker: o preflight do opencode reescreveu opencode.json; restaurado")
+    elif copilot:
+        cp, pre_warns = preflight_copilot()
+        if other_cp_hooks:
+            pre_warns.append(f"hooks do proprio repo em {COPILOT_HOOK_DIR}/ carregam junto: {other_cp_hooks}")
     else:
         pre_warns = preflight_agy(model, a.min_quota, not a.no_quota_probe, rundir)
     prompt = question
@@ -1618,6 +2069,8 @@ def cmd_review(a) -> int:
     prompt += ("\n\n---\nYou are a read-only reviewer. Do not modify files and do not run commands; "
                f"read files under `{repo}` as needed. Every finding must quote the exact code or text "
                "that supports it in `evidence`. Prefer `unsure` over a guess.\n")
+    if copilot:
+        prompt += "You have no shell and no editing tools; use only the read and search tools.\n"
     prompt += report_rule({"backend": a.backend, "report_schema": schema})
     with open(os.path.join(rundir, "prompt.md"), "w", encoding="utf-8") as fh:
         fh.write(prompt)
@@ -1627,7 +2080,10 @@ def cmd_review(a) -> int:
            "secret_globs": DEFAULT_SECRET_GLOBS,
            "gate": {"format": [], "checks": [], "forbid": []}, "gate_timeout": 60,
            "max_gate_attempts": 0, "gate_commands": [],
-           "deny_patterns": REVIEW_DENY_ALL if opencode else DENY_COMMANDS}
+           "deny_patterns": REVIEW_DENY_ALL if opencode or copilot else DENY_COMMANDS,
+           "run_id": os.path.basename(rundir)}
+    if copilot:
+        ctx["ignore_paths"] = [cp_hook_rel(ctx["run_id"])]
     write_json(os.path.join(rundir, "ctx.json"), ctx)
     schema_path = os.path.join(rundir, "review.schema.json")
     write_json(schema_path, schema)
@@ -1647,6 +2103,17 @@ def cmd_review(a) -> int:
         fails += report_problems(report, schema)
         warns = pre_warns + ([f"o opencode reescreveu {sorted(restored)}; bytes restaurados"] if restored else [])
         run_info = {"rc": rc, **info}
+    elif copilot:
+        eprint(f"agy-worker: review rodando (copilot, {model}, sem shell nem apply_patch)…")
+        rc, stdout, stderr, fails = run_copilot(cp, prompt, model, repo, rundir, ctx, timeout_s,
+                                                COPILOT_REVIEW_EXCLUDED_TOOLS, COPILOT_MIN_AI_CREDITS)
+        run_fails, info = evaluate_cp(rc, stdout, stderr)
+        fails += run_fails
+        report = extract_report(info.pop("text"))
+        fails += report_problems(report, schema)
+        usage = read_cp_usage(os.path.join(rundir, "usage.json"))
+        warns = pre_warns + ([] if usage else ["usage.json do copilot ausente: creditos gastos desconhecidos"])
+        run_info = {"rc": rc, **info, "usage": usage}
     else:
         cmd = ["agy", "-p", prompt, "--model", model, "--mode", "plan", "--output-format", "json",
                "--json-schema", schema_path, "--print-timeout", f"{timeout_s}s"]
@@ -1665,7 +2132,11 @@ def cmd_review(a) -> int:
             or integrity_state(repo, rundir) != integ_before):
         fails.append("a arvore, um arquivo ignorado ou o .git mudou durante um review que devia ser "
                      "somente leitura")
-    if not any(e.get("event") == "session_start" for e in guard_events(rundir)):
+    if copilot:
+        if not any(e.get("event") in ("session_start", "pre", "stop") for e in guard_events(rundir)):
+            fails.append("os hooks do agy-worker nao carregaram no copilot (nenhum evento de hook): o "
+                         "review rodou sem nada que negasse escrita")
+    elif not any(e.get("event") == "session_start" for e in guard_events(rundir)):
         if opencode:
             fails.append("o plugin de guard do opencode nao carregou (nenhum SessionStart): o review "
                          "rodou sem nada que o mantivesse somente leitura")
@@ -1894,6 +2365,120 @@ def self_test() -> int:
         check(decide_oc({"tool": "write", "args": {"filePath": "src/a.txt"}}, rctx)["decision"] == "deny",
               "review opencode nega escrita")
 
+        # copilot backend: model rule, task fields, tool translation to the same decide_pre
+        ctask = normalize_task({"prompt": "x", "scope": ["src/*"], "backend": "copilot",
+                                "gate": {"checks": ["true"]}})
+        check(ctask["model"] == "auto" and ctask["max_ai_credits"] == COPILOT_MIN_AI_CREDITS,
+              "copilot: modelo auto e backstop de 30 creditos")
+        for bad, why in ((dict(model="gpt-5.6-luna"), "modelo fixo sem override"),
+                         (dict(model="claude-sonnet-5.5", copilot_model_override="yes"), "override nao booleano"),
+                         (dict(max_ai_credits=10), "max_ai_credits abaixo de 30"),
+                         (dict(max_gate_attempts=9), "mais tentativas que o limite de bloqueios"),
+                         (dict(scope=["*"]), "scope cobre .github/hooks"),
+                         (dict(scope=[".claude/*"]), "scope cobre .claude/settings.json")):
+            try:
+                normalize_task({"prompt": "x", "scope": ["src/*"], "backend": "copilot",
+                                "gate": {"checks": ["true"]}, **bad})
+                check(False, f"task copilot invalida aceita: {why}")
+            except Refusal as exc:
+                check(why != "modelo fixo sem override" or "Free" in str(exc), f"{why}: {exc}")
+        check(normalize_task({"prompt": "x", "scope": ["src/*"], "backend": "copilot", "gate": {"checks": ["t"]},
+                              "model": "claude-sonnet-5.5", "copilot_model_override": True})["model"]
+              == "claude-sonnet-5.5", "override libera outro modelo")
+        check(copilot_model_problem("auto", False) is None and copilot_model_problem("x", False),
+              "regra do modelo")
+        cprompt = compose_prompt(ctask, repo)
+        check("NO shell" in cprompt and "Run the format and check commands yourself" not in cprompt
+              and "ONE JSON object" in cprompt and "after gate feedback" in cprompt,
+              "prompt do copilot: sem shell, gate automatico, relatorio em toda mensagem final")
+        check("Run the format and check commands yourself" in compose_prompt(task, repo), "prompt do agy intacto")
+        cctx = base_ctx(repo, ctask, "delegate")
+        cp = lambda tool, args: decide_cp({"toolName": tool, "toolArgs": args}, cctx)["decision"]  # noqa: E731
+        for tool, args, want, why in (
+                ("view", {"path": f"{repo}/src/a.txt"}, "allow", "view no repo"),
+                ("view", {"path": "src/a.txt", "view_range": [1, 5]}, "allow", "view relativo"),
+                ("view", {"path": "/etc/passwd"}, "deny", "view fora do repo"),
+                ("view", {"path": f"{repo}/.env"}, "deny", "view de segredo"),
+                ("view", json.dumps({"path": "/etc/passwd"}), "deny", "args como string JSON"),
+                ("glob", {"pattern": "src/**/*.ts"}, "allow", "glob no repo"),
+                ("glob", {"pattern": "/etc/*"}, "deny", "glob absoluto"),
+                ("grep", {"pattern": "/api/v1", "path": "src", "glob": "*.ts"}, "allow", "regex nao e caminho"),
+                ("grep", {"pattern": "x", "path": "../.."}, "deny", "grep fora"),
+                ("apply_patch", "*** Begin Patch\n*** Add File: src/b.txt\n+x\n*** End Patch\n", "allow",
+                 "patch no escopo (string crua, como no lab)"),
+                ("apply_patch", "*** Begin Patch\n*** Add File: NOTES.txt\n+x\n*** End Patch\n", "deny",
+                 "patch fora do escopo"),
+                ("apply_patch", "*** Add File: ../NOTES.txt\n+x\n", "deny", "patch com .."),
+                ("apply_patch", "*** Add File: src/../NOTES.txt\n+x\n", "deny", "patch src/.."),
+                ("apply_patch", "*** Update File: src/a.txt\n*** Move to: /tmp/x\n", "deny", "patch move para fora"),
+                ("apply_patch", "*** Add File: src/a.txt\n+x\n*** Add File: side.json\n+y\n", "deny",
+                 "patch com um alvo fora"),
+                ("apply_patch", "garbage", "deny", "patch sem alvo"),
+                ("apply_patch", "*** Add File: .github/hooks/agy-worker-x.json\n+{}\n", "deny",
+                 "patch no arquivo de hooks"),
+                ("create", {"path": "src/c.txt", "file_text": "see /etc/passwd"}, "allow", "create no escopo"),
+                ("create", {"path": "top.txt", "file_text": "x"}, "deny", "create fora do escopo"),
+                ("edit", {"path": "src/a.txt", "old_str": "/a/", "new_str": "/b/"}, "allow", "edit no escopo"),
+                ("edit", {"path": "side.json", "old_str": "a", "new_str": "b"}, "deny", "edit fora"),
+                ("bash", {"command": "ls"}, "deny", "bash sempre negado"),
+                ("read_bash", {"shellId": "1"}, "deny", "read_bash negado"),
+                ("task", {"prompt": "x"}, "deny", "subagente"),
+                ("web_fetch", {"url": "https://example.com"}, "deny", "rede"),
+                ("github-mcp-server-list_issues", {"owner": "x"}, "deny", "MCP do GitHub"),
+                ("skill", {"skill": "x"}, "deny", "skill"),
+                ("report_intent", {"intent": "Editing /etc"}, "allow", "report_intent inerte"),
+                ("brand_new_tool", {}, "deny", "ferramenta desconhecida")):
+            check(cp(tool, args) == want, f"copilot {why}: {tool} {args}")
+        crctx = dict(cctx, scope=[], deny_patterns=REVIEW_DENY_ALL, mode="review")
+        check(decide_cp({"toolName": "create", "toolArgs": {"path": "src/a.txt"}}, crctx)["decision"] == "deny",
+              "review copilot nega escrita")
+        check(decide_cp({"toolName": "view", "toolArgs": {"path": "src/a.txt"}}, crctx)["decision"] == "allow",
+              "review copilot le")
+        check(cp_hook_output("cp-pre", {"decision": "allow"}) == "", "allow do copilot nao imprime nada")
+        dj = json.loads(cp_hook_output("cp-pre", {"decision": "deny", "reason": "r"}))
+        check(dj == {"permissionDecision": "deny", "permissionDecisionReason": "r"}, "deny no formato do copilot")
+        check(json.loads(cp_hook_output("cp-stop", {"decision": "stop"})) == {"decision": "allow"},
+              "stop vira allow no copilot")
+
+        # copilot events: exit 0 with failed work, shell, subagent, missing result
+        def cpev(*evs):
+            return "\n".join(json.dumps(e) for e in evs)
+        tstart = lambda n: {"type": "tool.execution_start", "data": {"toolName": n, "arguments": "{}"}}  # noqa: E731
+        msg = lambda c: {"type": "assistant.message", "data": {"content": c, "phase": "final_answer"}}  # noqa: E731
+        res = lambda c=0: {"type": "result", "sessionId": "s1", "exitCode": c, "usage": {"premiumRequests": 2}}  # noqa: E731
+        f, info = evaluate_cp(0, cpev(tstart("view"), {"type": "tool.execution_complete", "data": {
+            "success": False}}, msg('ok {"status": "done"}'), msg(""), res()), "")
+        check(f == [] and info["session"] == "s1" and info["tools"] == {"view": 1} and info["tool_failures"] == 1
+              and info["premium_requests"] == 2 and extract_report(info["text"]) == {"status": "done"},
+              f"stream bom do copilot: {f} {info}")
+        f, _ = evaluate_cp(0, cpev(tstart("bash"), res()), "")
+        check(any("shell" in x for x in f), "chamada de bash reprova")
+        f, _ = evaluate_cp(0, cpev(tstart("task"), res()), "")
+        check(any("subagente" in x for x in f), "chamada de task reprova")
+        f, _ = evaluate_cp(0, cpev(msg("x")), "")
+        check(any("result" in x for x in f), "sem result reprova")
+        f, _ = evaluate_cp(0, cpev(res(1)), "")
+        check(any("exitCode" in x for x in f), "result com exitCode != 0 reprova")
+        f, _ = evaluate_cp(1, cpev(res()), "boom")
+        check(any("rc=1" in x for x in f), "rc != 0 reprova")
+        f, _ = evaluate_cp(0, "", "")
+        check(any("nenhum evento" in x for x in f), "stdout vazio reprova")
+        f, _ = evaluate_cp(0, cpev({"type": "session.error", "data": {"message": "quota"}}, res()), "")
+        check(any("session.error" in x for x in f), "evento de erro reprova")
+        upath = os.path.join(tmp, "usage.json")
+        write_json(upath, {"totalPremiumRequestCost": 2, "totalNanoAiu": 939943800, "aiCreditsStatus": "complete",
+                           "modelMetrics": {"gpt-5.6-luna": {}}, "currentModel": "gpt-5.6-luna"})
+        u = read_cp_usage(upath)
+        check(u["ai_credits"] == 0.9399 and u["served_models"] == ["gpt-5.6-luna"] and u["premium_requests"] == 2,
+              f"usage do copilot: {u}")
+        check(read_cp_usage(os.path.join(tmp, "nope.json")) is None, "usage ausente")
+        cmdl = copilot_cmd("copilot", "-x", "auto", "/r", COPILOT_EXCLUDED_TOOLS, 30)
+        i = cmdl.index("--excluded-tools")
+        check(cmdl[i + 1:i + 3] == ["bash", "task"] and "--disallow-temp-dir" in cmdl and cmdl[2] == "Task:\n-x"
+              and "--allow-all-paths" not in cmdl and "--allow-all" not in cmdl, "linha do copilot")
+        check(copilot_env("rid")["COPILOT_ALLOW_ALL"] == "true" and copilot_env("rid")[RUN_ENV] == "rid"
+              and copilot_env("rid")["NX_DAEMON"] == "false", "ambiente do copilot")
+
         # opencode events: exit 0 is never success
         sid = "ses_x"
         evs = lambda *e: "\n".join(json.dumps(dict(x, sessionID=sid)) for x in e)  # noqa: E731
@@ -2039,6 +2624,87 @@ def self_test() -> int:
         events = guard_events(rundir)
         check(any(e.get("event") == "session_start" for e in events), "marcador de SessionStart")
 
+        # copilot hooks end to end: cp-pre output contract, gate and report on agentStop
+        os.remove(os.path.join(repo, "outside.txt"))
+        cprun = os.path.join(tmp, "cprun")
+        os.makedirs(cprun)
+        once = os.path.join(tmp, "gate-once")
+        evfile = os.path.join(cprun, "copilot.stdout")
+        write_json(os.path.join(cprun, "ctx.json"), dict(
+            ctx, max_gate_attempts=3, run_id="cprun", ignore_paths=[cp_hook_rel("cprun")],
+            events_file=evfile, report_schema={"type": "object", "required": ["status"]},
+            gate=dict(ctx["gate"], format=[], checks=[f"test -e {shlex.quote(once)} || "
+                                                      f"{{ touch {shlex.quote(once)}; false; }}"])))
+
+        def cphook(event, payload):
+            p = subprocess.run([sys.executable, os.path.abspath(__file__), "hook", event, "--state", cprun],
+                               input=json.dumps(payload), capture_output=True, text=True, timeout=60)
+            return p.returncode, p.stdout.strip()
+        rc, out = cphook("cp-pre", {"toolName": "view", "toolArgs": {"path": f"{repo}/src/a.txt"}})
+        check(rc == 0 and out == "", f"cp-pre allow: saida vazia ({out!r})")
+        rc, out = cphook("cp-pre", {"toolName": "apply_patch", "toolArgs": "*** Add File: ../x\n+x\n"})
+        check(rc == 0 and json.loads(out)["permissionDecision"] == "deny", "cp-pre deny com motivo")
+        with open(evfile, "w") as fh:
+            fh.write(json.dumps(msg("done, no report")) + "\n")
+        rc, out = cphook("cp-stop", {"stop_hook_active": False})
+        check(json.loads(out)["decision"] == "block" and "gate FAILED" in json.loads(out)["reason"],
+              f"agentStop com gate vermelho bloqueia: {out}")
+        rc, out = cphook("cp-stop", {"stop_hook_active": True})
+        check(json.loads(out)["decision"] == "block" and "report" in json.loads(out)["reason"],
+              f"gate verde sem relatorio pede o relatorio: {out}")
+        with open(evfile, "a") as fh:
+            fh.write(json.dumps(msg('ok {"status": "done"}')) + "\n")
+        rc, out = cphook("cp-stop", {"stop_hook_active": True})
+        check(json.loads(out) == {"decision": "allow"}, f"gate verde com relatorio libera: {out}")
+        cst = read_json(os.path.join(cprun, "gate-state.json"))
+        check(cst["runs"] == 2 and cst["attempts"] == 3, f"gate do copilot: verde em cache depois: {cst}")
+        with open(evfile, "a") as fh:
+            fh.write(json.dumps(msg("again no report")) + "\n")
+        outs = [json.loads(cphook("cp-stop", {})[1])["decision"] for _ in range(3)]
+        check(outs == ["block", "allow", "allow"], f"pedidos de relatorio limitados: {outs}")
+        os.remove(evfile)
+        os.remove(os.path.join(cprun, "report-asks.json"))
+        check(json.loads(cphook("cp-stop", {})[1]) == {"decision": "allow"},
+              "sem stream legivel nao pede relatorio (nao prende o worker)")
+        os.remove(os.path.join(cprun, "ctx.json"))
+        rc, out = cphook("cp-pre", {"toolName": "view", "toolArgs": {"path": "src/a.txt"}})
+        check(json.loads(out)["permissionDecision"] == "deny", "cp-pre quebrado nega")
+        check(json.loads(cphook("cp-stop", {})[1]) == {"decision": "allow"}, "cp-stop quebrado deixa parar")
+        cpev_log = guard_events(cprun)
+        check(any(e.get("event") == "pre" and e.get("decision") == "deny" for e in cpev_log),
+              "negacao do copilot registrada")
+
+        # copilot hooks file: written for the run, ignored by the scope check, removed, never clobbered
+        cpctx = dict(ctx, run_id="cprun")
+        rel, made = install_cp_hooks(repo, cprun, cpctx)
+        spec = read_json(os.path.join(repo, rel))
+        check(rel == ".github/hooks/agy-worker-cprun.json" and set(spec["hooks"]) ==
+              {"sessionStart", "preToolUse", "agentStop"} and "cp-pre" in spec["hooks"]["preToolUse"][0]["bash"]
+              and os.path.abspath(__file__) in spec["hooks"]["agentStop"][0]["bash"], "hooks do copilot gerados")
+        check(rel in changed_paths(repo) and rel not in changed_paths(repo, [rel]), "escopo ignora so esse arquivo")
+        check(fingerprint(repo, [], [rel]) != fingerprint(repo, []), "fingerprint ignora o arquivo de hooks")
+        try:
+            install_cp_hooks(repo, cprun, cpctx)
+            check(False, "sobrescreveu o hooks do copilot")
+        except Refusal:
+            check(True, "recusa sobrescrever")
+        try:
+            refuse_cp_leftovers(repo)
+            check(False, "sobra do copilot aceita")
+        except Refusal as exc:
+            check("rm " in str(exc), "sobra do copilot recusada com o rm")
+        remove_cp_hooks(repo, rel, made)
+        check(not os.path.exists(os.path.join(repo, ".github")), ".github criado pelo run removido")
+        os.makedirs(os.path.join(repo, ".github", "hooks"))
+        with open(os.path.join(repo, ".github", "hooks", "mine.json"), "w") as fh:
+            fh.write("{}")
+        check(refuse_cp_leftovers(repo) == [".github/hooks/mine.json"], "hooks do repo listados")
+        rel, made = install_cp_hooks(repo, cprun, cpctx)
+        remove_cp_hooks(repo, rel, made)
+        check(made == [] and os.path.exists(os.path.join(repo, ".github", "hooks", "mine.json")),
+              "diretorio existente e arquivo do usuario intocados")
+        shutil.rmtree(os.path.join(repo, ".github"))
+
         # result evaluation: the exit-0 failure modes
         sch = DEFAULT_REPORT_SCHEMA
         good = {"status": "SUCCESS", "structured_output": {"status": "done", "files_changed": [],
@@ -2164,13 +2830,15 @@ def main(argv=None) -> int:
     r.add_argument("--timeout", default=DEFAULT_REVIEW_TIMEOUT)
     r.add_argument("--min-quota", type=float, default=DEFAULT_MIN_QUOTA)
     r.add_argument("--no-quota-probe", action="store_true")
+    r.add_argument("--copilot-model-override", action="store_true",
+                   help="so copilot: aceita modelo diferente de auto (plano pago; nao testado)")
     gt = sub.add_parser("gate", help="roda o gate de uma task na arvore atual")
     gt.add_argument("task")
     gt.add_argument("--repo")
     gt.add_argument("--baseline", action="store_true",
                     help="so os comandos de format/checks, sem escopo nem forbid")
     h = sub.add_parser("hook", help="handler de hook do agy (instalado por run)")
-    h.add_argument("event", choices=["pre", "stop", "start", "oc-pre"])
+    h.add_argument("event", choices=["pre", "stop", "start", "oc-pre", "cp-pre", "cp-stop"])
     h.add_argument("--state", required=True)
     a = p.parse_args(argv)
     if a.cmd == "hook":

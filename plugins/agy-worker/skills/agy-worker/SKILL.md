@@ -1,6 +1,6 @@
 ---
 name: agy-worker
-description: Delegar uma fatia de codigo bem delimitada e checavel por maquina ao Gemini pelo Antigravity CLI (`agy`) headless, sob guard rails e gate, e pedir segunda opiniao somente leitura. Diz quando delegar (porte mecanico, testes a partir de spec, migracao repetitiva com gate objetivo) e quando nao (spike exploratorio, decisao de design, mudanca sem gate), como escrever a task (prompt, escopo, gate, schema do relatorio), como ler o veredito, e que o diff tem que ser revisado contra a fonte da verdade depois de todo run, porque o gate e necessario e nao suficiente. Segundo backend opcional: o opencode com modelos gratis do Zen, quando a quota do agy acabou ou para capacidade extra. Use quando a tarefa mencionar agy, Antigravity, opencode, Gemini como worker, delegar para um modelo mais barato, poupar quota do Claude, segunda opiniao do Gemini, ou quando houver uma lista de fatias repetitivas com teste objetivo e o usuario quiser tira-las da sessao.
+description: Delegar uma fatia de codigo bem delimitada e checavel por maquina ao Gemini pelo Antigravity CLI (`agy`) headless, sob guard rails e gate, e pedir segunda opiniao somente leitura. Diz quando delegar (porte mecanico, testes a partir de spec, migracao repetitiva com gate objetivo) e quando nao (spike exploratorio, decisao de design, mudanca sem gate), como escrever a task (prompt, escopo, gate, schema do relatorio), como ler o veredito, e que o diff tem que ser revisado contra a fonte da verdade depois de todo run, porque o gate e necessario e nao suficiente. Segundo backend opcional: o opencode com modelos gratis do Zen, quando a quota do agy acabou ou para capacidade extra. Terceiro: o GitHub Copilot CLI sem shell, pago em AI credits. Use quando a tarefa mencionar agy, Antigravity, opencode, Copilot CLI, Gemini como worker, delegar para um modelo mais barato, poupar quota do Claude, segunda opiniao do Gemini, ou quando houver uma lista de fatias repetitivas com teste objetivo e o usuario quiser tira-las da sessao.
 ---
 
 # Gemini como worker, Claude como dono
@@ -39,11 +39,14 @@ para rodar fatias extras sem gastar quota nenhuma. Diga ao usuario o que muda:
 - O opencode grava `"$schema"` no `opencode.json` da raiz; o script restaura os
   bytes e avisa. Nao cubra `opencode.json` no `scope`: a task e recusada.
 
+O terceiro backend, `copilot`, tem secao propria no fim: [Backend copilot](#backend-copilot).
+
 ## Pergunte antes do primeiro run
 
 Delegar e revisar mandam o prompt, os arquivos que o worker ler e o diff para
-a Google (agy) ou para o provedor do modelo do Zen (opencode), gastam a quota
-do agy do usuario e, no agy, rodam com
+a Google (agy), para o provedor do modelo do Zen (opencode) ou para a GitHub
+(copilot), gastam a quota do agy ou os AI credits do Copilot do usuario e, no
+agy, rodam com
 `--dangerously-skip-permissions` (os hooks sao o limite). Antes do primeiro
 `delegate` ou `review` da sessao, pergunte; depois do sim, nao precisa
 perguntar de novo a cada fatia.
@@ -102,8 +105,8 @@ Uma task completa de exemplo esta em `task.example.json`, ao lado desta skill.
 | `gate.checks` | lint, typecheck, testes estreitos. Todos tem que sair 0 |
 | `report_schema` | opcional; o padrao pede `status`, `files_changed`, `checks_run`, `divergences`, `out_of_scope_needs` |
 | `side_effects` | globs que ferramentas reescrevem sozinhas (`nx.json`); toleradas, mas listadas no veredito |
-| `backend` | `agy` (padrao) ou `opencode` |
-| `model` | padrao `gemini-3.8-flash-high` no agy, `opencode/longcat-2.5-preview-free` no opencode; validado contra `agy models` / `opencode models` antes de rodar |
+| `backend` | `agy` (padrao), `opencode` ou `copilot` |
+| `model` | padrao `gemini-3.8-flash-high` no agy, `opencode/longcat-2.5-preview-free` no opencode, `auto` no copilot; validado contra `agy models` / `opencode models` antes de rodar (copilot: so `auto`, ver a secao dele) |
 | `disable_claude_code` | so opencode: `true` para nao carregar o `~/.claude/CLAUDE.md` (padrao `false`) |
 | `timeout`, `gate_timeout`, `max_gate_attempts` | `30m`, 900 s por comando, 5 |
 | `allow_paths`, `deny_commands`, `min_quota` | caminhos extra de leitura, regex extra de comando negado, quota minima (0.05, so agy) |
@@ -243,3 +246,66 @@ aviso; dentro de diretorio ignorado (`node_modules/`, `dist/`) e fora do repo,
 nada pega. E o worker herda o seu ambiente: `env` e
 `printenv` sao negados, mas `python3 -c 'import os; ...'` nao. Nao delegue com
 segredo em variavel de ambiente que o worker nao deva ver.
+
+## Backend copilot
+
+Separavel do resto: tudo o que e especifico do GitHub Copilot CLI esta aqui.
+
+**Quando usar.** Raramente, e sabendo que custa: no plano Free nao ha quota
+gratis, cada run gasta AI credits (0,53 num delegate pequeno com uma volta de
+gate e 0,41 num review, n=1 cada). Serve para uma fatia em que se queira um
+modelo de outra familia (o Auto serve gpt-5.6-luna) e em que **o gate inteiro
+roda sem o worker**: ele nao tem shell, entao nao roda teste, formatter nem
+git. O enunciado tem que bastar sem executar nada.
+
+**Antes do primeiro run.** Pergunte ao usuario: o codigo vai para a GitHub e
+cada run consome creditos. Diga tambem que o run seta `COPILOT_ALLOW_ALL=true`
+so no processo do copilot, porque e a unica forma de os hooks do repo
+carregarem, e que isso carrega tambem skills, plugins, MCP servers e hooks do
+proprio repo (o veredito avisa os hooks que encontrar em `.github/hooks/`). Nao
+use num checkout em que voce nao confie.
+
+**Modelo.** So `auto` (validado; outro e recusado). Num plano pago,
+`"copilot_model_override": true` libera outro slug, caminho nunca testado:
+diga isso ao usuario se for usar.
+
+**Task.** Igual as outras, mais:
+
+| campo | o que e |
+|---|---|
+| `max_gate_attempts` | no maximo 8: depois de 8 bloqueios seguidos do `agentStop` o CLI para de obedecer |
+| `max_ai_credits` | padrao e minimo 30 (o CLI recusa menos). E freio contra um run que dispare, nao orcamento: um run normal gasta menos de 1 |
+| `copilot_model_override` | `true` para aceitar modelo diferente de `auto` (nao testado) |
+| `scope` | nao pode cobrir `.github/hooks/`, `.github/copilot/settings*.json` nem `.claude/settings*.json`: de la o copilot carrega hooks |
+
+O gate inteiro (escopo, `forbid`, `format`, `checks`) roda do nosso lado no
+`agentStop`; diga no `prompt` o que o worker precisa saber sobre os comandos,
+porque ele nao pode roda-los para ver.
+
+**Rodando.**
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agy_worker.py" delegate /caminho/TASK.json --backend copilot
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agy_worker.py" review --backend copilot --diff HEAD~1 --prompt-file /scratchpad/pergunta.md
+```
+
+O run escreve `.github/hooks/agy-worker-<run>.json` e o remove no fim. Se um
+run morrer por SIGKILL, o proximo recusa e diz qual arquivo remover; enquanto
+ele existir, um `copilot` com `COPILOT_ALLOW_ALL=true` nesta pasta carrega os
+hooks de um run morto.
+
+**Lendo o veredito.** Alem das falhas comuns (gate, escopo, HEAD, relatorio):
+
+| falha | por que existe |
+|---|---|
+| hooks nao carregaram (nenhum evento de hook) | sem `COPILOT_ALLOW_ALL=true` exato os hooks somem em silencio (lab) |
+| chamada de shell observada / subagente observado | `bash` e `task` deviam estar excluidos; se apareceram, a exclusao falhou |
+| nenhum evento `result`, ou `exitCode` diferente de 0 | o run foi cortado; o exit 0 do processo nao prova nada |
+| arquivo de hooks do run mudou | o guard pode ter sido trocado durante o run |
+
+`copilot.usage` traz `ai_credits`, `premium_requests` e `served_models`:
+reporte os creditos gastos ao usuario. `report.checks_run` e ainda menos
+confiavel aqui: no smoke o worker escreveu `PASS` para um teste que ele nao
+tinha como rodar. So o gate conta.
+
+**Revisao.** A mesma da secao de revisao acima, sem atalho.
