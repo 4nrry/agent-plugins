@@ -1,0 +1,32 @@
+{
+  "backend": "agy",
+  "prompt": "Port src/legacy/orders.service.ts to src/server/orders/orders.service.ts. Read the legacy service and its spec first; the legacy code is the specification: same public methods, same queries, same error messages. Port every test case of src/legacy/orders.service.spec.ts to src/server/orders/orders.service.test.ts with the same describe/it names and assertions. Do not refactor, rename or 'improve' anything.",
+  "scope": [
+    "src/server/orders/*"
+  ],
+  "side_effects": [
+    "nx.json"
+  ],
+  "gate": {
+    "forbid": [
+      "@ts-ignore",
+      "@ts-expect-error",
+      "eslint-disable",
+      "\\b(it|describe|test)\\.(skip|only)\\(",
+      "\\bas any\\b|: any\\b"
+    ],
+    "format": [
+      "npx prettier --check {files}"
+    ],
+    "checks": [
+      "npx eslint --no-warn-ignored {files}",
+      "npx tsc --noEmit -p .",
+      "npx vitest run src/server/orders"
+    ]
+  },
+  "model": "gemini-3.8-flash-high",
+  "timeout": "30m",
+  "gate_timeout": 600,
+  "max_gate_attempts": 5,
+  "min_quota": 0.05
+}
