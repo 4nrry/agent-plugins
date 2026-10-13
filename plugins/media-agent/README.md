@@ -3,7 +3,7 @@
 Producao de midia por agente numa maquina propria — locucao, trilha, banco de
 imagens e video, retoque, turntable 3D e o render do filme — no ponto em que a
 GPU tem 8 GB, a empresa precisa de licenca comercial e a ferramenta nao avisa
-que voce acabou de violar uma das duas. Sete skills, um servidor MCP e um hook, um feitio:
+que voce acabou de violar uma das duas. Oito skills, um servidor MCP e um hook, um feitio:
 falha que nao levanta erro.
 
 Saiu de uma producao real: um video institucional de 64 s com locucao pt-BR,
@@ -22,6 +22,7 @@ Laptop de 8 GB.
 | `skills/video-remotion/` | Video como codigo: Remotion ou HTML + Chrome + ffmpeg, legenda derivada da locucao, quatro formatos e carrossel de um fonte so, a regra de licenca do Remotion, e quando por um `.glb` em cena com Three.js em vez do Blender. Um componente de referencia verificado (`references/glb-turntable.tsx`). |
 | `skills/edicao-kinocut/` + `.mcp.json` | Registra o MCP do Kinocut (Apache-2.0, local, `uvx`, fixado em 1.15.1) para editar video pronto com resposta em JSON, e diz quando usar ele, ffmpeg na mao ou re-render. So texto mais a definicao do servidor. |
 | `skills/geracao-ia/` | IA generativa como ferramenta de design: qual ferramenta para cada tarefa (Grok para explorar, `agy` para o still final, Veo para o plano 1080p, Grok para fundo 480p), o fluxo still→video que controla a composicao, prompt de cada uma, folha de contato para escolher, e o que nunca gerar. Cinco scripts que chamam so os binarios e APIs oficiais e conferem o arquivo; a montagem fica em `references/montagem.md`. |
+| `skills/elevenlabs/` | A ElevenLabs alem da locucao: SFX de transicao, trilha com duracao exata, limpar gravacao real, transcricao com tempo por palavra, dublagem, voz da marca e o canvas ElevenCreative. Quando usar a API REST (arquivo local entra e sai) e quando o MCP (upload depende do usuario, URL expira em 2 h), e o custo em creditos do Starter. Um script (`eleven.py`). |
 | `hooks/guard-vipsthumbnail.sh` | PreToolUse em `Bash(vipsthumbnail *)`: avisa quando `-o NOME` sem barra vai gravar no diretorio do arquivo de entrada. Avisa, nao bloqueia. |
 
 ## O que ele nao faz, de proposito
@@ -72,6 +73,8 @@ substitua.
 | Veo 402 com credito sobrando | A API devolve "prepayment credits are depleted" mesmo com creditos do Cloud aplicados, ate existir saldo pre-pago acima de zero no AI Studio. |
 | Video do Grok sob ZDR | Com privacidade ligada, o video nao sai sem bucket S3-compativel do usuario em `~/.grok/managed_config.toml`. E sai em 480p; ampliar com DAT2 leva 23 min para 6 s. |
 | Agente que "gera" desenhando | Sem pedir a ferramenta nativa, o agente da CLI pode escrever um script que desenha algo. Os wrappers pedem a ferramenta nativa e conferem o arquivo. |
+| MCP da ElevenLabs e arquivo local | O upload de referencia abre um seletor para o usuario; o agente sozinho nao manda arquivo da maquina. A saida e URL assinada que expira em 2 h. Para pipeline local, API REST. |
+| `estimate_only` que suja o canvas | Estimar custo no MCP nao cobra, mas cria um fluxo vazio a cada chamada. |
 | `bws run` re-parseia | Junta os argumentos numa string e passa a um shell; prompt com espaco vira erro de sintaxe do `sh`. `printf '%q '` em cada argumento e `--shell bash`. |
 
 ## Documentado contra observado
@@ -113,6 +116,11 @@ nenhuma. O que existe e comportamento verificado, nao eficacia medida:
   em 84 s; `veo.py --image` animou o mesmo still em 8 s de 1920x1080 em 109 s,
   mantendo a composicao, enquanto o Veo so com texto ignorou o enquadramento
   pedido. `folha.sh` montou a comparacao dos quatro.
+- `eleven.py`: `sfx` (0,6 s), `isolate` (frase com ruido marrom forte voltou a ter
+  pausas) e `stt` (duas frases com tempo, "vinte mil reais" normalizado para
+  "R$ 20 mil") contra a API real; 2 SFX, 1 musica de 15 s, 2 isolamentos e 1
+  transcricao somaram ~290 creditos. No MCP, um SFX custou 16,7 creditos contra
+  estimativa de 50, e Veo 3.1 Fast foi estimado em 7.272 creditos.
 - Kinocut 1.15.1 pelo mesmo comando do `.mcp.json`: o servidor respondeu
   `tools/list` com 196 ferramentas; pela CLI, `info` leu 64,4 s em 1920x1080,
   `trim` cortou 15,000 s, arquivo inexistente voltou como erro estruturado, e
