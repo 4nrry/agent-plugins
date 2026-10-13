@@ -25,6 +25,48 @@ a montagem esta em `references/montagem.md`.
 Nao amplie o clipe do Grok para usar em 1080p: DAT2 leva ~9,5 s por quadro
 (23 min para 6 s). Se o plano precisa de 1080p, e Veo.
 
+## Porte do modelo: rapido, medio, grande
+
+Escolha pelo uso do plano na peca, nao pelo ranking. **Medido** = rodou aqui, uma vez (n=1), em
+13/10/2026, a partir do mesmo still de leiras ao amanhecer; **so lista** = o
+modelo aparece na `models.list` da chave, mas nada foi gerado com ele; **so
+docs** = so fonte externa.
+Precos da pagina de precos do Gemini API e da xAI em 13/10/2026; ranking da
+Artificial Analysis no mesmo dia (a pagina nao data o snapshot).
+
+**Imagem**
+
+| porte | quando | use | estado |
+|---|---|---|---|
+| rapido | explorar direcoes, folha de contato, descartavel | `grok-imagem.sh` (assinatura) | medido |
+| medio | still final de carrossel, capa, fundo de video | `agy-imagem.sh` (assinatura) | medido; o modelo por tras do `generate_image` do agy nao foi identificado |
+| medio, pela API | quando a assinatura do agy esgotar, ou para lote | `nano.py gemini-nano-banana-2.1` (US$ 0,034 por imagem 1K; #4 em texto→imagem, empatado com o Grok Image 2.0) | medido: 12 s, 1376x768, still forte, luz e neblina coerentes |
+| grande | edicao fina de um still existente, detalhe que o medio erra | `nano.py gemini-3-pro-image --image still.png` | medido: 17 s; manteve composicao e enquadramento exatos, mas exagerou o que foi pedido ("vapor" saiu como labareda): peca a mudanca com moderacao |
+
+**Video**
+
+| porte | quando | use | estado |
+|---|---|---|---|
+| rapido | fundo desfocado, card pequeno, Reels com tipografia por cima | `grok-video.sh --image` (480p, padrao da API) ou `--res 720p` quando o clipe fica visivel | medido: 480p como antes; com `--res 720p`, 1280x704, 6 s, 86 s |
+| rascunho barato | testar movimento de camera antes de gastar no definitivo; tambem plano final em 720p | `veo.py --model veo-3.1-lite-generate-preview --res 720p --negative ""` (US$ 0,05/s) | medido: 44 s, 8 s em 720p com audio; manteve as leiras continuas. **Recusa `negativePrompt`** (HTTP 400): passe `--negative ""` |
+| medio | plano que aparece inteiro na tela, 1080p | `veo.py` (padrao `veo-3.1-fast-generate-preview`) | medido (~110 s, 8 s em 1080p) |
+| grande | plano principal, close, onde artefato aparece | `veo.py --model veo-3.1-generate-preview` (US$ 0,40/s em 1080p) | medido: 107 s, 8 s em 1080p com audio. **1080p so com `--seconds 8`** (4 s recusa). Neste still avancou mais que o pedido e quebrou as leiras em montes separados: pior fidelidade que o Lite, n=1 |
+
+No unico teste, o Veo mais caro nao foi o melhor: o Lite seguiu o still, o
+Standard reinventou a geometria. Antes de pagar o Standard num plano, rode o
+Lite com o mesmo prompt e so suba se o Lite falhar no que importa (detalhe em
+1080p, artefato no meio do clipe).
+
+Candidato que o `veo.py` ainda nao chama: `gemini-omni-1.1-flash` aparece na
+lista da chave e fica acima do Veo 3.1 no ranking de video com audio (#7-8,
+contra o Veo fora do top 10), a ~US$ 0,10/s em 720p. A API e outra (por token,
+nao `predictLongRunning`), e imagem→video com ele nao foi testado: nao troque o
+Veo por ele numa peca antes de um teste.
+
+O Grok Video 1.5 gera 1080p nativo de texto ou imagem, mas fica em 720p quando
+segue um video de referencia, e o 1.5-lite so chega a 1080p por upscale (so
+docs). Na imagem→video o `aspect_ratio` e ignorado: sai na proporcao do still.
+
 ## O fluxo que controla a composicao
 
 Video gerado direto do texto escolhe o enquadramento sozinho: pedindo "plano
@@ -67,7 +109,14 @@ volume nao foram medidos.
   aceita `--aspect 9:16` para Reels.
 - **Veo em ingles e com verbo de camera**: "slow push forward", "gentle orbit
   left", "static shot, mist drifting". Descreva o movimento, nao a cena: a cena
-  ja esta no still.
+  ja esta no still. **Um** movimento de camera por plano, com o enquadramento
+  ("medium shot"); dois movimentos concorrentes saem tremidos (guia de prompt
+  da DeepMind para o Veo).
+- **Som do Veo numa linha propria**, "Audio: vento leve, passaros ao longe".
+  Fala com dois-pontos depois de quem fala, nao entre aspas: aspas podem virar
+  texto na tela (so docs, nao testado aqui).
+- **Grok sem negativo no still**: a API de imagem nao tem campo de negativo;
+  descreva o material que quer em vez de listar o que evitar.
 - **Uma mudanca por rodada.** Mudou a hora e a altura juntas, nao sabe qual
   melhorou.
 
