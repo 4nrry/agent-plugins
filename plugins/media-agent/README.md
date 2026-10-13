@@ -21,7 +21,7 @@ Laptop de 8 GB.
 | `skills/turntable-blender/` | Giro 360 de um `.glb` em Cycles/GPU headless, PNG RGBA. Um script (`turntable.py`). |
 | `skills/video-remotion/` | Video como codigo: Remotion ou HTML + Chrome + ffmpeg, legenda derivada da locucao, quatro formatos e carrossel de um fonte so, a regra de licenca do Remotion, e quando por um `.glb` em cena com Three.js em vez do Blender. Um componente de referencia verificado (`references/glb-turntable.tsx`). |
 | `skills/edicao-kinocut/` + `.mcp.json` | Registra o MCP do Kinocut (Apache-2.0, local, `uvx`, fixado em 1.15.1) para editar video pronto com resposta em JSON, e diz quando usar ele, ffmpeg na mao ou re-render. So texto mais a definicao do servidor. |
-| `skills/geracao-ia/` | Imagem e video gerados pelas assinaturas: still pelo `agy` (Google AI Pro), clipe ou imagem animada pelo `grok` (SuperGrok), plano 1080p pelo Veo com os creditos do Google. Quatro scripts que chamam so os binarios e APIs oficiais e conferem que o arquivo saiu. |
+| `skills/geracao-ia/` | IA generativa como ferramenta de design: qual ferramenta para cada tarefa (Grok para explorar, `agy` para o still final, Veo para o plano 1080p, Grok para fundo 480p), o fluxo still→video que controla a composicao, prompt de cada uma, folha de contato para escolher, e o que nunca gerar. Cinco scripts que chamam so os binarios e APIs oficiais e conferem o arquivo; a montagem fica em `references/montagem.md`. |
 | `hooks/guard-vipsthumbnail.sh` | PreToolUse em `Bash(vipsthumbnail *)`: avisa quando `-o NOME` sem barra vai gravar no diretorio do arquivo de entrada. Avisa, nao bloqueia. |
 
 ## O que ele nao faz, de proposito
@@ -108,9 +108,11 @@ nenhuma. O que existe e comportamento verificado, nao eficacia medida:
   Blender. Com `--gl=swangle`, quadro vazio.
 - SeedVR2 medido em 36 frames 540p para 1080p: 292 s, 7,8 GB de VRAM, e
   removido depois; a receita ficou na skill `retoque-comfyui`.
-- `agy-imagem.sh` gerou still 1376x768 em 100 a 175 s; `grok-video.sh --image`
-  animou esse still em 6 s de 736x400 em 84 s; `veo.py` gerou 8 s em 1920x1080
-  em 108 s, depois de saldo pre-pago no AI Studio.
+- `grok-imagem.sh` gerou still 1280x720 em 64 s; `agy-imagem.sh` 1376x768 em
+  100 a 175 s; `grok-video.sh --image` animou o still do agy em 6 s de 736x400
+  em 84 s; `veo.py --image` animou o mesmo still em 8 s de 1920x1080 em 109 s,
+  mantendo a composicao, enquanto o Veo so com texto ignorou o enquadramento
+  pedido. `folha.sh` montou a comparacao dos quatro.
 - Kinocut 1.15.1 pelo mesmo comando do `.mcp.json`: o servidor respondeu
   `tools/list` com 196 ferramentas; pela CLI, `info` leu 64,4 s em 1920x1080,
   `trim` cortou 15,000 s, arquivo inexistente voltou como erro estruturado, e

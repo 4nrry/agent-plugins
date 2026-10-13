@@ -1,107 +1,112 @@
 ---
 name: geracao-ia
-description: Gerar imagem e video com IA a partir de assinaturas e creditos que o usuario ja paga — Antigravity CLI (`agy`, Google AI Pro) para still, Grok Build (`grok`, SuperGrok) para clipe curto ou para animar uma imagem, e Veo pela API do Gemini (creditos do Google Developer Program) para plano em 1080p — sem tela, chamando so os binarios e APIs oficiais. Use quando a tarefa pedir imagem gerada, still, video gerado, b-roll gerado, animar uma foto, Veo, Nano Banana, Grok Imagine, agy, Antigravity, Grok Build, Gemini API, creditos do Google Cloud, ou quando o usuario perguntar como usar a assinatura de Gemini ou de Grok num video.
+description: Usar IA generativa como ferramenta de design numa peca de marketing — explorar direcoes de cena com stills rapidos, escolher o enquadramento, animar o still escolhido em video e encaixar o plano no video ou no carrossel sem que ele destoe da marca. Cobre qual ferramenta usar para cada tarefa (Grok Build para explorar, Antigravity `agy` para o still final, Veo para o plano em 1080p, Grok para clipe de fundo em 480p), como escrever o prompt de cada uma, o fluxo still→video que controla a composicao, a folha de contato para escolher, e o que nunca gerar (o produto, texto, pessoas reais). Use quando a tarefa pedir imagem gerada, cena, b-roll gerado, animar uma foto, plano aereo, ambientacao, moodboard, storyboard, Veo, Nano Banana, Grok Imagine, agy, Grok Build, ou "gera uma imagem/video de..." para uma peca.
 ---
 
-# Imagem e video gerados por IA, pelas assinaturas
+# IA generativa como ferramenta de design
 
-Tres caminhos, cada um bom numa coisa. Todos rodam sem tela, chamados pelo
-agente; nenhum precisa de chave de API paga a parte, exceto o Veo, que gasta
-creditos do Google.
+Gerar e o passo barato; escolher e encaixar e o que faz a peca. Esta skill e o
+processo: explorar varias direcoes rapido, escolher na folha de contato,
+produzir o still final, animar a partir dele e encaixar no video com a mesma
+tipografia, cor e ritmo do resto.
 
-| caminho | o que entrega | tempo medido | sai de |
+Pre-requisito: `grok`, `agy` e `GEMINI_API_KEY` funcionando. Se algum falhar,
+a montagem esta em `references/montagem.md`.
+
+## Qual ferramenta para qual tarefa
+
+| tarefa | use | medido | por que |
 |---|---|---|---|
-| `agy` (Antigravity CLI) | still 1376x768, fotorrealista, rico em detalhe | 100 a 175 s | cota do Google AI Pro |
-| `grok` (Grok Build) | still 1280x720 em 40 s; clipe de 6 s em 480p, com audio | ~2 min o clipe | cota da SuperGrok |
-| Veo 3.1 Fast (API do Gemini) | clipe de 8 s em 1080p, 24 fps, com audio | ~2 min | creditos do Google Cloud |
+| explorar 3 a 6 direcoes de cena | `grok-imagem.sh` | ~40 a 65 s, 1280x720 | rapido; tom mais sobrio e documental |
+| still final, carrossel, capa | `agy-imagem.sh` | 100 a 175 s, 1376x768 | mais rico em detalhe e luz; tambem mais "cara de IA" |
+| plano de video que aparece inteiro na tela | `veo.py --image still.png` | ~110 s, 8 s em 1080p | mantem a composicao do still e move a camera de verdade |
+| fundo com desfoque, card pequeno, fundo de Reels | `grok-video.sh --image` | ~85 s, 6 s em 480p | sai da assinatura; movimento sutil, resolucao baixa |
 
-Fluxo que funcionou: `agy` gera o still → `grok-video.sh --image` anima esse
-still como primeiro quadro → o clipe entra como plano curto de apoio. Para
-plano que precisa de 1080p, Veo direto.
+Nao amplie o clipe do Grok para usar em 1080p: DAT2 leva ~9,5 s por quadro
+(23 min para 6 s). Se o plano precisa de 1080p, e Veo.
 
-## Scripts
+## O fluxo que controla a composicao
+
+Video gerado direto do texto escolhe o enquadramento sozinho: pedindo "plano
+aereo ao longo das leiras", o Veo entregou camera rente ao chao, sem leiras
+longas. Partindo de um still, ele respeitou a composicao e so animou a camera.
+Entao:
+
+1. **Explorar**: 3 a 6 stills com `grok-imagem.sh`, variando uma coisa por vez
+   (altura da camera, hora do dia, quanto do horizonte aparece).
+2. **Escolher**: `folha.sh folha.jpg *.png` e olhar lado a lado. Escolha pelo
+   que serve a peca (espaco para o titulo, leitura em tela pequena), nao pela
+   imagem mais bonita sozinha.
+3. **Still final** com `agy-imagem.sh`, repetindo o prompt da direcao escolhida.
+4. **Animar** o still com `veo.py --image` (1080p) ou `grok-video.sh --image` (fundo).
+5. **Conferir** com `folha.sh` (o video entra como 4 quadros) antes de por na timeline.
 
 ```bash
 S="${CLAUDE_PLUGIN_ROOT}/skills/geracao-ia/scripts"
-"$S/agy-imagem.sh" "descricao da cena, sem pessoas, sem texto, 16:9" still.png
-"$S/grok-video.sh" "drone avancando devagar, neblina leve" clipe.mp4 --image still.png
-python3 "$S/veo.py" "prompt em ingles" -o plano.mp4 --res 1080p --seconds 8 [--image still.png]
+for alt in "drone a media altura" "drone alto, quase de cima" "camera baixa entre as leiras"; do
+  "$S/grok-imagem.sh" "leiras de compostagem ao amanhecer, $alt, neblina leve, sem pessoas, sem texto, 16:9" "dir-${alt// /-}.png"
+done
+"$S/folha.sh" direcoes.jpg dir-*.png
+"$S/agy-imagem.sh" "<prompt da direcao escolhida>" still.png
+python3 "$S/veo.py" "slow drone push forward along the windrows, mist drifting, no text" -o plano.mp4 --image still.png
+"$S/folha.sh" conferencia.jpg still.png plano.mp4
 ```
 
-Os dois `.sh` chamam o binario oficial com o prompt que forca a ferramenta
-nativa ("nao escreva codigo para desenhar") e conferem que o arquivo saiu: sem
-isso, o agente as vezes escreve um script que desenha algo e diz que gerou.
-`veo.py` le `GEMINI_API_KEY` do ambiente; injete com o `run` do gerenciador de
-segredos.
+As chamadas foram testadas uma de cada vez; paralelismo e limite de cota em
+volume nao foram medidos.
 
-## `agy`: still pela cota do Google AI Pro
+## Escrevendo o prompt
 
-- Modo sem tela: `agy -p "..." --output-format json --dangerously-skip-permissions --sandbox`.
-  A ferramenta de imagem se chama `generate_image`; perguntado, o proprio agy
-  disse que nao tem ferramenta de video.
-- Termos: em tres respostas do forum oficial (set/2026), rodar o binario
-  oficial por script ou por outro agente, na sua maquina e so para voce, foi
-  dado como permitido. Quem respondeu nao aparece como funcionario do Google. O
-  que os termos proibem explicitamente e usar o login do Antigravity em outra
-  ferramenta: MCPs que chamam o endpoint de imagem com o token do agy estao fora.
+- **Cena, nao conceito.** "Leiras de compostagem ao amanhecer, drone a media
+  altura, neblina leve" funciona; "sustentabilidade e tecnologia" devolve
+  clichê.
+- **Sempre "sem pessoas, sem texto"** no still. Texto gerado sai com letra
+  inventada; o titulo entra depois, na tipografia da marca. Pessoa gerada numa
+  peca de empresa passa por depoimento ou funcionario que nao existe.
+- **Proporcao no prompt** do still ("16:9", "9:16"); o Veo segue a do still e
+  aceita `--aspect 9:16` para Reels.
+- **Veo em ingles e com verbo de camera**: "slow push forward", "gentle orbit
+  left", "static shot, mist drifting". Descreva o movimento, nao a cena: a cena
+  ja esta no still.
+- **Uma mudanca por rodada.** Mudou a hora e a altura juntas, nao sabe qual
+  melhorou.
 
-## `grok`: still e clipe pela cota da SuperGrok
+## O que nunca gerar
 
-- Modo sem tela: `grok -p "..." --cwd DIR --always-approve --output-format json`.
-  Ferramentas observadas: `image_gen` e `reference_to_video`, que gera quadro
-  inicial e final e anima entre eles, ou anima a imagem que voce passar.
-- **Video sob privacidade ZDR nao sai** sem um bucket seu:
-  "Video generation tools are unavailable under zero data retention (ZDR)". Ou
-  desliga o modo de privacidade (`/privacy`, decisao do usuario), ou configura um
-  bucket S3-compativel (R2, S3, MinIO) com `grok-zdr-bucket.sh`, que grava
-  `[tools.zdr_video_output_s3]` em `~/.grok/managed_config.toml`. A chave de R2
-  so se cria no painel da Cloudflare; o login do wrangler gerencia bucket, nao
-  chave.
-- O clipe sai em 480p (848x480 do texto, 736x400 animando imagem). Ampliar nao
-  compensa: DAT2 levou 9,5 s por quadro (23 min para 6 s) e RealESRGAN 3,9 s.
-  Use onde 480p nao aparece: fundo com desfoque, card pequeno, fundo de Reels.
-- O FAQ da xAI diz que imagem e video saem com marca d'agua e que remover viola
-  a politica de uso. Nos testes pelo Grok Build nao apareceu marca visivel. Nao
-  remova se aparecer.
+- **O produto.** O gerador inventa um aparelho parecido, com outra cor, outro
+  logo e outros conectores. O produto entra por foto real, turntable do glb
+  (skill `turntable-blender`) ou Three.js. Gere o ambiente e componha o
+  produto por cima.
+- **Logo, dado, numero, certificado.** Tudo que e afirmacao factual vem do
+  material real.
+- **Pessoa real ou parecida com alguem.** Ver a regra de voz na skill `locucao`.
 
-## Veo pela API do Gemini, com os creditos do Google
+## Encaixe na peca
 
-Montagem unica, feita pelo usuario porque envolve faturamento:
-
-1. Ativar os beneficios do Google Developer Program da assinatura AI Pro e
-   **aplicar cada credito mensal** (US$ 10 cada) numa conta de faturamento, um
-   por um, em `me.developers.google.com/benefits`. Creditos de meses anteriores
-   ficam acumulados esperando e vencem um ano depois.
-2. Criar um projeto ligado a essa conta e a chave no AI Studio, nesse projeto.
-3. **Saldo pre-pago acima de zero no AI Studio.** Sem isso a API devolve
-   `HTTP 402: Your prepayment credits are depleted` mesmo com creditos do Cloud
-   disponiveis. Com saldo, os creditos do Cloud sao gastos antes do saldo.
-   Contas novas sao pre-pagas; nao ha como voltar para pos-pago.
-4. Teto de gasto: orcamento com **Spend cap enforcement** no servico "Gemini
-   API" do projeto. Ele mede o custo de tabela e ignora creditos, entao um teto
-   mensal abaixo do credito mensal garante que o cartao nao e tocado. Nao e
-   instantaneo: deixe margem.
-
-Uso:
-
-- Modelos (out/2026): `veo-3.1-generate-preview`, `veo-3.1-fast-generate-preview`,
-  `veo-3.1-lite-generate-preview`; geracao por `predictLongRunning` e polling
-  da operacao.
-- Para testar se a chave e o saldo estao vivos sem gastar Veo, uma chamada de
-  texto de 1 token serve. `gemini-2.5-*` devolve 404 para usuario novo
-  ("no longer available to new users"); use o modelo que a mensagem sugere.
+- O plano gerado entra **curto** (2 a 4 s) e **como apoio**: ambientacao antes
+  ou depois de um plano real, nunca no lugar da prova (o produto, o painel, o
+  laudo).
+- Passe o mesmo tratamento de cor no gerado e no real, ou eles se separam a
+  olho. No Remotion, o caminho mais curto e o mesmo `filter` de CSS no
+  `<OffthreadVideo>` dos dois (nao medido contra gradacao de verdade).
+- O titulo vai por cima, na tipografia da marca, na area que o still deixou
+  livre: e por isso que se escolhe o still pensando no layout.
+- Grok com fundo desfocado (`filter: blur(6px) brightness(.6)`) esconde os 480p
+  e serve de fundo de Reels com tipografia por cima.
 
 ## Antes de publicar
 
-- O Instagram le a marca invisivel (SynthID, C2PA) e poe "AI info" no post nos
-  tres casos. Tirar a marca visivel nao esconde que e IA.
-- Plano gerado ao lado de filmagem real destoa. Para empresa que vende
-  credibilidade tecnica, use como apoio curto, nao como prova.
+- O Instagram le a marca invisivel (SynthID, C2PA) e mostra "AI info" no post.
+  Tirar marca visivel nao esconde que e IA, e no Grok remover viola a politica
+  de uso.
+- Assista ao clipe inteiro: IA erra no meio do clipe (objeto que some, maquina
+  que atravessa a leira), nao no primeiro quadro.
 
 ## O que nao foi verificado
 
-- O custo real de um clipe de Veo contra os creditos: o Cloud leva horas para
-  mostrar o consumo, e o teste foi um clipe so.
-- Se o video do Grok passa pelo bucket: o R2 seguiu com 0 objetos depois de
-  tres videos gerados, e o arquivo chegou na pasta pedida todas as vezes.
-- Limite de cota das assinaturas para geracao em volume.
+- Custo real de um clipe de Veo contra os creditos: o Cloud leva horas para
+  mostrar o consumo.
+- Cota das assinaturas para geracao em volume (dezenas de imagens por dia).
+- Consistencia de uma mesma cena em varios stills: cada chamada reinventa
+  detalhes; para uma serie, gere um still e derive variacoes por corte e
+  movimento, nao por nova geracao.
