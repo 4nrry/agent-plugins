@@ -1,0 +1,11 @@
+{
+  "name": "agy-worker",
+  "displayName": "Agy Worker",
+  "version": "0.1.0",
+  "author": {
+    "name": "4nrry",
+    "url": "https://github.com/4nrry"
+  },
+  "license": "MIT",
+  "description": "Gemini como worker barato pelo Antigravity CLI (`agy`) headless, sem brigar com o harness do Claude: o Claude escreve a task, define escopo e gate e revisa o diff; o agy executa uma fatia por vez sob hooks do proprio agy instalados so durante o run (caminho fora do repo, escrita fora do escopo e comandos de commit/install/deploy negados; o gate configuravel por projeto roda no `finish` e no Stop e nega o 'terminei' enquanto falhar). O veredito nunca confia no exit code, porque no agy 1.3.4 timeout, acao negada e schema nao satisfeito saem 0 (observado, n=1 por caso). Mais um modo de segunda opiniao somente leitura (`--mode plan` + `--json-schema`). Um script Python stdlib, uma skill, dois comandos; nenhum hook do Claude Code, nenhum MCP. Sem alegacao de melhoria: nao ha run records, e pela regra zero do bench/PROTOCOL.md uma alegacao sem registro e marketing."
+}
