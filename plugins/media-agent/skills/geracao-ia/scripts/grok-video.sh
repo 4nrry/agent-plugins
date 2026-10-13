@@ -3,7 +3,9 @@
 # SuperGrok, e confere que o MP4 saiu. Com --image, anima uma imagem existente como
 # quadro inicial.
 #
-#   grok-video.sh "descricao do movimento" saida.mp4 [--image quadro.png]
+#   grok-video.sh "descricao do movimento" saida.mp4 [--image quadro.png] [--res 720p]
+#
+# Sem --res a API gera em 480p (o padrao dela). --res vai no pedido ao agente.
 #
 # Sob privacidade ZDR, o video so sai se ~/.grok/managed_config.toml tiver a secao
 # [tools.zdr_video_output_s3] apontando para um bucket seu (ver SKILL.md).
@@ -13,17 +15,26 @@ desc=$1
 out=$(realpath -m "$2")
 shift 2
 image=""
-if [ "${1:-}" = "--image" ]; then image=$(realpath "$2"); fi
+res=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --image) image=$(realpath "$2"); shift 2 ;;
+    --res) res=$2; shift 2 ;;
+    *) echo "grok-video: opcao desconhecida $1" >&2; exit 2 ;;
+  esac
+done
+quality=""
+[ -n "$res" ] && quality=" Gere em resolucao $res, nao no padrao de 480p."
 command -v grok >/dev/null || { echo "grok-video: grok nao esta no PATH" >&2; exit 1; }
 dir=$(dirname "$out")
 mkdir -p "$dir"
 
 if [ -n "$image" ]; then
   prompt="Anime a imagem existente $image com sua ferramenta nativa de video, usando ESSA imagem como \
-quadro inicial (nao gere um quadro novo). Movimento: $desc. Salve como $out. \
+quadro inicial (nao gere um quadro novo). Movimento: $desc.$quality Salve como $out. \
 Nao escreva codigo para criar o video. No fim responda so com o caminho do arquivo."
 else
-  prompt="Use sua ferramenta nativa de geracao de video para gerar UM video curto: $desc. \
+  prompt="Use sua ferramenta nativa de geracao de video para gerar UM video curto: $desc.$quality \
 Salve como $out. Nao escreva codigo para criar o video. No fim responda so com o caminho do arquivo."
 fi
 

@@ -31,7 +31,8 @@ def main():
     p.add_argument("--res", default="1080p", choices=["720p", "1080p"])
     p.add_argument("--aspect", default="16:9", choices=["16:9", "9:16"])
     p.add_argument("--seconds", type=int, default=8)
-    p.add_argument("--negative", default="texto, legenda, marca d'agua, pessoas")
+    p.add_argument("--negative", default="texto, legenda, marca d'agua, pessoas",
+                   help='"" omite o campo; o veo-3.1-lite nao o aceita')
     a = p.parse_args()
     key = os.environ.get("GEMINI_API_KEY") or sys.exit("GEMINI_API_KEY ausente (injete pelo gerenciador de segredos)")
 
@@ -39,8 +40,10 @@ def main():
     if a.image:
         mime = mimetypes.guess_type(a.image)[0] or "image/png"
         inst["image"] = {"bytesBase64Encoded": base64.b64encode(open(a.image, "rb").read()).decode(), "mimeType": mime}
-    body = {"instances": [inst], "parameters": {"aspectRatio": a.aspect, "resolution": a.res,
-                                                "durationSeconds": a.seconds, "negativePrompt": a.negative}}
+    params = {"aspectRatio": a.aspect, "resolution": a.res, "durationSeconds": a.seconds}
+    if a.negative:  # veo-3.1-lite recusa o campo (HTTP 400): passe --negative ""
+        params["negativePrompt"] = a.negative
+    body = {"instances": [inst], "parameters": params}
     t0 = time.time()
     op = call("POST", f"{API}/models/{a.model}:predictLongRunning", key, body)
     name = op["name"]
