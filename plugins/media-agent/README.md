@@ -3,7 +3,7 @@
 Producao de midia por agente numa maquina propria — locucao, trilha, banco de
 imagens e video, retoque, turntable 3D e o render do filme — no ponto em que a
 GPU tem 8 GB, a empresa precisa de licenca comercial e a ferramenta nao avisa
-que voce acabou de violar uma das duas. Seis skills, um servidor MCP e um hook, um feitio:
+que voce acabou de violar uma das duas. Sete skills, um servidor MCP e um hook, um feitio:
 falha que nao levanta erro.
 
 Saiu de uma producao real: um video institucional de 64 s com locucao pt-BR,
@@ -21,6 +21,7 @@ Laptop de 8 GB.
 | `skills/turntable-blender/` | Giro 360 de um `.glb` em Cycles/GPU headless, PNG RGBA. Um script (`turntable.py`). |
 | `skills/video-remotion/` | Video como codigo: Remotion ou HTML + Chrome + ffmpeg, legenda derivada da locucao, quatro formatos e carrossel de um fonte so, a regra de licenca do Remotion, e quando por um `.glb` em cena com Three.js em vez do Blender. Um componente de referencia verificado (`references/glb-turntable.tsx`). |
 | `skills/edicao-kinocut/` + `.mcp.json` | Registra o MCP do Kinocut (Apache-2.0, local, `uvx`, fixado em 1.15.1) para editar video pronto com resposta em JSON, e diz quando usar ele, ffmpeg na mao ou re-render. So texto mais a definicao do servidor. |
+| `skills/geracao-ia/` | Imagem e video gerados pelas assinaturas: still pelo `agy` (Google AI Pro), clipe ou imagem animada pelo `grok` (SuperGrok), plano 1080p pelo Veo com os creditos do Google. Quatro scripts que chamam so os binarios e APIs oficiais e conferem que o arquivo saiu. |
 | `hooks/guard-vipsthumbnail.sh` | PreToolUse em `Bash(vipsthumbnail *)`: avisa quando `-o NOME` sem barra vai gravar no diretorio do arquivo de entrada. Avisa, nao bloqueia. |
 
 ## O que ele nao faz, de proposito
@@ -68,6 +69,9 @@ substitua.
 | Three.js que some no render | No Studio o modelo aparece; no render com `--gl=swangle` o quadro sai vazio, sem erro. So `angle` ou `vulkan` desenham. E o GLB tem de carregar fora do `ThreeCanvas`, senao o frame 0 sai vazio ou o render estoura o timeout. |
 | Fade entre cenas de texto | O `fade()` sobrepoe as duas cenas e mostra dois titulos cruzados. A cena nova entra `T` frames depois, dentro de um `Sequence`. |
 | SeedVR2 em 8 GB | Roda so com GGUF Q8, BlockSwap e tiles de 512 px; lote de 33 frames estoura. ~8 s por frame e inventa detalhe (SSIM 0,65 contra 0,84 do bicubico). |
+| Veo 402 com credito sobrando | A API devolve "prepayment credits are depleted" mesmo com creditos do Cloud aplicados, ate existir saldo pre-pago acima de zero no AI Studio. |
+| Video do Grok sob ZDR | Com privacidade ligada, o video nao sai sem bucket S3-compativel do usuario em `~/.grok/managed_config.toml`. E sai em 480p; ampliar com DAT2 leva 23 min para 6 s. |
+| Agente que "gera" desenhando | Sem pedir a ferramenta nativa, o agente da CLI pode escrever um script que desenha algo. Os wrappers pedem a ferramenta nativa e conferem o arquivo. |
 | `bws run` re-parseia | Junta os argumentos numa string e passa a um shell; prompt com espaco vira erro de sintaxe do `sh`. `printf '%q '` em cada argumento e `--shell bash`. |
 
 ## Documentado contra observado
@@ -104,6 +108,9 @@ nenhuma. O que existe e comportamento verificado, nao eficacia medida:
   Blender. Com `--gl=swangle`, quadro vazio.
 - SeedVR2 medido em 36 frames 540p para 1080p: 292 s, 7,8 GB de VRAM, e
   removido depois; a receita ficou na skill `retoque-comfyui`.
+- `agy-imagem.sh` gerou still 1376x768 em 100 a 175 s; `grok-video.sh --image`
+  animou esse still em 6 s de 736x400 em 84 s; `veo.py` gerou 8 s em 1920x1080
+  em 108 s, depois de saldo pre-pago no AI Studio.
 - Kinocut 1.15.1 pelo mesmo comando do `.mcp.json`: o servidor respondeu
   `tools/list` com 196 ferramentas; pela CLI, `info` leu 64,4 s em 1920x1080,
   `trim` cortou 15,000 s, arquivo inexistente voltou como erro estruturado, e
