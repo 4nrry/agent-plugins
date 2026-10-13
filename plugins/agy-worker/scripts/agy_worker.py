@@ -44,6 +44,7 @@ DEFAULT_REVIEW_TIMEOUT = "15m"
 DEFAULT_GATE_TIMEOUT = 900
 DEFAULT_MAX_GATE_ATTEMPTS = 5
 DEFAULT_MIN_QUOTA = 0.05
+TESTED_AGY_VERSION = "1.3.4"       # every agy behaviour this script relies on was seen on this one
 MAX_PROMPT_BYTES = 100_000          # one argv string is capped at 128 KiB on Linux
 MAX_DIFF_BYTES = 60_000
 TAIL_CHARS = 6000
@@ -63,19 +64,33 @@ CONTENT_KEYS = {"CodeContent", "ReplacementContent", "TargetContent",
                 "ReplacementChunks", "Instruction", "Description", "toolSummary",
                 "toolAction", "Query", "Content", "Message", "Summary"}
 
-# Tools whose effects the hooks cannot see or bound (subagents may not carry
-# workspace hooks; schedules outlive the run; images cost quota).
-DENY_TOOLS = re.compile(r"^(invoke_subagent|define_subagent|manage_subagents|"
-                        r"schedule|generate_image|browser_.*)$")
+# An allowlist, not a denylist: any other tool (network, subagents, schedules,
+# run_workflow's own python3 process, MCP tools, whatever a new agy adds) has
+# effects these hooks cannot see. These are the file and shell tools; the
+# smoke runs used only view_file, write_to_file, replace_file_content,
+# run_command and finish.
+ALLOWED_TOOLS = {"view_file", "list_dir", "find_by_name", "grep_search", "write_to_file",
+                 "replace_file_content", "multi_replace_file_content", "run_command"}
 
 SYSTEM_PATHS = ("/dev/null", "/dev/stdout", "/dev/stderr", "/usr/bin",
                 "/bin", "/usr/local/bin")
 
+# git global options that may sit between `git` and the subcommand.
+_GIT_OPTS = r"(?:(?:-[cC]\s+\S+|--[\w-]+(?:=\S+)?|-[abd-zABD-Z])\s+)*"
+# Start of a simple command: the line start or after an operator.
+_CMD = r"(?:^|[;&|(\n`]|\$\()\s*"
+
 DENY_COMMANDS = [
-    (r"\bgit\s+(-C\s+\S+\s+)?(push|commit|reset|clean|stash|checkout|restore|"
-     r"rebase|merge|switch|cherry-pick|revert|am|apply|tag|worktree|config|"
-     r"update-ref|filter-branch|branch\s+-[dDmM])\b", "git que altera historico, arvore ou config"),
-    (r"\brm\s+(-[a-zA-Z]*[rR]|--recursive)", "rm recursivo"),
+    (r"\bgit\s+" + _GIT_OPTS + r"(?!(?:status|diff|log|show|ls-files|ls-tree|grep|blame|"
+     r"shortlog|describe|cat-file|rev-list|merge-base|add|rm|mv)\b)[^\s-]",
+     "git fora da lista de leitura (status, diff, log, show, grep, add...)"),
+    (r"\bgit\b.*--(git-dir|git-path|git-common-dir|absolute-git-dir)\b", "caminho do .git"),
+    (r"(^|[\s/='\"<>:])\.(git|agents)($|[\s/'\"])", "acesso ao .git ou ao .agents"),
+    (r"\brm\s(?:[^;&|\n]*\s)?(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)(\s|$)", "rm recursivo"),
+    (r"\bfind\b[^;&|\n]*\s-(delete|exec|execdir|ok|okdir|fprint\w*|fls)\b", "find que escreve ou executa"),
+    (_CMD + r"(ln|chmod|chown|chgrp|crontab|at|batch|nohup|setsid|disown|systemctl|service)(\s|$)",
+     "link, permissao, agendamento ou processo destacado"),
+    (r"(^|[^&>|])&($|[^&>])", "processo em segundo plano (&)"),
     (r"\b(npm|pnpm|yarn|bun)\s+(install|i|ci|add|remove|rm|uninstall|update|"
      r"upgrade|up|link|publish)\b", "install ou publish de pacote"),
     (r"\b(pip3?|poetry|cargo|gem|composer)\s+(install|add|remove|uninstall|publish)\b"
@@ -84,7 +99,8 @@ DENY_COMMANDS = [
     (r"\b(apt|apt-get|dnf|yum|pacman|brew|snap|flatpak)\b", "gerenciador de pacotes do sistema"),
     (r"\b(npx|bunx)\s+(-y|--yes)\b|\bpnpm\s+dlx\b", "execucao de pacote baixado"),
     (r"(^|[\s;|&(])(sudo|su|doas)(\s|$)", "elevacao de privilegio"),
-    (r"\b(deploy|publish)\b", "deploy ou publish"),
+    (r"\b(npm|pnpm|yarn|bun|npx|nx|make|just|task|turbo)\b[^;&|\n]*\b(deploy|publish|release)\b",
+     "deploy ou publish"),
     (r"\b(wrangler|vercel|netlify|firebase|flyctl|heroku|kubectl|helm|terraform|"
      r"pulumi|docker|podman|gcloud|aws|az)\b", "infra, deploy ou container"),
     (r"\b(prisma|drizzle-kit|knex|sequelize|alembic|typeorm)\b.*\b(migrate|push|reset|seed)\b"
@@ -96,7 +112,7 @@ DENY_COMMANDS = [
     (r"\b(curl|wget|ssh|scp|rsync|nc|ncat|telnet|ftp)\b", "rede"),
     (r"(^|[\s;|&(])(ps|pgrep|pkill|kill|killall|top|htop|lsof)(\s|$)|/proc\b",
      "inspecao de processos"),
-    (r"(^|[\s=:'\"(/])\.\.(/|\s|$)", "caminho com .."),
+    (r"(^|[\s=:'\"(/<>;&|])\.\.($|[\s/;&|)'\"])", "caminho com .."),
     (r"\$\{?HOME\b|\bprintenv\b|(^|[\s;|&])env\s*($|[;|&])", "home ou ambiente do usuario"),
 ]
 
@@ -151,7 +167,10 @@ def eprint(*a) -> None:
 
 
 def git(repo: str, *args: str, check: bool = True, binary: bool = False):
-    proc = subprocess.run(["git", "-C", repo, "-c", "color.ui=false", *args],
+    # The worker could have planted config in the repo; our own git calls must
+    # not run it (fsmonitor and hooks execute programs, ext diff too).
+    proc = subprocess.run(["git", "-C", repo, "-c", "color.ui=false", "-c", "core.fsmonitor=false",
+                           "-c", "core.hooksPath=/dev/null", *args],
                           capture_output=True, text=not binary)
     if check and proc.returncode != 0:
         err = proc.stderr if not binary else proc.stderr.decode(errors="replace")
@@ -333,50 +352,100 @@ def compose_prompt(task: dict, repo: str) -> str:
 # PreToolUse guard (pure)
 # --------------------------------------------------------------------------
 
-PATH_TOKEN = re.compile(r"""(?:^|[\s=:"'(,\[])(~[A-Za-z0-9._/+@-]*|/[A-Za-z0-9._~/+@-]*)""")
+PATH_TOKEN = re.compile(r"""(?:^|[\s=:"'(,\[<>|;&])(~[A-Za-z0-9._/+@-]*|/[A-Za-z0-9._~/+@*?\[\]-]*)""")
+GLOB_CHARS = set("*?[")
 
 
-def path_tokens(args: dict):
-    def strings(v):
-        if isinstance(v, str):
-            yield v
-        elif isinstance(v, dict):
-            for k, x in v.items():
-                if k not in CONTENT_KEYS:
-                    yield from strings(x)
-        elif isinstance(v, list):
-            for x in v:
-                yield from strings(x)
-    for s in strings({k: v for k, v in args.items() if k not in CONTENT_KEYS}):
-        for m in PATH_TOKEN.finditer(s):
-            tok = m.group(1)
+def arg_strings(v, key=""):
+    """(key, string) for every non-content string in a tool's args."""
+    if isinstance(v, str):
+        yield key, v
+    elif isinstance(v, dict):
+        for k, x in v.items():
+            if k not in CONTENT_KEYS:
+                yield from arg_strings(x, k)
+    elif isinstance(v, list):
+        for x in v:
+            yield from arg_strings(x, key)
+
+
+def shell_path_tokens(cmd: str):
+    """Absolute and ~ paths written literally in a shell command."""
+    for m in PATH_TOKEN.finditer(cmd):
+        tok = m.group(1)
+        if tok.startswith("~"):
             if tok == "~" or tok.startswith("~/"):
                 yield tok
-            elif len(tok) > 1 and (tok[1].isalnum() or tok[1] == "."):
-                yield tok
+            continue
+        tok = "/" + tok.lstrip("/")             # `//etc` is `/etc`
+        if tok == "/":
+            continue                            # `$((4 / 2))`; `cd /` is caught by the cd check
+        first = tok.split("/")[1]
+        # A path whose top-level directory does not exist cannot be read, and a
+        # non-root worker cannot create one: `grep '/api/v1'`, `sed -n '/a/,/b/p'`.
+        if not (GLOB_CHARS & set(first)) and not os.path.lexists("/" + first):
+            continue
+        yield tok
 
 
 def path_allowed(tok: str, repo: str, extra) -> bool:
-    if tok == "~" or tok.startswith("~/"):
-        tok = os.path.expanduser(tok)
-    p = os.path.normpath(tok)
+    p = os.path.realpath(os.path.expanduser(tok))
     for base in (repo, *SYSTEM_PATHS, *extra):
-        base = os.path.normpath(os.path.expanduser(base))
+        base = os.path.realpath(os.path.expanduser(base))
         if p == base or p.startswith(base.rstrip("/") + "/"):
             return True
     return False
 
 
+def resolve(path: str, base: str) -> str:
+    """Real path of `path`, relative ones taken from `base`; symlinks followed."""
+    return os.path.realpath(os.path.join(base, os.path.expanduser(path)))
+
+
+def unquote_shell(cmd: str) -> str:
+    """The command with quote and escape characters dropped, contents kept, so
+    `g''it push` and `"git" push` read as `git push` for the deny list."""
+    return re.sub(r"['\"\\]", "", cmd)
+
+
+def strip_quoted(cmd: str) -> str:
+    """The command with quoted strings emptied: `grep '->' x` has no redirect."""
+    return re.sub(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"", "''", cmd)
+
+
+def writes_by_redirect(cmd: str) -> bool:
+    """True when the shell itself writes a file (`> f`, `>> f`, `&> f`, `tee`
+    is in the deny list); redirects to /dev/null and between fds are fine."""
+    s = strip_quoted(cmd)
+    s = re.sub(r"\d*>&\d+|&>>?\s*/dev/null|\d*>>?\s*/dev/(null|stdout|stderr)\b", " ", s)
+    return ">" in s
+
+
+CD_TARGET = re.compile(r"(?:^|[;&|(\n])\s*(?:cd|pushd)\b\s*([^\s;&|)]*)")
+
+
 def is_gate_command(cmd: str, gate_cmds) -> bool:
     """The worker is told to run the gate itself, so a gate command is never
-    blocked by the generic deny list -- but only the command itself: anything
-    chained after it (`npm test && git commit`) goes through the full check."""
+    blocked by the generic deny list -- but only the command itself, plus
+    redirects to /dev/null or between fds. Anything else after it (chaining,
+    a newline, a substitution, a variable, a file redirect) goes through the
+    full check."""
     cmd = cmd.strip()
     for gc in gate_cmds:
         prefix = gc.split("{files}")[0].strip()
-        if prefix and cmd.startswith(prefix) and not re.search(r"[;&|`]|\$\(", cmd[len(prefix):]):
+        if not prefix or not cmd.startswith(prefix):
+            continue
+        rest = cmd[len(prefix):]
+        if rest and not rest[0].isspace() and not prefix[-1].isspace():
+            continue                            # `true` must not exempt `trueX`
+        rest = re.sub(r"\s\d*>&\d+|\s\d*>>?\s*/dev/null\b", " ", rest)
+        if not re.search(r"[;&|`$<>(){}\n\r\\]", rest):
             return True
     return False
+
+
+def deny(reason: str) -> dict:
+    return {"decision": "deny", "reason": reason}
 
 
 def decide_pre(payload: dict, ctx: dict) -> dict:
@@ -387,34 +456,51 @@ def decide_pre(payload: dict, ctx: dict) -> dict:
     if not isinstance(args, dict):
         args = {}
     repo = ctx["repo"]
+    extra = ctx.get("allow_paths", [])
     if name in FINISH_TOOLS:
         return {"decision": "allow"}
-    if DENY_TOOLS.match(name):
-        return {"decision": "deny", "reason": f"Ferramenta {name} bloqueada neste worker: "
-                "o efeito dela escapa aos guard rails. Faca o trabalho voce mesmo, dentro do escopo."}
-    for tok in path_tokens(args):
-        if not path_allowed(tok, repo, ctx.get("allow_paths", [])):
-            return {"decision": "deny", "reason": f"Acesso fora do repositorio bloqueado: {tok}. "
-                    f"Trabalhe so dentro de {repo}. O gate esta descrito no enunciado; nao procure por ele."}
+    if name not in ALLOWED_TOOLS:
+        return deny(f"Ferramenta {name} bloqueada neste worker: so as ferramentas de arquivo e o "
+                    "run_command passam pelos guard rails. Faca o trabalho com elas, dentro do escopo.")
+    outside = (f"Trabalhe so dentro de {repo}. O gate esta descrito no enunciado; nao procure por ele.")
+    # Path-valued arguments (AbsolutePath, DirectoryPath, SearchPath, Cwd,
+    # TargetFile...), relative ones included, resolved through symlinks.
+    for key, val in arg_strings(args):
+        if key == "CommandLine" or "://" in val:
+            continue
+        if val.startswith(("/", "~", ".")) or "/" in val:
+            if not path_allowed(resolve(val, repo), repo, extra):
+                return deny(f"Acesso fora do repositorio bloqueado: {key}={val}. {outside}")
     target = args.get("TargetFile")
     if isinstance(target, str) and target:
-        abs_t = os.path.normpath(target if os.path.isabs(target) else os.path.join(repo, target))
-        rel = os.path.relpath(abs_t, repo)
+        rel = os.path.relpath(resolve(target, repo), repo)
         if rel.startswith("..") or rel.split("/")[0] in (".git", ".agents"):
-            return {"decision": "deny", "reason": f"Escrita fora da area de trabalho: {target}."}
+            return deny(f"Escrita fora da area de trabalho: {target}.")
         if not in_globs(rel, ctx.get("scope", [])):
             allowed = " ".join(ctx.get("scope", [])) or "(nenhum: modo somente leitura)"
-            return {"decision": "deny", "reason": f"Fora do escopo desta tarefa: {rel}. Permitidos: "
-                    f"{allowed}. Nao contorne pelo shell; se outro arquivo precisar mudar, diga no relatorio "
-                    "(out_of_scope_needs)."}
+            return deny(f"Fora do escopo desta tarefa: {rel}. Permitidos: {allowed}. Nao contorne pelo "
+                        "shell; se outro arquivo precisar mudar, diga no relatorio (out_of_scope_needs).")
     cmd = args.get("CommandLine")
     if isinstance(cmd, str) and cmd.strip():
-        if not is_gate_command(cmd, ctx.get("gate_commands", [])):
-            for pat, label in ctx.get("deny_patterns", []):
-                if re.search(pat, cmd):
-                    return {"decision": "deny", "reason": f"Comando bloqueado ({label}): {cmd!r}. "
-                            "Edite so com as ferramentas de edicao; sem commit, push, install, deploy, "
-                            "migracao, rede ou processos. Testes, lint, typecheck e leitura sao permitidos."}
+        for tok in shell_path_tokens(cmd):
+            if not path_allowed(tok, repo, extra):
+                return deny(f"Acesso fora do repositorio bloqueado: {tok}. {outside}")
+        cwd = args.get("Cwd") if isinstance(args.get("Cwd"), str) and args.get("Cwd") else repo
+        for m in CD_TARGET.finditer(cmd):
+            dest = m.group(1)
+            if dest in ("", "-") or not path_allowed(resolve(dest, cwd), repo, extra):
+                return deny(f"cd para fora do repositorio bloqueado: {m.group(0).strip()!r}. {outside}")
+        if is_gate_command(cmd, ctx.get("gate_commands", [])):
+            return {"decision": "allow"}
+        bare = unquote_shell(cmd)
+        for pat, label in ctx.get("deny_patterns", []):
+            if re.search(pat, cmd) or re.search(pat, bare):
+                return deny(f"Comando bloqueado ({label}): {cmd!r}. Edite so com as ferramentas de edicao; "
+                            "sem commit, push, install, deploy, migracao, rede ou processos. Testes, lint, "
+                            "typecheck e leitura sao permitidos.")
+        if writes_by_redirect(cmd):
+            return deny(f"Escrita pelo shell bloqueada (redirecionamento para arquivo): {cmd!r}. Use as "
+                        "ferramentas de edicao; redirecione saida so para /dev/null ou 2>&1.")
     return {"decision": "allow"}
 
 
@@ -460,7 +546,7 @@ def fingerprint(repo: str, side_effects) -> str:
             continue
         h.update(p.encode() + b"\0")
         if p in tracked:
-            h.update(git(repo, "diff", "HEAD", "--binary", "--", p, binary=True))
+            h.update(git(repo, "diff", "--no-ext-diff", "HEAD", "--binary", "--", p, binary=True))
         else:
             try:
                 with open(os.path.join(repo, p), "rb") as fh:
@@ -468,6 +554,52 @@ def fingerprint(repo: str, side_effects) -> str:
             except OSError:
                 h.update(b"<missing>")
     return h.hexdigest()
+
+
+def integrity_state(repo: str, rundir: str) -> dict:
+    """Hashes of what a worker could use to run code or hide changes: git
+    config, hooks and excludes, index flags that hide edits from `git status`,
+    and this run's own ctx.json. Compared before and after the run."""
+    state = {}
+    dirs = {git(repo, "rev-parse", "--path-format=absolute", "--git-dir").strip(),
+            git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()}
+    files = [os.path.join(rundir, "ctx.json")]
+    for d in dirs:
+        files += [os.path.join(d, f) for f in ("config", "config.worktree", "info/exclude")]
+        hooks = os.path.join(d, "hooks")
+        if os.path.isdir(hooks):
+            files += [os.path.join(hooks, f) for f in sorted(os.listdir(hooks))]
+    for f in files:
+        try:
+            with open(f, "rb") as fh:
+                state[f] = hashlib.sha256(fh.read()).hexdigest()
+        except OSError:
+            state[f] = None
+    flagged = [r[2:] for r in git(repo, "ls-files", "-v", "-z").split("\0")
+               if len(r) > 2 and (r[0].islower() or r[0] == "S")]
+    state["<assume-unchanged/skip-worktree>"] = ",".join(sorted(flagged))
+    return state
+
+
+def ignored_state(repo: str) -> dict:
+    """Ignored files (not directories, which `--directory` collapses) with
+    size and mtime: `git status` never shows them, so a write to `.env` would
+    otherwise go unseen. Directories are left out because caches and build
+    output (`__pycache__/`, `dist/`) change on every gate run."""
+    out = {}
+    for p in git(repo, "ls-files", "-z", "-o", "-i", "--exclude-standard", "--directory").split("\0"):
+        if not p or p.endswith("/"):
+            continue
+        try:
+            st = os.lstat(os.path.join(repo, p))
+            out[p] = (st.st_size, st.st_mtime_ns)
+        except OSError:
+            continue
+    return out
+
+
+def diff_state(before: dict, after: dict) -> list:
+    return sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
 
 
 def added_lines(repo: str, path: str, tracked: set):
@@ -482,7 +614,7 @@ def added_lines(repo: str, path: str, tracked: set):
             return
         return
     n = 0
-    for line in git(repo, "diff", "HEAD", "-U0", "--", path).splitlines():
+    for line in git(repo, "diff", "--no-ext-diff", "HEAD", "-U0", "--", path).splitlines():
         m = re.match(r"^@@ -\S+ \+(\d+)", line)
         if m:
             n = int(m.group(1))
@@ -520,17 +652,23 @@ def run_gate(repo: str, ctx: dict, baseline: bool = False):
                     say(f"GATE: [{kind}] {cmd}: pulado, nenhum arquivo do escopo")
                     continue
                 cmd = cmd.replace("{files}", quoted)
+            # AGY_WORKER_GATE lets a command tell the gate run from the
+            # worker's own run of the same command. Own session, so a timeout
+            # kills the whole tree the command started, not just bash.
+            proc = subprocess.Popen(["bash", "-c", cmd], cwd=repo, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True, start_new_session=True,
+                                    env={**os.environ, "AGY_WORKER_GATE": "1"})
             try:
-                # AGY_WORKER_GATE lets a command tell the gate run from the
-                # worker's own run of the same command.
-                proc = subprocess.run(["bash", "-c", cmd], cwd=repo, capture_output=True,
-                                      text=True, timeout=ctx.get("gate_timeout", DEFAULT_GATE_TIMEOUT),
-                                      env={**os.environ, "AGY_WORKER_GATE": "1"})
-                rc, out = proc.returncode, (proc.stdout + proc.stderr)
-            except subprocess.TimeoutExpired as exc:
+                out, _ = proc.communicate(timeout=ctx.get("gate_timeout", DEFAULT_GATE_TIMEOUT))
+                rc = proc.returncode
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                out, _ = proc.communicate()
                 rc = "timeout"
-                out = ((exc.stdout or b"").decode(errors="replace") if isinstance(exc.stdout, bytes)
-                       else (exc.stdout or ""))
+            out = out or ""
             if rc == 0:
                 say(f"GATE: [{kind}] {cmd}: ok")
             else:
@@ -697,12 +835,12 @@ def evaluate_run(rc, stdout: str, stderr: str, mode: str, schema: dict):
     if AUTO_DENY_MARKER in stderr:
         (fails if strict_denials else warns).append(
             "permissao auto-negada em modo headless: " + tail(stderr.strip(), 300))
-    env = None
+    env, parsed = None, False
     if not stdout.strip():
         fails.append("stdout vazio")
     else:
         try:
-            env = json.loads(stdout)
+            env, parsed = json.loads(stdout), True
         except ValueError:
             fails.append("stdout nao e o envelope JSON esperado: " + tail(stdout.strip(), 300))
     if isinstance(env, dict):
@@ -721,6 +859,9 @@ def evaluate_run(rc, stdout: str, stderr: str, mode: str, schema: dict):
                 fails.append(f"relatorio sem campos obrigatorios: {missing}")
             if mode == "delegate" and so.get("status") in ("partial", "blocked"):
                 fails.append(f"o worker se declarou {so['status']!r}")
+    elif parsed:
+        env = None
+        fails.append(f"stdout e JSON mas nao um objeto: {tail(stdout.strip(), 200)}")
     return fails, warns, env
 
 
@@ -740,12 +881,24 @@ def snapshot_procs(repo: str) -> dict:
     return found
 
 
+def refuse_existing_hooks(repo: str) -> None:
+    path = os.path.join(repo, HOOK_FILE)
+    if not os.path.lexists(path):
+        return
+    spec = read_json(path)
+    if isinstance(spec, dict) and list(spec) == ["agy-worker"]:
+        raise Refusal(f"{path} e sobra de um run do agy-worker que morreu sem limpar (SIGKILL?), ou "
+                      "de um run ainda em curso neste workspace. Se nenhum `agy` estiver rodando aqui, "
+                      f"remova so esse arquivo: rm {shlex.quote(path)}. Enquanto ele existir, um `agy` "
+                      "interativo nesta pasta carrega os guards de um run morto.")
+    raise Refusal(f"{HOOK_FILE} ja existe neste repo; o agy le um so arquivo de hooks por "
+                  "workspace e este script nao sobrescreve o seu. Mova-o ou rode noutro worktree.")
+
+
 def install_hooks(repo: str, rundir: str, ctx: dict) -> bool:
     """Write .agents/hooks.json. Returns whether .agents/ was created by us."""
+    refuse_existing_hooks(repo)
     path = os.path.join(repo, HOOK_FILE)
-    if os.path.lexists(path):
-        raise Refusal(f"{HOOK_FILE} ja existe neste repo; o agy le um so arquivo de hooks por "
-                      "workspace e este script nao sobrescreve o seu. Mova-o ou rode noutro worktree.")
     agents = os.path.dirname(path)
     created = not os.path.isdir(agents)
     os.makedirs(agents, exist_ok=True)
@@ -778,9 +931,16 @@ def remove_hooks(repo: str, created_dir: bool) -> None:
             pass
 
 
-def preflight_agy(model: str, min_quota: float, probe_quota: bool, rundir: str):
+def preflight_agy(model: str, min_quota: float, probe_quota: bool, rundir: str) -> list:
+    """Refuses on a missing model or quota; returns warnings."""
     if not shutil.which("agy"):
         raise Refusal("agy nao esta no PATH")
+    warns = []
+    proc = subprocess.run(["agy", "--version"], capture_output=True, text=True, timeout=60)
+    version = proc.stdout.strip().splitlines()[-1].strip() if proc.stdout.strip() else "?"
+    if version != TESTED_AGY_VERSION:
+        warns.append(f"agy {version}; este script so foi exercitado no {TESTED_AGY_VERSION}. Decisao "
+                     "de hook, ferramenta finish, motivos de Stop e formato do /usage podem ter mudado")
     proc = subprocess.run(["agy", "models"], capture_output=True, text=True, timeout=120)
     slugs = parse_models(proc.stdout)
     if proc.returncode != 0 or not slugs:
@@ -788,7 +948,7 @@ def preflight_agy(model: str, min_quota: float, probe_quota: bool, rundir: str):
     if model not in slugs:
         raise Refusal(f"modelo {model!r} nao existe nesta conta. Disponiveis: {', '.join(slugs)}")
     if not probe_quota:
-        return
+        return warns
     proc = subprocess.run(["agy", "-p", "/usage", "--output-format", "json"],
                           capture_output=True, text=True, timeout=120)
     with open(os.path.join(rundir, "usage.json"), "w", encoding="utf-8") as fh:
@@ -800,6 +960,7 @@ def preflight_agy(model: str, min_quota: float, probe_quota: bool, rundir: str):
     msg = evaluate_quota(env, model, min_quota)
     if msg:
         raise Refusal(msg + " (use --no-quota-probe para pular esta checagem)")
+    return warns
 
 
 def run_agy(cmd: list, repo: str, rundir: str, timeout_s: int):
@@ -853,6 +1014,14 @@ def _sigterm(_signo, _frame):
     raise KeyboardInterrupt
 
 
+def trap_signals() -> None:
+    """SIGTERM and SIGHUP (closed terminal, dropped ssh/WSL) unwind through the
+    `finally` that removes the hooks and kills agy. SIGKILL cannot be trapped;
+    refuse_existing_hooks names the leftover file then."""
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, _sigterm)
+
+
 # --------------------------------------------------------------------------
 # subcommands
 # --------------------------------------------------------------------------
@@ -868,7 +1037,7 @@ def base_ctx(repo, task, mode):
 
 
 def cmd_delegate(a) -> int:
-    signal.signal(signal.SIGTERM, _sigterm)
+    trap_signals()
     task = load_task(a.task)
     if a.model:
         task["model"] = a.model
@@ -878,11 +1047,10 @@ def cmd_delegate(a) -> int:
     if dirty:
         raise Refusal("arvore suja; commite ou guarde antes (o diff do worker tem que ser so dele): "
                       + ", ".join(dirty[:10]))
-    if os.path.lexists(os.path.join(repo, HOOK_FILE)):
-        raise Refusal(f"{HOOK_FILE} ja existe; outra execucao em curso ou hooks seus neste workspace")
+    refuse_existing_hooks(repo)
     rundir = new_rundir(repo, "delegate")
     eprint(f"agy-worker: run dir {rundir}")
-    preflight_agy(task["model"], task["min_quota"], not a.no_quota_probe, rundir)
+    pre_warns = preflight_agy(task["model"], task["min_quota"], not a.no_quota_probe, rundir)
     ctx = base_ctx(repo, task, "delegate")
     write_json(os.path.join(rundir, "ctx.json"), ctx)
     write_json(os.path.join(rundir, "task.json"), task)
@@ -893,6 +1061,7 @@ def cmd_delegate(a) -> int:
         fh.write(prompt)
     head = git(repo, "rev-parse", "HEAD").strip()
     before = snapshot_procs(repo)
+    integ_before, ignored_before = integrity_state(repo, rundir), ignored_state(repo)
     cmd = ["agy", "-p", prompt, "--model", task["model"], "--output-format", "json",
            "--json-schema", schema_path, "--print-timeout", f"{task['timeout']}s",
            "--dangerously-skip-permissions"]
@@ -905,6 +1074,11 @@ def cmd_delegate(a) -> int:
         remove_hooks(repo, created)
     wall = round(time.time() - started)
     fails, warns, env = evaluate_run(rc, stdout, stderr, "delegate", task["report_schema"])
+    warns = pre_warns + warns
+    tampered = diff_state(integ_before, integrity_state(repo, rundir))
+    if tampered:
+        fails.append("config, hooks ou flags de indice do git, ou o ctx.json do run, mudaram durante o "
+                     f"run; o veredito abaixo nao e confiavel: {tampered}")
     events = guard_events(rundir)
     if not any(e.get("event") == "session_start" for e in events):
         fails.append("os hooks do agy-worker nao carregaram (nenhum SessionStart registrado): "
@@ -931,6 +1105,10 @@ def cmd_delegate(a) -> int:
     denials = [e for e in events if e.get("event") == "pre" and e.get("decision") != "allow"]
     if denials:
         warns.append(f"{len(denials)} chamada(s) negada(s) pelos guards; veja guard_denials")
+    ignored = diff_state(ignored_before, ignored_state(repo))
+    if ignored:
+        warns.append("arquivos ignorados pelo git criados ou alterados durante o run (o gate pode ter "
+                     f"escrito alguns; o resto e escrita fora do escopo que o git status nao mostra): {ignored}")
     leftover = {p: c for p, c in snapshot_procs(repo).items() if p not in before and p != os.getpid()}
     if leftover:
         warns.append("processos novos com cwd no repo ainda vivos (nao foram encerrados): "
@@ -957,7 +1135,7 @@ def cmd_delegate(a) -> int:
 
 
 def cmd_review(a) -> int:
-    signal.signal(signal.SIGTERM, _sigterm)
+    trap_signals()
     repo = repo_root(a.repo or os.getcwd())
     question = " ".join(a.prompt).strip()
     if a.prompt_file:
@@ -974,7 +1152,7 @@ def cmd_review(a) -> int:
     timeout_s = parse_duration(a.timeout)
     diff_txt = ""
     if a.diff:
-        diff_txt = git(repo, "diff", a.diff)
+        diff_txt = git(repo, "diff", "--no-ext-diff", a.diff)
         if not diff_txt.strip():
             raise Refusal(f"git diff {a.diff} vazio")
         if len(diff_txt.encode()) > MAX_DIFF_BYTES:
@@ -982,7 +1160,7 @@ def cmd_review(a) -> int:
                 "\n…(diff cortado; leia os arquivos para o resto)…"
     rundir = new_rundir(repo, "review")
     eprint(f"agy-worker: run dir {rundir}")
-    preflight_agy(model, a.min_quota, not a.no_quota_probe, rundir)
+    pre_warns = preflight_agy(model, a.min_quota, not a.no_quota_probe, rundir)
     prompt = question
     if diff_txt:
         prompt += f"\n\n## Diff under review (`git diff {a.diff}`)\n```diff\n{diff_txt}\n```"
@@ -997,7 +1175,8 @@ def cmd_review(a) -> int:
     write_json(os.path.join(rundir, "ctx.json"), ctx)
     schema_path = os.path.join(rundir, "review.schema.json")
     write_json(schema_path, schema)
-    fp_before = fingerprint(repo, [])
+    fp_before, ignored_before = fingerprint(repo, []), ignored_state(repo)
+    integ_before = integrity_state(repo, rundir)
     cmd = ["agy", "-p", prompt, "--model", model, "--mode", "plan", "--output-format", "json",
            "--json-schema", schema_path, "--print-timeout", f"{timeout_s}s"]
     created = install_hooks(repo, rundir, ctx)
@@ -1007,8 +1186,11 @@ def cmd_review(a) -> int:
     finally:
         remove_hooks(repo, created)
     fails, warns, env = evaluate_run(rc, stdout, stderr, "review", schema)
-    if fingerprint(repo, []) != fp_before:
-        fails.append("a arvore mudou durante um review que devia ser somente leitura")
+    warns = pre_warns + warns
+    if (fingerprint(repo, []) != fp_before or ignored_state(repo) != ignored_before
+            or integrity_state(repo, rundir) != integ_before):
+        fails.append("a arvore, um arquivo ignorado ou o .git mudou durante um review que devia ser "
+                     "somente leitura")
     if not any(e.get("event") == "session_start" for e in guard_events(rundir)):
         warns.append("hooks nao carregaram (nenhum SessionStart): o review rodou so com --mode plan")
     verdict = {"ok": not fails, "mode": "review", "run_dir": rundir, "model": model,
@@ -1103,12 +1285,62 @@ def self_test() -> int:
         check(pre("invoke_subagent", Task="x")["decision"] == "deny", "subagente negado")
         check(pre("finish", files_changed=["/etc/passwd"])["decision"] == "allow", "finish nao e escaneado")
         check(pre("grep_search", SearchPath=repo, Query="/api/v1")["decision"] == "allow", "Query ignorada")
-        check(pre("read_url_content", Url="https://example.com/a/b")["decision"] == "allow", "URL nao e path")
+        # tool allowlist: network, workflows, MCP and unknown tools are denied
+        for tool in ("read_url_content", "search_web", "run_workflow", "manage_task", "mcp_foo_bar",
+                     "ask_permission", "send_message"):
+            check(pre(tool, Url="https://example.com/a")["decision"] == "deny", f"{tool} negado")
+        # relative escapes in non-shell tools, Cwd, cd, and literal forms
+        for args, why in ((("list_dir", {"DirectoryPath": "../.."}), "list_dir .."),
+                          (("view_file", {"AbsolutePath": "../../etc/passwd"}), "view_file .."),
+                          (("view_file", {"AbsolutePath": "//etc/passwd"}), "view_file //"),
+                          (("grep_search", {"SearchPath": "..", "Query": "x"}), "grep_search .."),
+                          (("find_by_name", {"SearchDirectory": "../.."}), "find_by_name .."),
+                          (("run_command", {"CommandLine": "ls", "Cwd": "/"}), "Cwd /"),
+                          (("run_command", {"CommandLine": "ls", "Cwd": "../../../etc"}), "Cwd .."),
+                          (("run_command", {"CommandLine": "cd ..&&ls"}), "cd ..&&"),
+                          (("run_command", {"CommandLine": "cd / && cat etc/passwd"}), "cd /"),
+                          (("run_command", {"CommandLine": "cd && ls"}), "cd sozinho"),
+                          (("run_command", {"CommandLine": "cat //etc/passwd"}), "//etc"),
+                          (("run_command", {"CommandLine": "cat /*/passwd"}), "glob na raiz"),
+                          (("run_command", {"CommandLine": "cat </etc/passwd"}), "redirect de /etc"),
+                          (("run_command", {"CommandLine": "echo x>/home/x"}), "redirect para /home")):
+            check(pre(args[0], **args[1])["decision"] == "deny", f"escape negado: {why}")
+        check(pre("run_command", CommandLine="cd src && ls")["decision"] == "allow", "cd dentro do repo")
+        # .git / .agents through the shell, and git global options
+        for c in ("printf '[core]\\n\\tfsmonitor = touch X\\n' >> .git/config",
+                  "echo x > .git/hooks/pre-commit", "cat src/../.git/config", "ls .agents",
+                  "echo '{}' > \"$(git rev-parse --git-path agy-worker)/runs/r/ctx.json\"",
+                  "git -c user.name=x commit -m x", "git --no-pager push", "git -C . push",
+                  "g''it push origin HEAD", "\"git\" push", "git gc --prune=now", "git pull",
+                  "git reflog expire --expire=now --all", "git submodule update --init", "git init sub",
+                  "git update-index --assume-unchanged package.json", "git branch -f main HEAD~1",
+                  "git config --list", "rm -f -r node_modules", "find . -name '*.log' -delete",
+                  "ln -s / src/lnk", "nohup sh -c 'sleep 600' >/dev/null 2>&1 &", "setsid sleep 600 &",
+                  "sleep 60 &", "crontab -", "chmod u+s src/a.txt", "echo X=1 > .env",
+                  "cat a >> src/a.txt", "npm run deploy", "pnpm nx run web:publish"):
+            check(pre("run_command", CommandLine=c)["decision"] == "deny", f"shell negado: {c}")
+        # read-only commands that used to be false positives
+        for c in ("grep -rn '/api/v1' src", "sed -n '/foo/,/bar/p' src/a.txt", "git grep -n 'deploy' -- src",
+                  "git log --grep=publish", "npx vitest run -t 'GET /orders'", "git -C . diff",
+                  "git --no-pager log -n 3", "git diff HEAD -- src 2>&1", "grep -n '->' src/a.txt",
+                  "npm test >/dev/null 2>&1", "ls .github .gitignore", "python3 -m unittest -v 2>&1 | tail -5",
+                  "cat src/a.txt && echo ok"):
+            check(pre("run_command", CommandLine=c)["decision"] == "allow", f"leitura permitida: {c}")
+        # symlink inside the scope that points out of the repo
+        os.symlink("/", os.path.join(repo, "src", "lnk"))
+        check(pre("write_to_file", TargetFile=f"{repo}/src/lnk/home/x")["decision"] == "deny", "symlink")
+        check(pre("write_to_file", TargetFile="src/lnk/home/x")["decision"] == "deny", "symlink relativo")
+        os.remove(os.path.join(repo, "src", "lnk"))
         dctx = dict(ctx, gate_commands=["docker compose run test", "{files}"])
         dpre = lambda c: decide_pre({"toolCall": {"name": "run_command", "args": {"CommandLine": c}}}, dctx)  # noqa: E731
         check(dpre("docker compose run test")["decision"] == "allow", "comando do gate isento")
         check(dpre("docker compose run test && git push")["decision"] == "deny", "encadeado nao e isento")
         check(dpre("docker ps")["decision"] == "deny", "prefixo vazio nao isenta tudo")
+        check(dpre("docker compose run test 2>&1 >/dev/null")["decision"] == "allow", "gate com redirect inocuo")
+        for c in ("docker compose run test\ngit push origin main", "docker compose run test\rgit push",
+                  "docker compose run test <(git push origin HEAD)", "docker compose run test --x $HOME",
+                  "docker compose run test > src/../x", "docker compose run testX"):
+            check(dpre(c)["decision"] == "deny", f"gate nao isenta: {c!r}")
 
         # gate: nothing changed -> fail; in-scope change -> pass; forbid; out of scope
         ok, text, _ = run_gate(repo, ctx)
@@ -1213,6 +1445,9 @@ def self_test() -> int:
         f, _, _ = evaluate_run(0, json.dumps(dict(good, structured_output={"status": "done"})), "",
                                "delegate", sch)
         check(any("obrigatorios" in x for x in f), "campos obrigatorios")
+        for bad in ("null", "[]", "3"):
+            f, _, _ = evaluate_run(0, bad, "", "delegate", sch)
+            check(any("nao um objeto" in x for x in f), f"envelope {bad} reprova")
 
         # quota and models, against the shapes agy 1.3.4 printed on 2026-10-13
         usage = {"command": {"data": {"groups": [
@@ -1233,6 +1468,39 @@ def self_test() -> int:
         # install/remove hooks leaves nothing behind and refuses to clobber
         subprocess.run(g + ["checkout", "-q", "--", "."], check=True)
         subprocess.run(g + ["clean", "-q", "-fd"], check=True)
+
+        # what git status cannot see: .git config/hooks/flags, ctx.json, ignored files
+        with open(os.path.join(repo, ".gitignore"), "w") as fh:
+            fh.write(".env\nbuild/\n")
+        subprocess.run(g + ["add", ".gitignore"], check=True)
+        subprocess.run(g + ["commit", "-q", "-m", "ignore"], check=True)
+        i0, ig0 = integrity_state(repo, rundir), ignored_state(repo)
+        os.makedirs(os.path.join(repo, "build"))
+        with open(os.path.join(repo, "build", "out.js"), "w") as fh:
+            fh.write("x\n")
+        check(diff_state(ig0, ignored_state(repo)) == [], "diretorio ignorado novo nao e ruido")
+        with open(os.path.join(repo, ".env"), "w") as fh:
+            fh.write("X=1\n")
+        check(diff_state(ig0, ignored_state(repo)) == [".env"], ".env ignorado detectado")
+        check(changed_paths(repo) == [], "e o git status de fato nao o ve")
+        subprocess.run(g + ["update-index", "--assume-unchanged", "side.json"], check=True)
+        with open(os.path.join(repo, ".git", "config"), "a") as fh:
+            fh.write("[core]\n\tfsmonitor = touch FSMON_RAN\n")
+        bad = diff_state(i0, integrity_state(repo, rundir))
+        changed_paths(repo)
+        check(any(b.endswith("config") for b in bad) and "<assume-unchanged/skip-worktree>" in bad,
+              f"config e flag de indice detectados: {bad}")
+        check(not os.path.exists(os.path.join(repo, "FSMON_RAN")), "fsmonitor plantado nao roda no git do script")
+        subprocess.run(["git", "-C", repo, "config", "--unset", "core.fsmonitor"], check=True)
+        subprocess.run(g + ["update-index", "--no-assume-unchanged", "side.json"], check=True)
+        os.remove(os.path.join(repo, ".env"))
+        shutil.rmtree(os.path.join(repo, "build"))
+
+        # a timed-out gate command takes its children with it
+        t0 = time.time()
+        ok, text, _ = run_gate(repo, dict(ctx, gate_timeout=1, gate=dict(ctx["gate"], format=[],
+                                          checks=["sleep 30 & sleep 30; wait"])), baseline=True)
+        check(not ok and "rc=timeout" in text and time.time() - t0 < 15, "timeout do gate")
         created = install_hooks(repo, rundir, ctx)
         spec = read_json(os.path.join(repo, HOOK_FILE))
         check(set(spec["agy-worker"]) == {"SessionStart", "PreToolUse", "Stop"}, "hooks.json gerado")
@@ -1240,8 +1508,8 @@ def self_test() -> int:
         try:
             install_hooks(repo, rundir, ctx)
             check(False, "sobrescreveu hooks.json existente")
-        except Refusal:
-            check(True, "recusa sobrescrever")
+        except Refusal as exc:
+            check("sobra de um run" in str(exc) and "rm " in str(exc), "reconhece a propria sobra")
         remove_hooks(repo, created)
         check(not os.path.exists(os.path.join(repo, ".agents")), ".agents removido")
     finally:

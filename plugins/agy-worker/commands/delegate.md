@@ -9,8 +9,13 @@ fatia deve ser delegada e como a task tem que estar escrita.
 Rode, com `run_in_background: true` porque o run pode passar de 10 minutos:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agy_worker.py" delegate $ARGUMENTS
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agy_worker.py" delegate '<task.json>' [--model slug] [--no-quota-probe]
 ```
+
+Monte a linha a partir de `$ARGUMENTS`; nao cole `$ARGUMENTS` cru na shell.
+O caminho da task vai entre aspas simples, como um argumento so (pode ter
+espaco). Se for o primeiro `delegate` ou `review` da sessao, pergunte antes ao
+usuario: o codigo vai para a Google e gasta a quota dele.
 
 Quando terminar:
 

@@ -1,6 +1,6 @@
 ---
 name: agy-worker
-description: Delegar uma fatia de codigo bem delimitada e checavel por maquina ao Gemini pelo Antigravity CLI (`agy`) headless, sob guard rails e gate, e pedir segunda opiniao somente leitura. Diz quando delegar (porte mecanico, testes a partir de spec, migracao repetitiva com gate objetivo) e quando nao (spike exploratorio, decisao de design, mudanca sem gate), como escrever a task (prompt, escopo, gate, schema do relatorio), como ler o veredito, e que o diff tem que ser revisado contra a fonte da verdade depois de todo run, porque o gate e necessario e nao suficiente. Use quando a tarefa mencionar agy, Antigravity, Gemini como worker, delegar para um modelo mais barato, poupar quota do Claude, segunda opiniao do Gemini, ou quando houver uma lista de fatias repetitivas com teste objetivo.
+description: Delegar uma fatia de codigo bem delimitada e checavel por maquina ao Gemini pelo Antigravity CLI (`agy`) headless, sob guard rails e gate, e pedir segunda opiniao somente leitura. Diz quando delegar (porte mecanico, testes a partir de spec, migracao repetitiva com gate objetivo) e quando nao (spike exploratorio, decisao de design, mudanca sem gate), como escrever a task (prompt, escopo, gate, schema do relatorio), como ler o veredito, e que o diff tem que ser revisado contra a fonte da verdade depois de todo run, porque o gate e necessario e nao suficiente. Use quando a tarefa mencionar agy, Antigravity, Gemini como worker, delegar para um modelo mais barato, poupar quota do Claude, segunda opiniao do Gemini, ou quando houver uma lista de fatias repetitivas com teste objetivo e o usuario quiser tira-las da sessao.
 ---
 
 # Gemini como worker, Claude como dono
@@ -15,6 +15,14 @@ procurar o checador em `~/.claude`, `/tmp`, na lista de processos e em `../`
 em vez de consertar o codigo; "consertou" arquivo que o Nx escreve sozinho;
 inventou alias que nao existia; pulou formatacao. O script deste plugin e o
 guard rail; esta skill e o resto, que o script nao consegue fazer por voce.
+
+## Pergunte antes do primeiro run
+
+Delegar e revisar mandam o prompt, os arquivos que o worker ler e o diff para
+a Google, gastam a quota do agy do usuario e rodam com
+`--dangerously-skip-permissions` (os hooks sao o limite). Antes do primeiro
+`delegate` ou `review` da sessao, pergunte; depois do sim, nao precisa
+perguntar de novo a cada fatia.
 
 ## Quando delegar
 
@@ -48,9 +56,12 @@ guard rail; esta skill e o resto, que o script nao consegue fazer por voce.
 3. **Nenhum `.agents/hooks.json` no repo.** O agy le um arquivo de hooks por
    workspace; o script nao sobrescreve o seu e recusa.
 4. **Os hooks tem que carregar.** O veredito falha com "hooks nao carregaram"
-   se nenhum `SessionStart` chegou. Nao e o modelo: e o agy nao confiando no
-   workspace. Peca ao usuario para abrir `agy` interativo uma vez na pasta.
-   Nao edite `~/.gemini`.
+   se nenhum `SessionStart` chegou. A causa **nao e conhecida**: nunca
+   aconteceu nos testes, e os hooks dispararam headless ate em pastas fora de
+   `trustedWorkspaces`. Hipoteses, nenhuma testada: `hooks.json` invalido,
+   hooks desligados nesta versao do agy, confianca no workspace. Diga isso ao
+   usuario; abrir `agy` interativo uma vez na pasta e uma sugestao, nao um
+   diagnostico. Nao edite `~/.gemini`.
 
 ## Escrevendo a task
 
@@ -104,7 +115,10 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agy_worker.py" delegate /caminho/TASK.jso
 ```
 
 Pode passar dos 10 minutos do Bash: rode com `run_in_background` e espere a
-notificacao. O veredito sai em stdout e em `<run_dir>/verdict.json`; o
+notificacao. **Enquanto o run durar, nao edite nada nessa arvore** (nem
+formatter, nem `git checkout`): o veredito atribui toda mudanca ao worker, e
+uma edicao sua conta como dele ou reprova o run por "fora do escopo". Se
+precisar continuar trabalhando, delegue num `git worktree` separado. O veredito sai em stdout e em `<run_dir>/verdict.json`; o
 `run_dir` e impresso na primeira linha do stderr.
 
 **Uma fatia por vez por worktree.** Arvore limpa e um `hooks.json` por
@@ -127,10 +141,13 @@ qual checagem pegou:
 | hooks nao carregaram | sem `SessionStart` o run nao teve guard rail nenhum |
 | HEAD mudou | um commit ou checkout passou pelo guard |
 | gate falhou no estado final | o gate e rodado de novo sobre a arvore como ficou, salvo se o ultimo gate verde do hook foi exatamente nesse estado |
-| fora do escopo | `git status` depois do run, que pega escrita feita pelo shell |
+| fora do escopo | `git status` depois do run; ve arquivo rastreado e nao rastreado, **nao** arquivo ignorado pelo git |
+| config, hooks ou flags do git mudaram | escrita no `.git` que faria o proprio git do script rodar codigo, ou esconderia mudanca do `git status` |
 | worker se declarou partial/blocked | o proprio relatorio dele |
 
-Leia tambem os `warnings`: `guard_denials` (tentativas de sair do escopo;
+Leia tambem os `warnings`: arquivos ignorados pelo git criados ou alterados
+(o gate escreve alguns, como `.eslintcache`; um `.env` novo nao e do gate),
+versao do agy diferente da testada, `guard_denials` (tentativas de sair do escopo;
 varias seguidas quase sempre e enunciado ambiguo ou gate impossivel),
 `side_effects` (reverta se nao forem desejados) e processos novos com cwd no
 repo que ficaram vivos (o script lista e **nao** mata).
@@ -160,8 +177,11 @@ O gate prova o que ele mede, e so isso. Antes de aceitar:
 ## Segunda opiniao, somente leitura
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agy_worker.py" review --diff HEAD~1 "o que revisar"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agy_worker.py" review --diff HEAD~1 --prompt-file /scratchpad/pergunta.md
 ```
+
+A pergunta vai num arquivo fora da arvore: texto livre na linha de comando
+quebra com aspas, parenteses ou `;`.
 
 Roda com `--mode plan`, sem `--dangerously-skip-permissions`, com os mesmos
 guards de caminho e escopo vazio, e confere que a arvore nao mudou. O diff vai
@@ -174,7 +194,10 @@ veredito.
 
 Sao um quebra-molas para um modelo cooperativo que se perde, nao um sandbox.
 O `--sandbox` do agy nao confinou escrita nenhuma no lab. Um comando que monta
-o caminho em tempo de execucao passa pelo guard de caminho; quem pega e a
-checagem de escopo pos-run. E o worker herda o seu ambiente: `env` e
+o caminho em tempo de execucao (`python3 -c`, `node -e`) passa pelos guards. A
+checagem de escopo pos-run pega o que ele escrever em arquivo rastreado ou
+novo nao ignorado dentro do repo; arquivo ignorado novo ou alterado vira so
+aviso; dentro de diretorio ignorado (`node_modules/`, `dist/`) e fora do repo,
+nada pega. E o worker herda o seu ambiente: `env` e
 `printenv` sao negados, mas `python3 -c 'import os; ...'` nao. Nao delegue com
 segredo em variavel de ambiente que o worker nao deva ver.
