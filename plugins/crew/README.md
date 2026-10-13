@@ -1,46 +1,65 @@
-# agy-worker
+# crew
 
-Usa os modelos da Google como worker barato **sem brigar com o harness do
+Tres CLIs de agente como workers baratos **sem brigar com o harness do
 Claude**: o Claude planeja, escreve a task, define escopo e gate e revisa o
-diff; o Antigravity CLI (`agy`) com Gemini executa headless, uma fatia por vez,
-sob guard rails que existem so durante o run.
+diff; o worker executa headless, uma fatia por vez, sob guard rails que existem
+so durante o run. Ate a 0.3.0 este plugin se chamava `agy-worker` (ver
+[Changelog](#changelog)).
 
 ```
-/plugin install agy-worker@4nrry
+/plugin install crew@4nrry
 ```
 
-Requer `agy` autenticado, `git`, `python3` (so stdlib) e Linux (`/proc`, para
-listar processos que sobraram). So foi exercitado no agy **1.3.4**; com outra
-versao o veredito traz um aviso, porque decisao de hook, a ferramenta `finish`,
-os motivos de Stop e o formato do `/usage` sao comportamento observado, nao
-contrato. Nenhum daemon, nenhum MCP server e nenhum hook do Claude Code: os
-hooks que este plugin instala sao **do agy**, escritos em `.agents/hooks.json`
-no comeco do run e removidos no fim (inclusive em SIGTERM e SIGHUP; depois de
-um SIGKILL o proximo run recusa e diz qual arquivo remover).
+| backend | CLI | quando |
+|---|---|---|
+| `agy` (padrao) | Antigravity CLI, Gemini | primario |
+| `opencode` | opencode, modelos gratis do Zen | quota do agy acabou, ou capacidade extra; guard do shell mais fraco |
+| `copilot` | GitHub Copilot CLI, plano Free | outra familia de modelo; sem shell, pago em AI credits |
 
-Segundo backend, opcional: o **opencode** (`"backend": "opencode"` na task),
-com os modelos gratis do Zen. Mesmo veredito, mesmas regras de caminho, escopo
-e comando, guard mais fraco no shell; detalhes em
-[Backend opencode](#backend-opencode).
-
-Terceiro backend, opcional: o **GitHub Copilot CLI** (`"backend": "copilot"`),
-sem shell nenhum para o modelo e o gate inteiro do nosso lado. No plano Free
-so o `--model auto` funciona e cada run gasta AI credits; detalhes em
-[Backend copilot](#backend-copilot).
+Requer `git`, `python3` (so stdlib), Linux (`/proc`, para achar os processos
+do run) e o CLI do backend autenticado. So foi exercitado no agy **1.3.4**, no
+opencode **1.19.0** e no copilot **1.0.96**; com outra versao o veredito traz
+um aviso, porque decisao de hook, a ferramenta `finish`, os motivos de Stop e o
+formato do `/usage` sao comportamento observado, nao contrato. Os hooks que o
+run instala sao **do CLI do worker** (no agy, `.agents/hooks.json`, escrito no
+comeco do run e removido no fim, inclusive em SIGTERM e SIGHUP; depois de um
+SIGKILL o proximo run recusa e diz qual arquivo remover). Do Claude Code ha um
+hook so, o de injecao descrito abaixo.
 
 **O codigo sai da maquina.** Delegar ou pedir review manda o prompt, os
-arquivos que o worker ler e o diff para a Google (ou para o provedor do
-backend escolhido), e gasta a quota do agy (ou os creditos do Copilot). A
-skill manda o Claude perguntar antes do primeiro run na sessao.
+arquivos que o worker ler e o diff para o provedor do backend (Google, o
+provedor do modelo do Zen, ou GitHub), e gasta a quota do agy ou os creditos
+do Copilot. O documento comum manda o Claude perguntar antes do primeiro run na
+sessao.
 
 ## Componentes
 
 | componente | o que faz |
 |---|---|
-| `scripts/agy_worker.py` | `delegate`, `review`, `gate`, os handlers de hook do agy, o guard e o loop do opencode, os hooks do Copilot, e `--self-test`. Um arquivo |
-| `skills/agy-worker/` | quando delegar e quando nao, como escrever a task, como ler o veredito, a revisao obrigatoria |
-| `skills/agy-worker/task.example.json` | uma task completa; o self-test a valida |
-| `commands/delegate.md`, `commands/review.md` | `/agy-worker:delegate` e `/agy-worker:review` |
+| `scripts/crew.py` | `delegate`, `review`, `gate`, os handlers de hook do agy, o guard e o loop do opencode, os hooks do Copilot, o vigia de processos em segundo plano, e `--self-test`. Um arquivo |
+| `shared/delegate.md` | a parte comum: quando delegar e quando nao, como escrever a task, gate, como ler o veredito, a revisao do diff contra a fonte da verdade, arquivos de segredo, a pergunta antes do primeiro run |
+| `shared/task.example.json` | uma task completa; o self-test a valida |
+| `skills/agy/`, `skills/opencode/`, `skills/copilot/` | `crew:agy`, `crew:opencode`, `crew:copilot`: so o que e de cada CLI (flags, modelos e escalada, o que o guard daquele backend faz e nao faz). Cada uma manda ler o documento comum |
+| `hooks/inject.sh` | `UserPromptSubmit`: injeta a skill do backend nomeado no prompt |
+| `commands/delegate.md`, `commands/review.md` | `/crew:delegate` e `/crew:review` |
+
+## Por que o gatilho e um hook
+
+O `agent-fleet`, neste mesmo repo, mediu o disparo pela descricao da skill:
+**2 de 30** runs que deviam disparar
+([`2026-08-06-trigger-eval/`](../../bench/plugins/agent-fleet/results/2026-08-06-trigger-eval/)).
+Por isso aqui o gatilho e mecanico: `hooks/inject.sh` injeta
+`skills/<backend>/SKILL.md`, mais uma linha mandando ler `shared/delegate.md`,
+quando o prompt contem `agy`, `opencode` ou `copilot` como **palavra inteira**,
+sem diferenciar maiusculas (`agy-worker` e `crew:agy` casam, `agyx` nao). Dois
+nomes no prompt, duas skills. So aconselha: nunca bloqueia, sai sempre 0, nao
+usa rede, le so o prompt e arquivos do plugin (~20 ms medido a mao, uma
+execucao). As descricoes das skills ficaram estreitas de proposito.
+
+A taxa de acerto **deste** hook nao foi medida. O numero acima e do
+`agent-fleet`, com outra skill e outro padrao; ele justifica a escolha do
+mecanismo, nao diz quantas vezes este dispara quando deveria, nem quantas
+dispara a toa (um prompt que so menciona "copilot" injeta a skill do copilot).
 
 ## O que um `delegate` faz
 
@@ -71,12 +90,16 @@ skill manda o Claude perguntar antes do primeiro run na sessao.
    ou flags de indice (`assume-unchanged`, `skip-worktree`) do git, ou o
    `ctx.json` do run, mudarem durante o run. Arquivo ignorado pelo git criado
    ou alterado vira aviso.
-5. Imprime um veredito JSON: `ok`, `failures`, `warnings`, arquivos por escopo,
+5. Enquanto o agy roda, vigia os comandos que ele joga para segundo plano e
+   encerra os que sobraram depois de o worker terminar (ver
+   [Comandos em segundo plano](#comandos-em-segundo-plano-no-agy)). No fim,
+   encerra o que ainda tiver a marca do run (`CREW_RUN`) no ambiente.
+6. Imprime um veredito JSON: `ok`, `failures`, `warnings`, arquivos por escopo,
    gate, negacoes dos guards, o relatorio do worker e o uso de tokens.
 
 O gate e configuravel por projeto, na task: `forbid` (regex contra linhas
 adicionadas), `format` (o ponto do formatter, com `{files}`) e `checks`. O
-estado de cada run fica em `$(git rev-parse --git-path agy-worker)/runs/`,
+estado de cada run fica em `$(git rev-parse --git-path crew)/runs/`,
 fora da arvore, e acumula: nada apaga run dirs antigos. Nada e commitado; em
 falha, nada e revertido.
 
@@ -107,7 +130,7 @@ sem numero: forcado a continuar, o Gemini procurou o gate em `~/.claude`,
 `/tmp`, `ps` e `../`; "consertou" o `nx.json` que o proprio Nx escreveu; nao
 reportou divergencia sem ser perguntado; pulou formatacao com o gate sem
 formatter; inventou alias. Dai `side_effects`, o campo `divergences` obrigatorio
-no relatorio, o ponto `format` no gate e a revisao obrigatoria na skill.
+no relatorio, o ponto `format` no gate e a revisao obrigatoria no documento comum.
 
 ## Smoke tests desta versao
 
@@ -144,9 +167,17 @@ Python e `unittest`:
   (`cat .e*`, `python3 -c`) passa, e uma busca recursiva num diretorio que
   contem `.env` le o arquivo. So o self-test cobre a regra; nenhum run real
   tentou ler um segredo.
-- O `overwrite` de `WaitMsBeforeAsync` e o encerramento dos processos marcados
-  vieram de um run real que travou 16 min (n=1); o self-test cobre a logica, e
-  o primeiro run depois da mudanca e o que vai dizer se o agy aceita o valor.
+- O vigia de segundo plano foi provado so no lab (dois runs, abaixo) e com
+  `bash` + `sleep`, nao com um `nx` de verdade: um comando que se desliga do
+  agy (daemon com `setsid` ou fork duplo) deixa de ser descendente dele e o
+  vigia nao o ve; so o encerramento por marca, no fim, o pega. O MCP server
+  que o agy sobe e protegido pela linha de base (tudo o que o agy tinha antes
+  do primeiro `run_command`) e por nome (`mcp` na linha de comando); um helper
+  que o agy suba depois disso sem `mcp` no nome e tem a marca seria encerrado.
+- A ferramenta `manage_task` do agy (consultar ou parar uma background task)
+  fica fora da allowlist: no 2o run do lab o worker a chamou para esperar o
+  comando e foi negado. Liberar so `status` deixaria o worker esperar a toa;
+  nao foi testado.
 - Runs em paralelo, um worktree por fatia: nao testado.
 - Hooks que nao carregam: o script detecta (sem `SessionStart`, o run falha),
   mas a causa nao foi reproduzida. Os hooks dispararam headless em pastas fora
@@ -163,6 +194,54 @@ Python e `unittest`:
 - Modelos Claude ou GPT pelo agy: a quota deles estava zerada no dia; o
   preflight recusou, como devia, e nada alem disso foi testado.
 
+## Comandos em segundo plano no agy
+
+O `run_command` do agy 1.3.4 manda um comando longo para uma background task
+depois de ~4 s **qualquer que seja** o `WaitMsBeforeAsync`. A 0.3.0 reescrevia
+esse argumento no `PreToolUse` para 900000; em dois runs reais (LOTVS,
+2026-10-13) o agy registrou a reescrita ("A pre-tool hook changed the arguments
+... Changed: WaitMsBeforeAsync") e mesmo assim o `nx run web:typecheck` voltou
+como "Tool is running as a background task". Depois do gate verde e de o
+worker parar, o agy logou "root agent idle; waiting up to 30m0s for 1
+background task(s)" e ficou parado 16 e 11 min, ate os `npm`/`nx` orfaos serem
+mortos a mao; ai saiu normalmente, com envelope valido. **A reescrita nao
+funciona e foi removida.**
+
+No lugar, o `delegate` do agy vigia o run (`BackgroundWatcher`, uma vez por
+segundo). Quando o `guard.jsonl` mostra que o worker terminou depois de um gate
+**verde** (o `Stop` respondeu `stop`, ou o `finish` foi permitido), espera
+15 s e encerra (SIGTERM, 5 s, SIGKILL) os processos que sao, todos ao mesmo
+tempo: descendentes do processo do agy; marcados com `CREW_RUN=<run>` no
+ambiente; fora de um hook nosso (o gate roda la, com `CREW_GATE=1`); fora da
+linha de base (o que o agy ja tinha subido antes do primeiro `run_command`
+permitido, como os MCP servers) e sem `mcp` na linha de comando. Nunca o agy:
+o envelope dele em stdout e a entrada do veredito. O que foi encerrado vai em
+`agy.background_killed` e num aviso; a arvore de processos do agy fica em
+`procs.jsonl` no run dir.
+
+Tambem por causa disso: o aviso de background task manda o modelo encerrar o
+turno, e no 1o run do lab ele encerrou sem chamar `finish`, com gate verde e
+`structured_output` nulo. Agora o `Stop` com gate verde e sem `finish` devolve
+`continue` pedindo so o relatorio, no maximo 2 vezes.
+
+Prova no lab (agy 1.3.4, `gemini-3.8-flash-low`, n=1 por versao, repo
+descartavel fora de `trustedWorkspaces` em que os hooks carregaram; o check do
+gate dorme 30 s, e 300 s a mais quando quem roda e o worker, para a background
+task sobreviver a ele). Nao sao run records:
+
+| run | resultado |
+|---|---|
+| vigia, sem o pedido de `finish` | o `./check.sh` do worker foi para segundo plano; gate verde no `Stop` as 11:49:54; `bash ./check.sh` e `sleep 300` encerrados as 11:50:09 (15 s); o agy saiu, 83 s no total. O MCP server do media-agent (`uv tool uvx ... kino --mcp`), filho do agy, ficou de fora. `ok: false` so por `structured_output` nulo: o worker parou sem `finish` |
+| vigia + pedido de `finish` | gate verde no `Stop` (`NO_TOOL_CALL`) as 11:52:58, `continue` pedindo o relatorio, `finish` permitido as 11:53:02, os dois processos encerrados as 11:53:18; `ok: true`, relatorio `done`, 103 s. O kino de novo intocado. O worker tentou `manage_task` para esperar o comando e foi negado |
+
+Sem o vigia, o mesmo lab teria esperado os 300 s do `sleep` (inferido: nao foi
+rodado sem ele); nos runs reais, ate 30 min.
+
+O aviso "processos novos com cwd no repo", da 0.3.0, listava qualquer processo
+com cwd no repo, e deu falso positivo: o laco `bash -c ... sleep 2` da propria
+sessao do Claude que esperava o run. Agora o aviso olha so a marca do run, e
+lista o que sobreviveu ao encerramento por marca.
+
 ## Backend opencode
 
 Para quando a quota do agy acabou, ou para capacidade extra gratis. O agy
@@ -172,7 +251,7 @@ foi exercitado no **1.19.0** (outra versao vira aviso).
 | | agy | opencode |
 |---|---|---|
 | guard | hooks do agy em `.agents/hooks.json`, na arvore durante o run | plugin gerado no run dir (dentro do `.git`), carregado so pelo `OPENCODE_CONFIG_CONTENT` daquele processo; nada entra na arvore nem em `~/.config/opencode` |
-| politica | `decide_pre` | a mesma: o plugin JS nao tem regra nenhuma, manda cada chamada para `agy_worker.py hook oc-pre`, que traduz a ferramenta do opencode (`read`, `write`, `edit`, `bash`, `apply_patch`...) para a do agy; qualquer resposta que nao seja allow nega |
+| politica | `decide_pre` | a mesma: o plugin JS nao tem regra nenhuma, manda cada chamada para `crew.py hook oc-pre`, que traduz a ferramenta do opencode (`read`, `write`, `edit`, `bash`, `apply_patch`...) para a do agy; qualquer resposta que nao seja allow nega |
 | shell | lista do agy | a lista do agy **mais** `cp`, `mv`, `touch`, `mkdir`, `rm`... (os modelos do opencode escrevem pelo shell) |
 | gate | no `finish` e no Stop, dentro do agy | loop externo: run, gate, `opencode run -s <sessao>` com a saida do gate, ate `max_gate_attempts` runs |
 | relatorio | `--json-schema` | o ultimo objeto JSON da mensagem final, pedido no prompt; se faltar, o loop pede de novo |
@@ -236,7 +315,7 @@ quota gratis a poupar, cada run custa.
 
 | | agy | copilot |
 |---|---|---|
-| guard | `.agents/hooks.json` | `.github/hooks/agy-worker-<run>.json`, escrito no comeco do run e removido no fim (inclusive SIGTERM/SIGHUP); recusa se ja existir, ou se sobrar um `agy-worker-*.json` de run morto; o `git status` pos-run ignora exatamente esse arquivo |
+| guard | `.agents/hooks.json` | `.github/hooks/crew-<run>.json`, escrito no comeco do run e removido no fim (inclusive SIGTERM/SIGHUP); recusa se ja existir, ou se sobrar um `crew-*.json` de run morto; o `git status` pos-run ignora exatamente esse arquivo |
 | carga dos hooks | automatica | so com `COPILOT_ALLOW_ALL=true` no ambiente do processo; `--allow-all-tools` e `trustedFolders` nao carregam (lab) |
 | politica | `decide_pre` | a mesma: `hook cp-pre` traduz `view`, `glob`, `grep`, `apply_patch` (patch cru, um alvo por arquivo), `create`, `edit` para a ferramenta do agy; ferramenta desconhecida, `task`, MCP, rede e qualquer shell sao negados; qualquer coisa que nao seja allow nega |
 | shell | lista do agy | **nenhum**: `--excluded-tools bash task`. Chamada de shell ou de `task` no stream de eventos reprova o run |
@@ -252,7 +331,7 @@ Outras flags de todo run: `--allow-all-tools` (exigida pelo `-p`),
 `--disable-builtin-mcps`, `--max-ai-credits 30` (o minimo aceito; serve so de
 freio para um run que dispare, nao de orcamento), `--usage-output-file` e
 `--log-dir` no run dir. Ambiente: `COPILOT_ALLOW_ALL=true`, `NX_DAEMON=false`,
-`AGY_WORKER_RUN`. O `COPILOT_HOME` continua o do usuario: isola-lo perdeu o
+`CREW_RUN`. O `COPILOT_HOME` continua o do usuario: isola-lo perdeu o
 login no lab.
 
 O que o lab mostrou (copilot 1.0.95/1.0.96, 2026-10-13, n=1 por caso, notas
@@ -312,7 +391,7 @@ propria sessao (delegate, revisao, commit, proxima), nao um fan-out.
 
 ## Verificacao
 
-`just check` roda `agy_worker.py --self-test`: 298 assercoes sem chamar o agy,
+`just check` roda `crew.py --self-test`: 311 assercoes sem chamar o agy,
 o opencode nem o copilot,
 num repo git temporario. Cobrem as decisoes do guard (allowlist de ferramentas,
 caminho relativo e absoluto, symlink, `cd`/`Cwd`, `.git` pelo shell, git com
@@ -341,3 +420,36 @@ legivel, os handlers quebrados (o `cp-pre` nega), os eventos que saem 0 e sao
 falha, a leitura do `usage.json`, a linha de comando com `bash task`
 excluidos, e o arquivo de hooks gerado, ignorado so ele no escopo, nunca
 sobrescrito, removido com os diretorios que o run criou.
+
+O vigia de segundo plano: quem pode ser encerrado numa arvore sintetica (hook,
+gate, linha de base, MCP e processo sem marca ficam; o agy nunca), quando o
+worker conta como terminado (so com o ultimo gate verde) e, com processos de
+verdade, um "agy" falso com um helper anterior ao primeiro comando, um comando
+do worker e um processo sem marca: so o comando e encerrado, e so depois da
+carencia. Tambem o `Stop` que pede o `finish` no maximo 2 vezes.
+
+O hook de injecao nao tem teste no `just check` alem do shellcheck e da
+checagem de que o `hooks.json` aponta para um executavel.
+
+## Changelog
+
+**0.4.0** (2026-10-13)
+
+- Renomeado de `agy-worker` para `crew`: diretorio, manifesto, comandos
+  (`/crew:delegate`, `/crew:review`) e o script (`scripts/crew.py`). A skill
+  unica virou tres, uma por backend (`crew:agy`, `crew:opencode`,
+  `crew:copilot`), mais o documento comum `shared/delegate.md`.
+- **Estado no git dir mudou de `agy-worker/` para `crew/`**
+  (`$(git rev-parse --git-path crew)`). Run dirs antigos ficam em
+  `agy-worker/runs/` e nada os le. Task files sao passados pelo caminho, entao
+  os que estiverem em `agy-worker/tasks/` continuam funcionando; para seguir a
+  convencao nova, mova-os para `crew/tasks/` (`git rev-parse --git-path
+  agy-worker` e `--git-path crew` dao os dois caminhos).
+- Variaveis: `AGY_WORKER_RUN` virou `CREW_RUN`; o gate exporta `CREW_GATE=1` e
+  ainda `AGY_WORKER_GATE=1`. Sobras de run morto da 0.3.0 (`.agents/hooks.json`
+  com a chave `agy-worker`, `.github/hooks/agy-worker-*.json`) continuam
+  reconhecidas.
+- Hook `UserPromptSubmit` que injeta a skill do backend nomeado.
+- Removida a reescrita de `WaitMsBeforeAsync` (nao funciona); vigia de
+  processos em segundo plano no agy; `Stop` pede o `finish` que faltou.
+- O aviso de processos que sobraram usa a marca do run, nao o cwd.

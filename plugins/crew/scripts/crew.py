@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""agy-worker: run Google's Antigravity CLI (`agy`) headless as a guarded worker.
+"""crew: run an agent CLI (agy, opencode or copilot) headless as a guarded worker.
 
 Claude plans and reviews; agy executes one well-scoped slice. This script is
 the guard rail between them. Subcommands:
@@ -19,7 +19,12 @@ PreToolUse hook printing `{}` denies the call, and --sandbox confines nothing.
 So nothing here trusts the exit code, and every hook prints an explicit
 decision even when it crashes.
 
-Stdlib only. State lives in `$(git rev-parse --git-path agy-worker)`, so a run
+The agy backend also watches the run: agy 1.3.4 moves long commands to a
+background task whatever WaitMsBeforeAsync says and then waits up to 30 min for
+them, so BackgroundWatcher ends the worker's leftovers once it finished green.
+
+Stdlib only. State lives in `$(git rev-parse --git-path crew)` (`agy-worker`
+before 0.4.0), so a run
 never dirties the work tree; the only file written into the tree is
 `.agents/hooks.json`, for the duration of the run, and it is removed after.
 
@@ -32,7 +37,7 @@ gate output) and the report parsing are here, and opencode.json's bytes are
 restored after every opencode process (it writes "$schema" into it).
 
 Third backend, `"backend": "copilot"` (GitHub Copilot CLI 1.0.96, Free plan,
-`--model auto` only): repo hooks in `.github/hooks/agy-worker-<run>.json`,
+`--model auto` only): repo hooks in `.github/hooks/crew-<run>.json`,
 loaded only because the run sets COPILOT_ALLOW_ALL=true, forward every tool
 call to `hook cp-pre` (same decide_pre) and run the gate on agentStop. The
 shell and subagents are removed from the model (`--excluded-tools bash task`),
@@ -55,7 +60,7 @@ import tempfile
 import time
 
 HOOK_FILE = ".agents/hooks.json"
-STATE_NAME = "agy-worker"
+STATE_NAME = "crew"
 DEFAULT_MODEL = "gemini-3.8-flash-high"
 DEFAULT_TIMEOUT = "30m"
 DEFAULT_REVIEW_TIMEOUT = "15m"
@@ -76,7 +81,7 @@ SECRET_EXCEPTIONS = ("*.example", "*.sample", "*.template")
 # Every process of a run inherits this marker, so the ones it leaves behind
 # (an Nx daemon reparents to init and keeps no ancestry) can be found and
 # stopped without touching anything the user started.
-RUN_ENV = "AGY_WORKER_RUN"
+RUN_ENV = "CREW_RUN"
 WORKER_ENV = {"NX_DAEMON": "false"}
 BACKENDS = ("agy", "opencode", "copilot")
 OPENCODE_DEFAULT_MODEL = "opencode/longcat-2.5-preview-free"
@@ -90,10 +95,15 @@ OPENCODE_CONFIG_FILES = ("opencode.json", "opencode.jsonc")
 TESTED_COPILOT_VERSION = "1.0.96"
 COPILOT_DEFAULT_MODEL = "auto"
 COPILOT_HOOK_DIR = ".github/hooks"
-COPILOT_HOOK_PREFIX = "agy-worker-"
+COPILOT_HOOK_PREFIX = "crew-"
 COPILOT_MAX_STOP_BLOCKS = 8          # the CLI overrides agentStop after 8 consecutive blocks (docs)
 COPILOT_MIN_AI_CREDITS = 30          # `--max-ai-credits` refuses less: a runaway backstop, not a budget
 COPILOT_REPORT_ASKS = 2              # extra agentStop blocks asking only for the missing report
+# agy: extra Stop `continue`s asking for `finish` when the gate is green but the
+# worker stopped without calling it. Seen in the lab (2026-10-13, n=1): the
+# background-task notice tells the model to end the turn, it did, and the
+# envelope came back with structured_output null although the gate was green.
+AGY_REPORT_ASKS = 2
 # Both, always: excluding only `bash` sent the model into 2826 `task`
 # subagent calls (~5.5 AI credits) in the lab.
 COPILOT_EXCLUDED_TOOLS = ["bash", "task"]
@@ -209,7 +219,7 @@ CP_TOOLS = {
 # that could write there could replace its own guard, so no scope may cover
 # them and the hook denies writes to them whatever the scope says.
 COPILOT_HOOK_PREFIXES = (".github/hooks/", ".github/copilot/", ".claude/")
-COPILOT_HOOK_SAMPLES = (".github/hooks/agy-worker-x.json", ".github/copilot/settings.json",
+COPILOT_HOOK_SAMPLES = (".github/hooks/crew-x.json", ".github/copilot/settings.json",
                         ".github/copilot/settings.local.json", ".claude/settings.json",
                         ".claude/settings.local.json")
 CP_INERT_TOOLS = {"report_intent", "think", "update_todo"}   # no file or process effect
@@ -626,12 +636,13 @@ SHELL_WORDS = re.compile(r"[^\s;&|()<>`'\"=]+")
 
 
 def allow_cmd(ctx: dict) -> dict:
-    """agy's run_command goes asynchronous after WaitMsBeforeAsync (the model
-    sends 5000), and agy then waits up to 30 min for the orphan before it
-    exits: an Nx typecheck sat there for 16 min (LOTVS categories run,
-    2026-10-13). Overwrite it so the command finishes inside the call."""
-    wait = int(ctx.get("gate_timeout", DEFAULT_GATE_TIMEOUT)) * 1000
-    return {"decision": "allow", "overwrite": {"WaitMsBeforeAsync": wait}}
+    """Plain allow. Overwriting WaitMsBeforeAsync does NOT keep run_command in
+    the foreground: on agy 1.3.4 the overwrite was applied ("A pre-tool hook
+    changed the arguments ... Changed: WaitMsBeforeAsync") and a long `nx run
+    web:typecheck` still went to a background task after ~4 s (two LOTVS runs,
+    2026-10-13). The leftover background task is what kept agy alive for 11 and
+    16 min after the worker stopped; BackgroundWatcher handles that instead."""
+    return {"decision": "allow"}
 
 
 def decide_pre(payload: dict, ctx: dict) -> dict:
@@ -918,12 +929,12 @@ def run_gate(repo: str, ctx: dict, baseline: bool = False):
                     say(f"GATE: [{kind}] {cmd}: pulado, nenhum arquivo do escopo")
                     continue
                 cmd = cmd.replace("{files}", quoted)
-            # AGY_WORKER_GATE lets a command tell the gate run from the
-            # worker's own run of the same command. Own session, so a timeout
+            # CREW_GATE lets a command tell the gate run from the worker's own
+            # run of the same command (AGY_WORKER_GATE: the pre-0.4.0 name). Own session, so a timeout
             # kills the whole tree the command started, not just bash.
             proc = subprocess.Popen(["bash", "-c", cmd], cwd=repo, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, text=True, start_new_session=True,
-                                    env={**os.environ, **WORKER_ENV, "AGY_WORKER_GATE": "1",
+                                    env={**os.environ, **WORKER_ENV, "CREW_GATE": "1", "AGY_WORKER_GATE": "1",
                                          RUN_ENV: ctx.get("run_id", "")})
             try:
                 out, _ = proc.communicate(timeout=ctx.get("gate_timeout", DEFAULT_GATE_TIMEOUT))
@@ -1056,6 +1067,18 @@ def hook_main(event: str, rundir: str) -> int:
                 out = {"decision": "stop"}
             else:
                 passed, text, n = gate_cached(rundir, ctx, f"stop:{reason}")
+                prior = guard_events(rundir)
+                finished = any(e.get("event") == "pre" and e.get("tool") in FINISH_TOOLS
+                               and e.get("decision") == "allow" for e in prior)
+                asks = sum(1 for e in prior if e.get("event") == "stop" and e.get("ask") == "report")
+                if passed and not finished and asks < AGY_REPORT_ASKS:
+                    out = {"decision": "continue", "reason":
+                           "O gate PASSOU. Falta so o relatorio: chame a ferramenta finish agora, com o "
+                           "relatorio pedido. Nao espere comando em segundo plano nem rode mais nada."}
+                    append_jsonl(log, {"event": "stop", "reason": reason, "decision": "continue",
+                                       "ask": "report"})
+                    print(json.dumps(out, ensure_ascii=False))
+                    return 0
                 if passed or n >= ctx["max_gate_attempts"]:
                     out = {"decision": "stop"}
                 else:
@@ -1226,10 +1249,52 @@ def evaluate_run(rc, stdout: str, stderr: str, mode: str, schema: dict):
     return fails, warns, env
 
 
-def stop_run_procs(run_id: str) -> dict:
-    """Stop the processes that carry this run's marker and outlived it (pid ->
-    cmdline). Only our own: the marker is set by this script on the worker and
-    on the gate, and descendants inherit it even after reparenting."""
+def proc_cmdline(pid: int, limit: int = 200) -> str:
+    """Display form; pass limit=0 for the whole thing (matching must not see a
+    truncated line: a long script path pushed `crew.py hook` past 200 chars)."""
+    with open(f"/proc/{pid}/cmdline", "rb") as fh:
+        text = fh.read().replace(b"\0", b" ").decode(errors="replace").strip()
+    return text[:limit] if limit else text
+
+
+def proc_env_has(pid: int, *entries: bytes) -> list:
+    """Which of `entries` (b"KEY=value") are in the process environment."""
+    with open(f"/proc/{pid}/environ", "rb") as fh:
+        env = set(fh.read().split(b"\0"))
+    return [e in env for e in entries]
+
+
+def ppid_map() -> dict:
+    """pid -> parent pid, for every process we can see."""
+    out = {}
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open(f"/proc/{pid}/stat", "rb") as fh:
+                # comm may contain spaces and parens: the fields after the last ')'
+                out[int(pid)] = int(fh.read().rsplit(b")", 1)[1].split()[1])
+        except (OSError, IndexError, ValueError):
+            continue
+    return out
+
+
+def descendants(root: int, ppids: dict) -> dict:
+    """pid -> parent pid for every descendant of root (root excluded)."""
+    children = {}
+    for pid, pp in ppids.items():
+        children.setdefault(pp, []).append(pid)
+    out, todo = {}, [root]
+    while todo:
+        for c in children.get(todo.pop(), []):
+            if c not in out and c != root:
+                out[c] = ppids[c]
+                todo.append(c)
+    return out
+
+
+def marked_procs(run_id: str) -> dict:
+    """pid -> cmdline for every process carrying this run's marker, except us."""
     if not run_id:
         return {}
     marker, me, hits = f"{RUN_ENV}={run_id}".encode(), os.getpid(), {}
@@ -1237,16 +1302,19 @@ def stop_run_procs(run_id: str) -> dict:
         if not pid.isdigit() or int(pid) == me:
             continue
         try:
-            with open(f"/proc/{pid}/environ", "rb") as fh:
-                if marker not in fh.read().split(b"\0"):
-                    continue
-            with open(f"/proc/{pid}/cmdline", "rb") as fh:
-                hits[int(pid)] = fh.read().replace(b"\0", b" ").decode(errors="replace").strip()[:200]
+            if proc_env_has(int(pid), marker)[0]:
+                hits[int(pid)] = proc_cmdline(int(pid))
         except OSError:
             continue
+    return hits
+
+
+def kill_pids(pids) -> None:
+    """SIGTERM, 5 s, then SIGKILL whatever is left. Callers pass only pids they
+    proved are ours (the run marker)."""
     for sig in (signal.SIGTERM, signal.SIGKILL):
         alive = []
-        for pid in hits:
+        for pid in pids:
             try:
                 os.kill(pid, sig)
                 alive.append(pid)
@@ -1258,23 +1326,137 @@ def stop_run_procs(run_id: str) -> dict:
             time.sleep(0.2)
         if not alive:
             break
+
+
+def stop_run_procs(run_id: str) -> dict:
+    """Stop the processes that carry this run's marker and outlived it (pid ->
+    cmdline). Only our own: the marker is set by this script on the worker and
+    on the gate, and descendants inherit it even after reparenting."""
+    hits = marked_procs(run_id)
+    kill_pids(list(hits))
     return hits
 
 
-def snapshot_procs(repo: str) -> dict:
-    """pid -> cmdline for processes whose cwd is inside the repo."""
-    found = {}
-    for pid in os.listdir("/proc"):
-        if not pid.isdigit():
-            continue
+# Names an MCP server by its command line (`uv tool uvx ... kino --mcp`,
+# `npx -y @upstash/context7-mcp`, `mcp-server-x`). A second line of defence
+# behind the baseline in BackgroundWatcher, for a server agy starts late.
+MCP_CMDLINE = re.compile(r"(?i)(\bmcp\b|mcp[-_]?server|[-_]mcp\b)")
+BG_GRACE_S = 15
+
+
+class BackgroundWatcher:
+    """Ends the worker's leftover background commands so agy can exit.
+
+    agy 1.3.4 moves a long run_command (an `nx run web:typecheck`) to a
+    background task after ~4 s whatever WaitMsBeforeAsync says, and after the
+    root agent is done it logs "waiting up to 30m0s for N background task(s)"
+    and sits there: 16 and 11 min in two LOTVS runs (2026-10-13), until the
+    orphans were killed by hand; then agy exited 0 with a valid envelope.
+
+    Polled once a second while agy runs. Once guard.jsonl shows the worker is
+    done after a GREEN gate (Stop answered `stop`, or `finish` allowed), it
+    waits BG_GRACE_S and then terminates processes that are all of:
+      - descendants of the agy process, and never agy itself (its stdout
+        envelope is the verdict's input);
+      - carrying this run's marker (CREW_RUN=<run id>) in their environment;
+      - not a hook process of ours or anything under one (the gate runs there,
+        with CREW_GATE=1, also skipped);
+      - not in the baseline: everything agy had started before the worker's
+        first allowed run_command (MCP servers, agy's own helpers), and their
+        subtrees; nor anything whose command line names an MCP server.
+    Whatever is killed is recorded and goes into the verdict.
+    """
+
+    def __init__(self, rundir: str, run_id: str, grace: float = BG_GRACE_S):
+        self.rundir, self.grace = rundir, grace
+        self.marker = f"{RUN_ENV}={run_id}".encode()
+        self.hook_tag = f"{os.path.abspath(__file__)} hook"
+        self.baseline: set = set()
+        self.saw_command = False
+        self.gate_green = False
+        self.finished_at = None
+        self.offset = 0
+        self.seen: set = set()
+        self.killed: dict = {}
+        self.errors: list = []
+
+    def _read_events(self) -> None:
         try:
-            cwd = os.readlink(f"/proc/{pid}/cwd")
-            if cwd == repo or cwd.startswith(repo + "/"):
-                with open(f"/proc/{pid}/cmdline", "rb") as fh:
-                    found[int(pid)] = fh.read().replace(b"\0", b" ").decode(errors="replace").strip()[:200]
+            with open(os.path.join(self.rundir, "guard.jsonl"), encoding="utf-8") as fh:
+                fh.seek(self.offset)
+                chunk = fh.read()
         except OSError:
-            continue
-    return found
+            return
+        complete = chunk[:chunk.rfind("\n") + 1]     # never consume a half-written line
+        self.offset += len(complete.encode("utf-8"))
+        for line in complete.splitlines():
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            ev = e.get("event")
+            if ev == "gate":
+                self.gate_green = e.get("passed") is True
+            elif ev == "pre" and e.get("tool") == "run_command" and e.get("decision") == "allow":
+                self.saw_command = True
+            done = ((ev == "stop" and e.get("decision") == "stop")
+                    or (ev == "pre" and e.get("tool") in FINISH_TOOLS and e.get("decision") == "allow"))
+            if done and self.gate_green and self.finished_at is None:
+                self.finished_at = time.time()
+
+    def candidates(self, agy_pid: int, tree: dict, info: dict) -> dict:
+        """pid -> cmdline of the processes that may be killed now. `tree` is
+        descendants(agy_pid); `info` is pid -> (cmdline, marked, gate)."""
+        shielded = set()
+        for pid in tree:
+            cmd, _marked, gate = info.get(pid, ("", False, False))
+            if pid in self.baseline or self.hook_tag in cmd or gate or MCP_CMDLINE.search(cmd):
+                shielded.add(pid)
+
+        def under_shield(pid):
+            while pid in tree:
+                if pid in shielded:
+                    return True
+                pid = tree[pid]
+            return False
+
+        me = os.getpid()
+        return {pid: info[pid][0][:200] for pid in tree
+                if pid not in (agy_pid, me) and pid in info and info[pid][1] and not under_shield(pid)}
+
+    def poll(self, agy_pid: int) -> None:
+        try:
+            tree = descendants(agy_pid, ppid_map())     # scan BEFORE reading events: see baseline
+            info = {}
+            for pid in tree:
+                try:
+                    marked, gate = proc_env_has(pid, self.marker, b"CREW_GATE=1")
+                    info[pid] = (proc_cmdline(pid, 0), marked, gate)
+                except OSError:
+                    continue
+            new = [p for p in info if p not in self.seen]
+            if new:
+                self.seen.update(new)
+                for p in new:
+                    append_jsonl(os.path.join(self.rundir, "procs.jsonl"),
+                                 {"t": round(time.time(), 1), "pid": p, "ppid": tree.get(p),
+                                  "cmd": info[p][0][:200], "marked": info[p][1]})
+            self._read_events()
+            if not self.saw_command:
+                # The hook logs an allowed run_command before agy spawns it, so
+                # a scan taken before that log line cannot contain the command.
+                self.baseline.update(tree)
+            if self.finished_at is None or time.time() - self.finished_at < self.grace:
+                return
+            hits = self.candidates(agy_pid, tree, info)
+            if hits:
+                self.killed.update(hits)
+                append_jsonl(os.path.join(self.rundir, "guard.jsonl"),
+                             {"event": "background_killed", "procs": {str(k): v for k, v in hits.items()}})
+                kill_pids(list(hits))
+        except Exception as exc:  # noqa: BLE001 — the watcher must never break the run
+            if len(self.errors) < 5:
+                self.errors.append(repr(exc)[:300])
 
 
 def refuse_existing_hooks(repo: str) -> None:
@@ -1282,8 +1464,8 @@ def refuse_existing_hooks(repo: str) -> None:
     if not os.path.lexists(path):
         return
     spec = read_json(path)
-    if isinstance(spec, dict) and list(spec) == ["agy-worker"]:
-        raise Refusal(f"{path} e sobra de um run do agy-worker que morreu sem limpar (SIGKILL?), ou "
+    if isinstance(spec, dict) and list(spec) in (["crew"], ["agy-worker"]):    # agy-worker: pre-0.4.0
+        raise Refusal(f"{path} e sobra de um run do crew que morreu sem limpar (SIGKILL?), ou "
                       "de um run ainda em curso neste workspace. Se nenhum `agy` estiver rodando aqui, "
                       f"remova so esse arquivo: rm {shlex.quote(path)}. Enquanto ele existir, um `agy` "
                       "interativo nesta pasta carrega os guards de um run morto.")
@@ -1302,7 +1484,7 @@ def install_hooks(repo: str, rundir: str, ctx: dict) -> bool:
     st = shlex.quote(rundir)
     gate_secs = ctx.get("gate_timeout", DEFAULT_GATE_TIMEOUT) * max(
         1, len(ctx["gate"]["format"]) + len(ctx["gate"]["checks"])) + 60
-    spec = {"agy-worker": {
+    spec = {"crew": {
         "SessionStart": [{"type": "command", "command": f"{base} start --state {st}", "timeout": 10}],
         "PreToolUse": [{"matcher": "*", "hooks": [
             {"type": "command", "command": f"{base} pre --state {st}", "timeout": gate_secs}]}],
@@ -1360,15 +1542,26 @@ def preflight_agy(model: str, min_quota: float, probe_quota: bool, rundir: str) 
 
 
 def run_agy(cmd: list, repo: str, rundir: str, timeout_s: int, name: str = "agy", env=None,
-            grace: int = 180):
+            grace: int = 180, watch=None):
     """Run the worker CLI with cwd = repo and stdin closed (opencode hangs on an
-    open stdin pipe). Output goes to <name>.stdout/.stderr in the run dir."""
+    open stdin pipe). Output goes to <name>.stdout/.stderr in the run dir.
+    `watch(pid)`, if given, is called about once a second while it runs."""
     out_p, err_p = os.path.join(rundir, f"{name}.stdout"), os.path.join(rundir, f"{name}.stderr")
     with open(out_p, "w") as fo, open(err_p, "w") as fe:
         proc = subprocess.Popen(cmd, cwd=repo, stdout=fo, stderr=fe, stdin=subprocess.DEVNULL,
                                 start_new_session=True, env=env)
         try:
-            rc = proc.wait(timeout=timeout_s + grace)
+            deadline = time.time() + timeout_s + grace
+            while True:
+                try:
+                    rc = proc.wait(timeout=max(0.1, min(1.0, deadline - time.time())) if watch
+                                   else max(0.1, deadline - time.time()))
+                    break
+                except subprocess.TimeoutExpired:
+                    if time.time() >= deadline:
+                        raise
+                    if watch:
+                        watch(proc.pid)
         except (subprocess.TimeoutExpired, KeyboardInterrupt) as exc:
             # Our own child's process group: we started it, so we stop it.
             for sig in (signal.SIGTERM, signal.SIGKILL):
@@ -1425,12 +1618,12 @@ def trap_signals() -> None:
 # opencode backend: guard plugin outside the tree, external gate loop
 # --------------------------------------------------------------------------
 
-# No policy in here: every tool call is forwarded to `agy_worker.py hook
+# No policy in here: every tool call is forwarded to `crew.py hook
 # oc-pre`, and anything but an explicit allow (a crash, no answer) denies.
 # A throw in tool.execute.before blocks the call and the model sees the text
 # (lab E4, opencode 1.19.0).
-OC_GUARD_JS = """// agy-worker guard for opencode, generated for one run; loaded only through
-// OPENCODE_CONFIG_CONTENT of that run. The policy is agy_worker.py's.
+OC_GUARD_JS = """// crew guard for opencode, generated for one run; loaded only through
+// OPENCODE_CONFIG_CONTENT of that run. The policy is crew.py's.
 import { spawnSync } from "node:child_process";
 const PY = __PY__, SCRIPT = __SCRIPT__, STATE = __STATE__;
 function ask(event, payload) {
@@ -1483,7 +1676,7 @@ def preflight_opencode(model: str):
     oc = shutil.which("opencode") or os.path.expanduser("~/.opencode/bin/opencode")
     if not os.access(oc, os.X_OK):
         raise Refusal("opencode nao esta no PATH nem em ~/.opencode/bin")
-    with tempfile.TemporaryDirectory(prefix="agy-worker-oc-") as cwd:
+    with tempfile.TemporaryDirectory(prefix="crew-oc-") as cwd:
         run = lambda *a: subprocess.run([oc, *a], capture_output=True, text=True, timeout=120,  # noqa: E731
                                         cwd=cwd, stdin=subprocess.DEVNULL)
         lines = run("--version").stdout.strip().splitlines()
@@ -1620,7 +1813,7 @@ def drive_opencode(oc: str, task: dict, repo: str, rundir: str, prompt: str, ctx
                 break
             cmd = [oc, "run", "--dir", repo, "--format", "json", "-m", task["model"],
                    *(["-s", sid] if sid else []), oc_message(msg)]
-            eprint(f"agy-worker: opencode run {i}/{n} ({task['model']}{', sessao ' + sid if sid else ''})…")
+            eprint(f"crew: opencode run {i}/{n} ({task['model']}{', sessao ' + sid if sid else ''})…")
             rc, out, err = run_agy(cmd, repo, rundir, left, name=f"opencode-{i}", env=env, grace=0)
             restored |= restore_files(repo, saved)
             run_fails, info = evaluate_oc(rc, out, err)
@@ -1676,17 +1869,17 @@ def refuse_cp_leftovers(repo: str) -> list:
     files, which load too and run with the same trust."""
     d = os.path.join(repo, COPILOT_HOOK_DIR)
     names = sorted(os.listdir(d)) if os.path.isdir(d) else []
-    ours = [n for n in names if n.startswith(COPILOT_HOOK_PREFIX) and n.endswith(".json")]
+    ours = [n for n in names if n.startswith((COPILOT_HOOK_PREFIX, "agy-worker-")) and n.endswith(".json")]
     if ours:
         paths = " ".join(shlex.quote(os.path.join(d, n)) for n in ours)
-        raise Refusal(f"sobra de um run do agy-worker em {COPILOT_HOOK_DIR}/ ({', '.join(ours)}), de um run "
+        raise Refusal(f"sobra de um run do crew em {COPILOT_HOOK_DIR}/ ({', '.join(ours)}), de um run "
                       "que morreu sem limpar ou ainda em curso neste repo. Se nenhum `copilot` estiver "
                       f"rodando aqui, remova so esses arquivos: rm {paths}")
     return [f"{COPILOT_HOOK_DIR}/{n}" for n in names if n.endswith(".json")]
 
 
 def install_cp_hooks(repo: str, rundir: str, ctx: dict) -> tuple:
-    """Write .github/hooks/agy-worker-<run>.json. Returns (relative path,
+    """Write .github/hooks/crew-<run>.json. Returns (relative path,
     directories created by us, deepest first), for remove_cp_hooks."""
     rel = cp_hook_rel(ctx["run_id"])
     path = os.path.join(repo, rel)
@@ -1743,7 +1936,7 @@ def preflight_copilot() -> tuple:
     cp = shutil.which("copilot")
     if not cp:
         raise Refusal("copilot nao esta no PATH")
-    with tempfile.TemporaryDirectory(prefix="agy-worker-cp-") as cwd:
+    with tempfile.TemporaryDirectory(prefix="crew-cp-") as cwd:
         proc = subprocess.run([cp, "--version"], capture_output=True, text=True, timeout=60, cwd=cwd,
                               stdin=subprocess.DEVNULL)
     m = re.search(r"(\d+\.\d+\.\d+)", proc.stdout)
@@ -1881,14 +2074,14 @@ def cmd_delegate(a) -> int:
     if task["backend"] == "agy":
         refuse_existing_hooks(repo)
     rundir = new_rundir(repo, "delegate")
-    eprint(f"agy-worker: run dir {rundir}")
+    eprint(f"crew: run dir {rundir}")
     if opencode:
         saved = snapshot_files(repo, OPENCODE_CONFIG_FILES)    # before any opencode process
         try:
             oc, pre_warns = preflight_opencode(task["model"])
         finally:
             if restore_files(repo, saved):
-                eprint("agy-worker: o preflight do opencode reescreveu opencode.json; restaurado")
+                eprint("crew: o preflight do opencode reescreveu opencode.json; restaurado")
     elif copilot:
         cp, pre_warns = preflight_copilot()
         if other_cp_hooks:
@@ -1909,14 +2102,13 @@ def cmd_delegate(a) -> int:
     with open(os.path.join(rundir, "prompt.md"), "w", encoding="utf-8") as fh:
         fh.write(prompt)
     head = git(repo, "rev-parse", "HEAD").strip()
-    before = snapshot_procs(repo)
     integ_before, ignored_before = integrity_state(repo, rundir), ignored_state(repo)
     started = time.time()
     if opencode:
         fails, warns, report, run_info = drive_opencode(oc, task, repo, rundir, prompt, ctx, saved)
         run_info["wall_seconds"] = round(time.time() - started)
     elif copilot:
-        eprint(f"agy-worker: copilot rodando ({task['model']}, timeout {task['timeout']}s)…")
+        eprint(f"crew: copilot rodando ({task['model']}, timeout {task['timeout']}s)…")
         rc, stdout, stderr, fails = run_copilot(cp, prompt, task["model"], repo, rundir, ctx, task["timeout"],
                                                 COPILOT_EXCLUDED_TOOLS, task["max_ai_credits"])
         run_fails, info = evaluate_cp(rc, stdout, stderr)
@@ -1935,10 +2127,12 @@ def cmd_delegate(a) -> int:
                "--json-schema", schema_path, "--print-timeout", f"{task['timeout']}s",
                "--dangerously-skip-permissions"]
         created = install_hooks(repo, rundir, ctx)
+        watcher = BackgroundWatcher(rundir, ctx["run_id"])
         try:
-            eprint(f"agy-worker: agy rodando ({task['model']}, timeout {task['timeout']}s)…")
+            eprint(f"crew: agy rodando ({task['model']}, timeout {task['timeout']}s)…")
             rc, stdout, stderr = run_agy(cmd, repo, rundir, task["timeout"],
-                                         env={**os.environ, **WORKER_ENV, RUN_ENV: ctx["run_id"]})
+                                         env={**os.environ, **WORKER_ENV, RUN_ENV: ctx["run_id"]},
+                                         watch=watcher.poll)
         finally:
             remove_hooks(repo, created)
         fails, warns, env = evaluate_run(rc, stdout, stderr, "delegate", task["report_schema"])
@@ -1946,6 +2140,13 @@ def cmd_delegate(a) -> int:
         run_info = {"rc": rc, "wall_seconds": round(time.time() - started), **(
             {k: env.get(k) for k in ("status", "duration_seconds", "num_turns", "usage", "conversation_id")}
             if isinstance(env, dict) else {})}
+        run_info["background_killed"] = {str(p): c for p, c in watcher.killed.items()}
+        if watcher.killed:
+            warns.append(f"{len(watcher.killed)} processo(s) em segundo plano do worker encerrado(s) "
+                         f"{BG_GRACE_S} s depois de ele terminar com gate verde, para o agy poder sair: "
+                         + "; ".join(f"{p} {c}" for p, c in watcher.killed.items()))
+        if watcher.errors:
+            warns.append(f"o vigia de processos em segundo plano falhou: {watcher.errors}")
     warns = pre_warns + warns
     tampered = diff_state(integ_before, integrity_state(repo, rundir))
     ignore = ctx.get("ignore_paths", [])
@@ -1957,11 +2158,11 @@ def cmd_delegate(a) -> int:
         # Any of our hooks answering proves the file loaded; sessionStart alone
         # was never observed firing in the lab.
         if not any(e.get("event") in ("session_start", "pre", "stop") for e in events):
-            fails.append("os hooks do agy-worker nao carregaram no copilot (nenhum evento de hook "
+            fails.append("os hooks do crew nao carregaram no copilot (nenhum evento de hook "
                          "registrado): o run nao teve guard rails; trate o diff como nao confiavel")
     elif not any(e.get("event") == "session_start" for e in events):
         fails.append(("o plugin de guard do opencode nao carregou" if opencode else
-                      "os hooks do agy-worker nao carregaram") + " (nenhum SessionStart registrado): "
+                      "os hooks do crew nao carregaram") + " (nenhum SessionStart registrado): "
                      "o run nao teve guard rails; trate o diff como nao confiavel")
     if git(repo, "rev-parse", "HEAD").strip() != head:
         fails.append("HEAD mudou durante o run (commit ou checkout passou pelo guard)")
@@ -1993,9 +2194,11 @@ def cmd_delegate(a) -> int:
     if stopped:
         warns.append("processos deixados pelo run encerrados (traziam a marca do run): "
                      + "; ".join(f"{p} {c}" for p, c in stopped.items()))
-    leftover = {p: c for p, c in snapshot_procs(repo).items() if p not in before and p != os.getpid()}
+    # By marker, not by cwd: a cwd scan also listed the orchestrating Claude
+    # session's own `sleep 2` wait loop (false positive, 2026-10-13).
+    leftover = marked_procs(ctx["run_id"])
     if leftover:
-        warns.append("processos novos com cwd no repo ainda vivos (nao foram encerrados): "
+        warns.append("processos com a marca do run ainda vivos depois de SIGTERM e SIGKILL: "
                      + "; ".join(f"{p} {c}" for p, c in leftover.items()))
     verdict = {
         "ok": not fails, "mode": "delegate", "backend": task["backend"], "run_dir": rundir,
@@ -2012,7 +2215,7 @@ def cmd_delegate(a) -> int:
     }
     write_json(os.path.join(rundir, "verdict.json"), verdict)
     print(json.dumps(verdict, ensure_ascii=False, indent=2))
-    eprint(f"agy-worker: {'OK' if verdict['ok'] else 'FALHOU'} — {len(fails)} falha(s), "
+    eprint(f"crew: {'OK' if verdict['ok'] else 'FALHOU'} — {len(fails)} falha(s), "
            f"{len(warns)} aviso(s); verdict em {rundir}/verdict.json")
     return 0 if verdict["ok"] else 1
 
@@ -2049,14 +2252,14 @@ def cmd_review(a) -> int:
             diff_txt = diff_txt.encode()[:MAX_DIFF_BYTES].decode(errors="ignore") + \
                 "\n…(diff cortado; leia os arquivos para o resto)…"
     rundir = new_rundir(repo, "review")
-    eprint(f"agy-worker: run dir {rundir}")
+    eprint(f"crew: run dir {rundir}")
     if opencode:
         saved = snapshot_files(repo, OPENCODE_CONFIG_FILES)    # before any opencode process
         try:
             oc, pre_warns = preflight_opencode(model)
         finally:
             if restore_files(repo, saved):
-                eprint("agy-worker: o preflight do opencode reescreveu opencode.json; restaurado")
+                eprint("crew: o preflight do opencode reescreveu opencode.json; restaurado")
     elif copilot:
         cp, pre_warns = preflight_copilot()
         if other_cp_hooks:
@@ -2092,7 +2295,7 @@ def cmd_review(a) -> int:
     if opencode:
         env_oc = opencode_env(write_oc_guard(rundir), False)
         try:
-            eprint(f"agy-worker: review rodando (opencode, {model})…")
+            eprint(f"crew: review rodando (opencode, {model})…")
             rc, stdout, stderr = run_agy([oc, "run", "--dir", repo, "--format", "json", "-m", model,
                                           oc_message(prompt)], repo, rundir, timeout_s,
                                          name="opencode-1", env=env_oc, grace=0)
@@ -2104,7 +2307,7 @@ def cmd_review(a) -> int:
         warns = pre_warns + ([f"o opencode reescreveu {sorted(restored)}; bytes restaurados"] if restored else [])
         run_info = {"rc": rc, **info}
     elif copilot:
-        eprint(f"agy-worker: review rodando (copilot, {model}, sem shell nem apply_patch)…")
+        eprint(f"crew: review rodando (copilot, {model}, sem shell nem apply_patch)…")
         rc, stdout, stderr, fails = run_copilot(cp, prompt, model, repo, rundir, ctx, timeout_s,
                                                 COPILOT_REVIEW_EXCLUDED_TOOLS, COPILOT_MIN_AI_CREDITS)
         run_fails, info = evaluate_cp(rc, stdout, stderr)
@@ -2119,7 +2322,7 @@ def cmd_review(a) -> int:
                "--json-schema", schema_path, "--print-timeout", f"{timeout_s}s"]
         created = install_hooks(repo, rundir, ctx)
         try:
-            eprint(f"agy-worker: review rodando ({model}, --mode plan)…")
+            eprint(f"crew: review rodando ({model}, --mode plan)…")
             rc, stdout, stderr = run_agy(cmd, repo, rundir, timeout_s)
         finally:
             remove_hooks(repo, created)
@@ -2134,7 +2337,7 @@ def cmd_review(a) -> int:
                      "somente leitura")
     if copilot:
         if not any(e.get("event") in ("session_start", "pre", "stop") for e in guard_events(rundir)):
-            fails.append("os hooks do agy-worker nao carregaram no copilot (nenhum evento de hook): o "
+            fails.append("os hooks do crew nao carregaram no copilot (nenhum evento de hook): o "
                          "review rodou sem nada que negasse escrita")
     elif not any(e.get("event") == "session_start" for e in guard_events(rundir)):
         if opencode:
@@ -2172,7 +2375,7 @@ def self_test() -> int:
         if not cond:
             raise AssertionError(msg)
 
-    tmp = tempfile.mkdtemp(prefix="agy-worker-selftest-")
+    tmp = tempfile.mkdtemp(prefix="crew-selftest-")
     try:
         repo = os.path.realpath(os.path.join(tmp, "repo"))
         os.makedirs(os.path.join(repo, "src"))
@@ -2186,8 +2389,8 @@ def self_test() -> int:
         subprocess.run(g + ["commit", "-q", "-m", "init"], check=True)
 
         # example task shipped with the skill must validate
-        example = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "skills",
-                               "agy-worker", "task.example.json")
+        example = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "shared",
+                               "task.example.json")
         t = load_task(example)
         check(t["scope"] and t["gate"]["checks"], "task.example.json carrega")
         check("Operating rules" in compose_prompt(t, repo), "prompt composto tem as regras")
@@ -2238,9 +2441,8 @@ def self_test() -> int:
         nosec = dict(ctx, secret_globs=[])
         check(decide_pre({"toolCall": {"name": "view_file", "args": {"AbsolutePath": f"{repo}/.env"}}},
                          nosec)["decision"] == "allow", "segredo: lista vazia desliga")
-        # run_command never goes asynchronous
-        out = pre("run_command", CommandLine="npm test")
-        check(out.get("overwrite", {}).get("WaitMsBeforeAsync", 0) >= 60_000, "WaitMsBeforeAsync forcado")
+        # WaitMsBeforeAsync is no longer overwritten: it did not keep the command in the foreground
+        check(pre("run_command", CommandLine="npm test") == {"decision": "allow"}, "run_command sem overwrite")
         check("overwrite" not in pre("view_file", AbsolutePath=f"{repo}/src/a.txt"), "sem overwrite fora do shell")
         check(pre("write_to_file", TargetFile=f"{repo}/src/b.txt", CodeContent="/etc/x")["decision"]
               == "allow", "escrita no escopo; conteudo nao e escaneado")
@@ -2274,7 +2476,7 @@ def self_test() -> int:
         # .git / .agents through the shell, and git global options
         for c in ("printf '[core]\\n\\tfsmonitor = touch X\\n' >> .git/config",
                   "echo x > .git/hooks/pre-commit", "cat src/../.git/config", "ls .agents",
-                  "echo '{}' > \"$(git rev-parse --git-path agy-worker)/runs/r/ctx.json\"",
+                  "echo '{}' > \"$(git rev-parse --git-path crew)/runs/r/ctx.json\"",
                   "git -c user.name=x commit -m x", "git --no-pager push", "git -C . push",
                   "g''it push origin HEAD", "\"git\" push", "git gc --prune=now", "git pull",
                   "git reflog expire --expire=now --all", "git submodule update --init", "git init sub",
@@ -2414,7 +2616,7 @@ def self_test() -> int:
                 ("apply_patch", "*** Add File: src/a.txt\n+x\n*** Add File: side.json\n+y\n", "deny",
                  "patch com um alvo fora"),
                 ("apply_patch", "garbage", "deny", "patch sem alvo"),
-                ("apply_patch", "*** Add File: .github/hooks/agy-worker-x.json\n+{}\n", "deny",
+                ("apply_patch", "*** Add File: .github/hooks/crew-x.json\n+{}\n", "deny",
                  "patch no arquivo de hooks"),
                 ("create", {"path": "src/c.txt", "file_text": "see /etc/passwd"}, "allow", "create no escopo"),
                 ("create", {"path": "top.txt", "file_text": "x"}, "deny", "create fora do escopo"),
@@ -2539,6 +2741,86 @@ def self_test() -> int:
         other.kill()
         other.wait()
         check(stop_run_procs("") == {}, "sem run_id nao encerra nada")
+
+        # BackgroundWatcher: who may be killed, from a synthetic tree (agy = 1)
+        bw = BackgroundWatcher(tmp, "rid")
+        bw.baseline = {12}
+        tree = {10: 1, 11: 10, 12: 1, 13: 12, 14: 1, 15: 1, 16: 1, 17: 14}
+        info = {10: (f"{bw.hook_tag} stop --state x", True, False), 11: ("npx tsc", True, True),
+                12: ("agy-helper", True, False), 13: ("node child-of-baseline", True, False),
+                14: ("bash -c nx run web:typecheck", True, False), 15: ("sleep 9", False, False),
+                16: ("uv tool uvx --from x kino --mcp", True, False), 17: ("node tsc", True, False)}
+        check(set(bw.candidates(1, tree, info)) == {14, 17},
+              "vigia: so comando marcado do worker; hook, gate, baseline, MCP e sem marca ficam")
+        tree[1] = 0
+        info[1] = ("agy -p", True, False)
+        check(1 not in bw.candidates(1, tree, info), "vigia: nunca o proprio agy")
+
+        # BackgroundWatcher: done only after a green gate
+        def bw_events(*evs):
+            d = tempfile.mkdtemp(dir=tmp)
+            for e in evs:
+                append_jsonl(os.path.join(d, "guard.jsonl"), e)
+            w = BackgroundWatcher(d, "rid")
+            w._read_events()
+            return w
+        green, red = {"event": "gate", "passed": True}, {"event": "gate", "passed": False}
+        cmd_ev = {"event": "pre", "tool": "run_command", "decision": "allow"}
+        check(bw_events(cmd_ev, green, {"event": "stop", "decision": "stop"}).finished_at,
+              "vigia: Stop com gate verde = terminou")
+        check(bw_events(green, {"event": "pre", "tool": "finish", "decision": "allow"}).finished_at,
+              "vigia: finish permitido com gate verde = terminou")
+        check(bw_events(red, {"event": "pre", "tool": "finish", "decision": "allow"}).finished_at is None,
+              "vigia: finish com gate vermelho nao conta")
+        check(bw_events(green, red, {"event": "stop", "decision": "stop"}).finished_at is None,
+              "vigia: so o ultimo gate conta")
+        check(bw_events(cmd_ev, {"event": "stop", "decision": "continue"}).finished_at is None,
+              "vigia: Stop com continue nao conta")
+
+        # BackgroundWatcher against real processes: a fake agy with a helper
+        # started before the first command and a worker command after it
+        wd = tempfile.mkdtemp(dir=tmp)
+        flag = os.path.join(wd, "spawn")
+        fake = subprocess.Popen(
+            ["bash", "-c", f"sleep 60 & while [ ! -e {shlex.quote(flag)} ]; do sleep 0.05; done; "
+                           "sleep 61 & env -u " + RUN_ENV + " sleep 62 & wait"],
+            env={**os.environ, RUN_ENV: rid}, start_new_session=True)
+        try:
+            w = BackgroundWatcher(wd, rid, grace=0.3)
+            t0 = time.time()
+            while time.time() - t0 < 5 and not any("sleep 60" in proc_cmdline(p)
+                                                   for p in descendants(fake.pid, ppid_map())
+                                                   if os.path.exists(f"/proc/{p}")):
+                time.sleep(0.05)
+            w.poll(fake.pid)
+            append_jsonl(os.path.join(wd, "guard.jsonl"), cmd_ev)
+            open(flag, "w").close()
+            kids = {}
+            t0 = time.time()
+            while time.time() - t0 < 5 and len(kids) < 3:
+                time.sleep(0.05)
+                kids = {}
+                for p in descendants(fake.pid, ppid_map()):
+                    try:
+                        kids[proc_cmdline(p)] = p
+                    except OSError:
+                        pass
+            w.poll(fake.pid)
+            check(w.finished_at is None and not w.killed, "vigia: nada antes de o worker terminar")
+            append_jsonl(os.path.join(wd, "guard.jsonl"), green)
+            append_jsonl(os.path.join(wd, "guard.jsonl"), {"event": "stop", "decision": "stop"})
+            w.poll(fake.pid)
+            check(not w.killed, "vigia: espera a carencia")
+            time.sleep(0.4)
+            w.poll(fake.pid)
+            alive = {c: os.path.exists(f"/proc/{p}") for c, p in kids.items()}
+            check(set(w.killed.values()) == {"sleep 61"} and not alive.get("sleep 61")
+                  and alive.get("sleep 60") and alive.get("sleep 62") and fake.poll() is None,
+                  f"vigia: so o comando do worker encerrado; helper, sem marca e o agy vivos ({w.killed}, {alive})")
+            check(os.path.isfile(os.path.join(wd, "procs.jsonl")), "vigia: arvore registrada em procs.jsonl")
+        finally:
+            os.killpg(fake.pid, signal.SIGKILL)     # our own fake agy's group
+            fake.wait()
         check("OPENCODE_DISABLE_CLAUDE_CODE" in opencode_env("/x.js", True)
               and "OPENCODE_DISABLE_CLAUDE_CODE" not in opencode_env("/x.js", False), "flag do CLAUDE.md")
 
@@ -2567,8 +2849,8 @@ def self_test() -> int:
         check(not ok and "other.txt" in text and cls["side_effects"] == ["side.json"],
               "fora do escopo falha; efeito colateral tolerado")
         os.remove(os.path.join(repo, "other.txt"))
-        ok, text, _ = run_gate(repo, dict(ctx, gate=dict(ctx["gate"], checks=['test "$AGY_WORKER_GATE" = 1'])))
-        check(ok, "gate exporta AGY_WORKER_GATE")
+        ok, text, _ = run_gate(repo, dict(ctx, gate=dict(ctx["gate"], checks=['test "$CREW_GATE" = 1'])))
+        check(ok, "gate exporta CREW_GATE")
         ctx2 = dict(ctx, gate=dict(ctx["gate"], checks=["false"]))
         ok, text, _ = run_gate(repo, ctx2)
         check(not ok and "FALHOU (rc=1)" in text, "check falhando reprova")
@@ -2601,7 +2883,8 @@ def self_test() -> int:
         check(hook("oc-pre", {"tool": "read", "args": {"filePath": f"{repo}/src/a.txt"}})
               == {"decision": "allow"}, "hook oc-pre permite explicitamente")
         r = hook("stop", {"terminationReason": "NO_TOOL_CALL"})
-        check(r["decision"] == "stop", f"stop com gate verde para: {r}")
+        check(r["decision"] == "continue" and "finish" in r["reason"],
+              f"stop com gate verde e sem finish pede o relatorio: {r}")
         r = hook("pre", {"toolCall": {"name": "finish", "args": {}}})
         check(r["decision"] == "allow", "finish com gate verde")
         st = read_json(os.path.join(rundir, "gate-state.json"))
@@ -2616,6 +2899,23 @@ def self_test() -> int:
         check(r["decision"] == "allow", "limite de tentativas libera o finish")
         st = read_json(os.path.join(rundir, "gate-state.json"))
         check(st["runs"] == 3, f"falha nunca vem do cache: {st}")
+        with open(os.path.join(repo, "src", "nf.txt"), "w") as fh:
+            fh.write("x\n")
+        rd_save = rundir
+        for name in ("nofinish", "finished"):
+            rundir = os.path.join(tmp, name)
+            os.makedirs(rundir)
+            write_json(os.path.join(rundir, "ctx.json"), dict(
+                ctx, max_gate_attempts=9, gate=dict(ctx["gate"], format=[], checks=["true"]), scope=["*"]))
+        rundir = os.path.join(tmp, "nofinish")
+        got = [hook("stop", {"terminationReason": "NO_TOOL_CALL"})["decision"] for _ in range(AGY_REPORT_ASKS + 1)]
+        check(got == ["continue"] * AGY_REPORT_ASKS + ["stop"], f"pede o finish no maximo {AGY_REPORT_ASKS} vezes: {got}")
+        rundir = os.path.join(tmp, "finished")
+        hook("pre", {"toolCall": {"name": "finish", "args": {}}})
+        r = hook("stop", {"terminationReason": "TERMINAL_STEP_TYPE"})
+        check(r["decision"] == "stop", f"stop com gate verde depois do finish para: {r}")
+        rundir = rd_save
+        os.remove(os.path.join(repo, "src", "nf.txt"))
         os.remove(os.path.join(rundir, "ctx.json"))
         check(hook("pre", {"toolCall": {"name": "view_file", "args": {}}})["decision"] == "deny",
               "guard quebrado nega em vez de devolver {}")
@@ -2678,7 +2978,7 @@ def self_test() -> int:
         cpctx = dict(ctx, run_id="cprun")
         rel, made = install_cp_hooks(repo, cprun, cpctx)
         spec = read_json(os.path.join(repo, rel))
-        check(rel == ".github/hooks/agy-worker-cprun.json" and set(spec["hooks"]) ==
+        check(rel == ".github/hooks/crew-cprun.json" and set(spec["hooks"]) ==
               {"sessionStart", "preToolUse", "agentStop"} and "cp-pre" in spec["hooks"]["preToolUse"][0]["bash"]
               and os.path.abspath(__file__) in spec["hooks"]["agentStop"][0]["bash"], "hooks do copilot gerados")
         check(rel in changed_paths(repo) and rel not in changed_paths(repo, [rel]), "escopo ignora so esse arquivo")
@@ -2789,7 +3089,7 @@ def self_test() -> int:
         check(not ok and "rc=timeout" in text and time.time() - t0 < 15, "timeout do gate")
         created = install_hooks(repo, rundir, ctx)
         spec = read_json(os.path.join(repo, HOOK_FILE))
-        check(set(spec["agy-worker"]) == {"SessionStart", "PreToolUse", "Stop"}, "hooks.json gerado")
+        check(set(spec["crew"]) == {"SessionStart", "PreToolUse", "Stop"}, "hooks.json gerado")
         check(changed_paths(repo) == [], "hooks.json nao conta como mudanca")
         try:
             install_hooks(repo, rundir, ctx)
@@ -2811,7 +3111,7 @@ def main(argv=None) -> int:
         argv = sys.argv[1:]
     if argv == ["--self-test"]:
         return self_test()
-    p = argparse.ArgumentParser(prog="agy_worker.py", description=__doc__.split("\n\n")[0])
+    p = argparse.ArgumentParser(prog="crew.py", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("delegate", help="roda uma task sob guard rails e gate")
     d.add_argument("task")
@@ -2846,11 +3146,11 @@ def main(argv=None) -> int:
     try:
         return {"delegate": cmd_delegate, "review": cmd_review, "gate": cmd_gate}[a.cmd](a)
     except Refusal as exc:
-        eprint(f"agy-worker: recusado: {exc}")
+        eprint(f"crew: recusado: {exc}")
         print(json.dumps({"ok": False, "refused": True, "failures": [str(exc)]}, ensure_ascii=False))
         return 2
     except KeyboardInterrupt:
-        eprint("agy-worker: interrompido; hooks removidos")
+        eprint("crew: interrompido; hooks removidos")
         return 130
 
 

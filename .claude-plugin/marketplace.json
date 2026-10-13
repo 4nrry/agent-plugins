@@ -11,8 +11,8 @@
       "source": "./plugins/agent-fleet"
     },
     {
-      "name": "agy-worker",
-      "source": "./plugins/agy-worker"
+      "name": "crew",
+      "source": "./plugins/crew"
     },
     {
       "name": "game-facts",
