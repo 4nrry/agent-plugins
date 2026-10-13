@@ -107,6 +107,7 @@ Uma task completa de exemplo esta em `task.example.json`, ao lado desta skill.
 | `disable_claude_code` | so opencode: `true` para nao carregar o `~/.claude/CLAUDE.md` (padrao `false`) |
 | `timeout`, `gate_timeout`, `max_gate_attempts` | `30m`, 900 s por comando, 5 |
 | `allow_paths`, `deny_commands`, `min_quota` | caminhos extra de leitura, regex extra de comando negado, quota minima (0.05, so agy) |
+| `secret_globs` | nomes de arquivo que o worker nao le nem escreve; padrao `.env`, `.env.*`, `.dev.vars`, `*.pem`, `*.key`, `id_rsa*`... (`.env.example` passa). `[]` desliga |
 
 Escolha do modelo: comece no `gemini-3.8-flash-high`. Se o Flash nao der conta
 de uma fatia (gate vermelho ate o limite, ou diff que nao sobrevive a revisao),
@@ -227,6 +228,13 @@ veredito.
 ## O que os guards sao, e o que nao sao
 
 Sao um quebra-molas para um modelo cooperativo que se perde, nao um sandbox.
+Os arquivos de segredo ficam de fora por padrao nao por desconfianca do
+modelo, mas pelo destino: o que o worker le vai para o servidor do provedor, e
+uma senha num corpus de treino so se conserta trocando a senha. O
+`run_command` do agy nunca vai para segundo plano (o hook reescreve
+`WaitMsBeforeAsync`), e o que o run deixar vivo com a marca dele no ambiente,
+como um daemon do Nx, e encerrado no fim; worker e gate rodam com
+`NX_DAEMON=false`.
 O `--sandbox` do agy nao confinou escrita nenhuma no lab. Um comando que monta
 o caminho em tempo de execucao (`python3 -c`, `node -e`) passa pelos guards. A
 checagem de escopo pos-run pega o que ele escrever em arquivo rastreado ou

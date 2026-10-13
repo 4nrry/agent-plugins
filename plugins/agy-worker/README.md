@@ -133,6 +133,14 @@ Python e `unittest`:
   (`node_modules/.bin/...`, `dist/`) e fora do repo nao e vista por nada. O
   gate final roda as ferramentas da propria arvore, entao um binario do gate
   adulterado em `node_modules` passaria.
+- O bloqueio de segredo olha o nome do arquivo (`secret_globs`), nas
+  ferramentas e nas palavras do comando. Caminho montado em tempo de execucao
+  (`cat .e*`, `python3 -c`) passa, e uma busca recursiva num diretorio que
+  contem `.env` le o arquivo. So o self-test cobre a regra; nenhum run real
+  tentou ler um segredo.
+- O `overwrite` de `WaitMsBeforeAsync` e o encerramento dos processos marcados
+  vieram de um run real que travou 16 min (n=1); o self-test cobre a logica, e
+  o primeiro run depois da mudanca e o que vai dizer se o agy aceita o valor.
 - Runs em paralelo, um worktree por fatia: nao testado.
 - Hooks que nao carregam: o script detecta (sem `SessionStart`, o run falha),
   mas a causa nao foi reproduzida. Os hooks dispararam headless em pastas fora

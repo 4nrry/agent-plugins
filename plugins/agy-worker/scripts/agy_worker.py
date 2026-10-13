@@ -58,6 +58,18 @@ TESTED_AGY_VERSION = "1.3.4"       # every agy behaviour this script relies on w
 MAX_PROMPT_BYTES = 100_000          # one argv string is capped at 128 KiB on Linux
 MAX_DIFF_BYTES = 60_000
 TAIL_CHARS = 6000
+# Basenames a worker may not read or write, by tool or by shell. Not distrust
+# of the model: what it reads goes to the provider's servers, and a password in
+# a training corpus can only be fixed by rotating it. A task can replace the
+# list, or pass [] to turn it off.
+DEFAULT_SECRET_GLOBS = [".env", ".env.*", ".dev.vars", ".dev.vars.*", "*.pem", "*.key", "*.p12",
+                        "*.pfx", "id_rsa*", "id_ed25519*", "id_ecdsa*", "id_dsa*"]
+SECRET_EXCEPTIONS = ("*.example", "*.sample", "*.template")
+# Every process of a run inherits this marker, so the ones it leaves behind
+# (an Nx daemon reparents to init and keeps no ancestry) can be found and
+# stopped without touching anything the user started.
+RUN_ENV = "AGY_WORKER_RUN"
+WORKER_ENV = {"NX_DAEMON": "false"}
 BACKENDS = ("agy", "opencode")
 OPENCODE_DEFAULT_MODEL = "opencode/longcat-2.5-preview-free"
 TESTED_OPENCODE_VERSION = "1.19.0"
@@ -327,7 +339,7 @@ def normalize_task(task: dict) -> dict:
     schema = task.get("report_schema", DEFAULT_REPORT_SCHEMA)
     if not (isinstance(schema, dict) and schema.get("type") == "object"):
         errs.append("report_schema precisa de raiz \"type\": \"object\" (agy 1.2.14+ recusa outra raiz)")
-    for key in ("side_effects", "allow_paths", "deny_commands"):
+    for key in ("side_effects", "allow_paths", "deny_commands", "secret_globs"):
         val = task.get(key, [])
         if not (isinstance(val, list) and all(isinstance(x, str) for x in val)):
             errs.append(f"{key} deve ser lista de strings")
@@ -366,6 +378,7 @@ def normalize_task(task: dict) -> dict:
         "side_effects": list(task.get("side_effects", [])),
         "allow_paths": list(task.get("allow_paths", [])),
         "deny_commands": list(task.get("deny_commands", [])),
+        "secret_globs": list(task.get("secret_globs", DEFAULT_SECRET_GLOBS)),
         "min_quota": float(task.get("min_quota", DEFAULT_MIN_QUOTA)),
     }
 
@@ -505,8 +518,33 @@ def is_gate_command(cmd: str, gate_cmds) -> bool:
     return False
 
 
+def secret_reason(what: str) -> str:
+    return (f"Arquivo de segredo bloqueado: {what}. O worker nao le nem escreve .env, chaves ou "
+            "certificados; se a tarefa precisa de um valor de config, diga no relatorio "
+            "(out_of_scope_needs).")
+
+
 def deny(reason: str) -> dict:
     return {"decision": "deny", "reason": reason}
+
+
+def is_secret(path: str, globs) -> bool:
+    name = os.path.basename(path.rstrip("/"))
+    if not name or any(fnmatch.fnmatch(name, e) for e in SECRET_EXCEPTIONS):
+        return False
+    return any(fnmatch.fnmatch(name, g) for g in globs)
+
+
+SHELL_WORDS = re.compile(r"[^\s;&|()<>`'\"=]+")
+
+
+def allow_cmd(ctx: dict) -> dict:
+    """agy's run_command goes asynchronous after WaitMsBeforeAsync (the model
+    sends 5000), and agy then waits up to 30 min for the orphan before it
+    exits: an Nx typecheck sat there for 16 min (LOTVS categories run,
+    2026-10-13). Overwrite it so the command finishes inside the call."""
+    wait = int(ctx.get("gate_timeout", DEFAULT_GATE_TIMEOUT)) * 1000
+    return {"decision": "allow", "overwrite": {"WaitMsBeforeAsync": wait}}
 
 
 def decide_pre(payload: dict, ctx: dict) -> dict:
@@ -532,6 +570,9 @@ def decide_pre(payload: dict, ctx: dict) -> dict:
         if val.startswith(("/", "~", ".")) or "/" in val:
             if not path_allowed(resolve(val, repo), repo, extra):
                 return deny(f"Acesso fora do repositorio bloqueado: {key}={val}. {outside}")
+        if (key.endswith(("Path", "File", "Paths", "Files")) or val.startswith(("/", "~", "."))
+                or "/" in val) and is_secret(val, ctx.get("secret_globs", [])):
+            return deny(secret_reason(val))
     target = args.get("TargetFile")
     if isinstance(target, str) and target:
         rel = os.path.relpath(resolve(target, repo), repo)
@@ -551,8 +592,11 @@ def decide_pre(payload: dict, ctx: dict) -> dict:
             dest = m.group(1)
             if dest in ("", "-") or not path_allowed(resolve(dest, cwd), repo, extra):
                 return deny(f"cd para fora do repositorio bloqueado: {m.group(0).strip()!r}. {outside}")
+        for word in SHELL_WORDS.findall(cmd):
+            if is_secret(word, ctx.get("secret_globs", [])):
+                return deny(secret_reason(word))
         if is_gate_command(cmd, ctx.get("gate_commands", [])):
-            return {"decision": "allow"}
+            return allow_cmd(ctx)
         bare = unquote_shell(cmd)
         for pat, label in ctx.get("deny_patterns", []):
             if re.search(pat, cmd) or re.search(pat, bare):
@@ -562,6 +606,7 @@ def decide_pre(payload: dict, ctx: dict) -> dict:
         if writes_by_redirect(cmd):
             return deny(f"Escrita pelo shell bloqueada (redirecionamento para arquivo): {cmd!r}. Use as "
                         "ferramentas de edicao; redirecione saida so para /dev/null ou 2>&1.")
+        return allow_cmd(ctx)
     return {"decision": "allow"}
 
 
@@ -742,7 +787,8 @@ def run_gate(repo: str, ctx: dict, baseline: bool = False):
             # kills the whole tree the command started, not just bash.
             proc = subprocess.Popen(["bash", "-c", cmd], cwd=repo, stdout=subprocess.PIPE,
                                     stderr=subprocess.STDOUT, text=True, start_new_session=True,
-                                    env={**os.environ, "AGY_WORKER_GATE": "1"})
+                                    env={**os.environ, **WORKER_ENV, "AGY_WORKER_GATE": "1",
+                                         RUN_ENV: ctx.get("run_id", "")})
             try:
                 out, _ = proc.communicate(timeout=ctx.get("gate_timeout", DEFAULT_GATE_TIMEOUT))
                 rc = proc.returncode
@@ -959,6 +1005,41 @@ def evaluate_run(rc, stdout: str, stderr: str, mode: str, schema: dict):
     return fails, warns, env
 
 
+def stop_run_procs(run_id: str) -> dict:
+    """Stop the processes that carry this run's marker and outlived it (pid ->
+    cmdline). Only our own: the marker is set by this script on the worker and
+    on the gate, and descendants inherit it even after reparenting."""
+    if not run_id:
+        return {}
+    marker, me, hits = f"{RUN_ENV}={run_id}".encode(), os.getpid(), {}
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit() or int(pid) == me:
+            continue
+        try:
+            with open(f"/proc/{pid}/environ", "rb") as fh:
+                if marker not in fh.read().split(b"\0"):
+                    continue
+            with open(f"/proc/{pid}/cmdline", "rb") as fh:
+                hits[int(pid)] = fh.read().replace(b"\0", b" ").decode(errors="replace").strip()[:200]
+        except OSError:
+            continue
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        alive = []
+        for pid in hits:
+            try:
+                os.kill(pid, sig)
+                alive.append(pid)
+            except OSError:
+                pass
+        deadline = time.time() + 5
+        while alive and time.time() < deadline:
+            alive = [p for p in alive if os.path.exists(f"/proc/{p}")]
+            time.sleep(0.2)
+        if not alive:
+            break
+    return hits
+
+
 def snapshot_procs(repo: str) -> dict:
     """pid -> cmdline for processes whose cwd is inside the repo."""
     found = {}
@@ -1165,7 +1246,7 @@ def opencode_env(guard: str, disable_claude_code: bool) -> dict:
     Shell denial lives in the plugin: `permission.bash: deny` makes the free
     models fail at startup (403, lab). ~/.claude/CLAUDE.md is loaded unless
     the task disables it, as for a native subagent."""
-    env = {**os.environ, "OPENCODE_DISABLE_AUTOUPDATE": "1", "OPENCODE_DISABLE_SHARE": "1",
+    env = {**os.environ, **WORKER_ENV, "OPENCODE_DISABLE_AUTOUPDATE": "1", "OPENCODE_DISABLE_SHARE": "1",
            "OPENCODE_CONFIG_CONTENT": json.dumps({
                "plugin": [pathlib.Path(guard).as_uri()],
                "permission": {"external_directory": "deny"}})}
@@ -1306,6 +1387,7 @@ def drive_opencode(oc: str, task: dict, repo: str, rundir: str, prompt: str, ctx
     prompting on session.idle did not continue `run`, lab E5), so the loop is
     here. Returns (failures, warnings, report, info)."""
     env = opencode_env(write_oc_guard(rundir), task["disable_claude_code"])
+    env[RUN_ENV] = ctx.get("run_id", "")
     deadline = time.time() + task["timeout"]
     fails, warns, runs, restored = [], [], [], set()
     sid, report, msg, n = None, None, prompt, task["max_gate_attempts"]
@@ -1367,6 +1449,7 @@ def base_ctx(repo, task, mode):
     return {
         "mode": mode, "repo": repo, "scope": task["scope"], "side_effects": task["side_effects"],
         "allow_paths": task["allow_paths"], "gate": task["gate"],
+        "secret_globs": task.get("secret_globs", DEFAULT_SECRET_GLOBS),
         "gate_timeout": task["gate_timeout"], "max_gate_attempts": task["max_gate_attempts"],
         "gate_commands": task["gate"]["format"] + task["gate"]["checks"],
         "deny_patterns": DENY_COMMANDS + (OPENCODE_DENY_COMMANDS if task.get("backend") == "opencode" else [])
@@ -1398,6 +1481,7 @@ def cmd_delegate(a) -> int:
     else:
         pre_warns = preflight_agy(task["model"], task["min_quota"], not a.no_quota_probe, rundir)
     ctx = base_ctx(repo, task, "delegate")
+    ctx["run_id"] = os.path.basename(rundir)
     write_json(os.path.join(rundir, "ctx.json"), ctx)
     write_json(os.path.join(rundir, "task.json"), task)
     schema_path = os.path.join(rundir, "report.schema.json")
@@ -1419,7 +1503,8 @@ def cmd_delegate(a) -> int:
         created = install_hooks(repo, rundir, ctx)
         try:
             eprint(f"agy-worker: agy rodando ({task['model']}, timeout {task['timeout']}s)…")
-            rc, stdout, stderr = run_agy(cmd, repo, rundir, task["timeout"])
+            rc, stdout, stderr = run_agy(cmd, repo, rundir, task["timeout"],
+                                         env={**os.environ, **WORKER_ENV, RUN_ENV: ctx["run_id"]})
         finally:
             remove_hooks(repo, created)
         fails, warns, env = evaluate_run(rc, stdout, stderr, "delegate", task["report_schema"])
@@ -1463,6 +1548,10 @@ def cmd_delegate(a) -> int:
     if ignored:
         warns.append("arquivos ignorados pelo git criados ou alterados durante o run (o gate pode ter "
                      f"escrito alguns; o resto e escrita fora do escopo que o git status nao mostra): {ignored}")
+    stopped = stop_run_procs(ctx["run_id"])
+    if stopped:
+        warns.append("processos deixados pelo run encerrados (traziam a marca do run): "
+                     + "; ".join(f"{p} {c}" for p, c in stopped.items()))
     leftover = {p: c for p, c in snapshot_procs(repo).items() if p not in before and p != os.getpid()}
     if leftover:
         warns.append("processos novos com cwd no repo ainda vivos (nao foram encerrados): "
@@ -1535,6 +1624,7 @@ def cmd_review(a) -> int:
     # opencode has no plan mode: scope [] denies every write, and every shell
     # command is denied, both by the guard plugin.
     ctx = {"mode": "review", "repo": repo, "scope": [], "side_effects": [], "allow_paths": [],
+           "secret_globs": DEFAULT_SECRET_GLOBS,
            "gate": {"format": [], "checks": [], "forbid": []}, "gate_timeout": 60,
            "max_gate_attempts": 0, "gate_commands": [],
            "deny_patterns": REVIEW_DENY_ALL if opencode else DENY_COMMANDS}
@@ -1662,6 +1752,25 @@ def self_test() -> int:
         check(pre("run_command", CommandLine="git diff HEAD")["decision"] == "allow", "git diff permitido")
         check(pre("run_command", CommandLine="echo $((4 / 2))")["decision"] == "allow", "divisao nao e path")
         check(pre("run_command", CommandLine="sed -n 1,5p src/a.txt")["decision"] == "allow", "sed -n")
+        # secrets: by tool and by shell, .env.example still readable, [] turns it off
+        check(pre("view_file", AbsolutePath=f"{repo}/.env")["decision"] == "deny", "segredo: view .env")
+        check(pre("view_file", AbsolutePath=f"{repo}/apps/web/.dev.vars")["decision"] == "deny",
+              "segredo: .dev.vars")
+        check(pre("view_file", AbsolutePath=f"{repo}/.env.example")["decision"] == "allow",
+              "segredo: .env.example liberado")
+        check(pre("run_command", CommandLine="cat .env")["decision"] == "deny", "segredo: cat .env")
+        check(pre("run_command", CommandLine="grep DATABASE apps/api/.env.production")["decision"]
+              == "deny", "segredo: grep em .env.production")
+        check(pre("run_command", CommandLine="cat certs/server.pem")["decision"] == "deny", "segredo: pem")
+        check(pre("run_command", CommandLine="node scripts/env-check.js")["decision"] == "allow",
+              "segredo: nome parecido nao e segredo")
+        nosec = dict(ctx, secret_globs=[])
+        check(decide_pre({"toolCall": {"name": "view_file", "args": {"AbsolutePath": f"{repo}/.env"}}},
+                         nosec)["decision"] == "allow", "segredo: lista vazia desliga")
+        # run_command never goes asynchronous
+        out = pre("run_command", CommandLine="npm test")
+        check(out.get("overwrite", {}).get("WaitMsBeforeAsync", 0) >= 60_000, "WaitMsBeforeAsync forcado")
+        check("overwrite" not in pre("view_file", AbsolutePath=f"{repo}/src/a.txt"), "sem overwrite fora do shell")
         check(pre("write_to_file", TargetFile=f"{repo}/src/b.txt", CodeContent="/etc/x")["decision"]
               == "allow", "escrita no escopo; conteudo nao e escaneado")
         check(pre("write_to_file", TargetFile=f"{repo}/side.json")["decision"] == "deny", "fora do escopo")
@@ -1833,6 +1942,18 @@ def self_test() -> int:
         envc = json.loads(opencode_env(os.path.join(grd, "opencode-guard.js"), False)["OPENCODE_CONFIG_CONTENT"])
         check(envc["permission"] == {"external_directory": "deny"} and envc["plugin"][0].startswith("file:///"),
               "config do run: plugin por file:// e external_directory deny")
+        rid = f"selftest-{os.getpid()}"
+        child = subprocess.Popen(["sleep", "60"], env={**os.environ, RUN_ENV: rid},
+                                 start_new_session=True)
+        other = subprocess.Popen(["sleep", "60"], start_new_session=True)
+        time.sleep(0.3)
+        hit = stop_run_procs(rid)
+        child.wait(timeout=10)
+        check(child.pid in hit and child.returncode is not None, "processo marcado encerrado")
+        check(other.poll() is None, "processo sem a marca intocado")
+        other.kill()
+        other.wait()
+        check(stop_run_procs("") == {}, "sem run_id nao encerra nada")
         check("OPENCODE_DISABLE_CLAUDE_CODE" in opencode_env("/x.js", True)
               and "OPENCODE_DISABLE_CLAUDE_CODE" not in opencode_env("/x.js", False), "flag do CLAUDE.md")
 
