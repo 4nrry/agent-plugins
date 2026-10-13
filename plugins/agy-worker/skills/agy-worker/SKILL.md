@@ -82,6 +82,11 @@ Uma task completa de exemplo esta em `task.example.json`, ao lado desta skill.
 | `timeout`, `gate_timeout`, `max_gate_attempts` | `30m`, 900 s por comando, 5 |
 | `allow_paths`, `deny_commands`, `min_quota` | caminhos extra de leitura, regex extra de comando negado, quota minima (0.05) |
 
+Escolha do modelo: comece no `gemini-3.8-flash-high`. Se o Flash nao der conta
+de uma fatia (gate vermelho ate o limite, ou diff que nao sobrevive a revisao),
+suba para `claude-sonnet-5-5-medium`. **Nao use Opus pelo agy**: os modelos
+Claude do agy dividem uma quota semanal, e o Opus a esgota em poucas fatias.
+
 O prompt:
 
 - **Nomeie a fonte da verdade e mande ler inteira antes de escrever**, com os
