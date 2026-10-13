@@ -18,6 +18,11 @@ hooks que este plugin instala sao **do agy**, escritos em `.agents/hooks.json`
 no comeco do run e removidos no fim (inclusive em SIGTERM e SIGHUP; depois de
 um SIGKILL o proximo run recusa e diz qual arquivo remover).
 
+Segundo backend, opcional: o **opencode** (`"backend": "opencode"` na task),
+com os modelos gratis do Zen. Mesmo veredito, mesmas regras de caminho, escopo
+e comando, guard mais fraco no shell; detalhes em
+[Backend opencode](#backend-opencode).
+
 **O codigo sai da maquina.** Delegar ou pedir review manda o prompt, os
 arquivos que o worker ler e o diff para a Google, e gasta a quota do agy. A
 skill manda o Claude perguntar antes do primeiro run na sessao.
@@ -26,7 +31,7 @@ skill manda o Claude perguntar antes do primeiro run na sessao.
 
 | componente | o que faz |
 |---|---|
-| `scripts/agy_worker.py` | `delegate`, `review`, `gate`, os handlers de hook do agy e `--self-test`. Um arquivo |
+| `scripts/agy_worker.py` | `delegate`, `review`, `gate`, os handlers de hook do agy, o guard e o loop do opencode, e `--self-test`. Um arquivo |
 | `skills/agy-worker/` | quando delegar e quando nao, como escrever a task, como ler o veredito, a revisao obrigatoria |
 | `skills/agy-worker/task.example.json` | uma task completa; o self-test a valida |
 | `commands/delegate.md`, `commands/review.md` | `/agy-worker:delegate` e `/agy-worker:review` |
@@ -144,6 +149,70 @@ Python e `unittest`:
 - Modelos Claude ou GPT pelo agy: a quota deles estava zerada no dia; o
   preflight recusou, como devia, e nada alem disso foi testado.
 
+## Backend opencode
+
+Para quando a quota do agy acabou, ou para capacidade extra gratis. O agy
+continua o primario. Requer o `opencode` no PATH ou em `~/.opencode/bin`; so
+foi exercitado no **1.19.0** (outra versao vira aviso).
+
+| | agy | opencode |
+|---|---|---|
+| guard | hooks do agy em `.agents/hooks.json`, na arvore durante o run | plugin gerado no run dir (dentro do `.git`), carregado so pelo `OPENCODE_CONFIG_CONTENT` daquele processo; nada entra na arvore nem em `~/.config/opencode` |
+| politica | `decide_pre` | a mesma: o plugin JS nao tem regra nenhuma, manda cada chamada para `agy_worker.py hook oc-pre`, que traduz a ferramenta do opencode (`read`, `write`, `edit`, `bash`, `apply_patch`...) para a do agy; qualquer resposta que nao seja allow nega |
+| shell | lista do agy | a lista do agy **mais** `cp`, `mv`, `touch`, `mkdir`, `rm`... (os modelos do opencode escrevem pelo shell) |
+| gate | no `finish` e no Stop, dentro do agy | loop externo: run, gate, `opencode run -s <sessao>` com a saida do gate, ate `max_gate_attempts` runs |
+| relatorio | `--json-schema` | o ultimo objeto JSON da mensagem final, pedido no prompt; se faltar, o loop pede de novo |
+| sucesso | envelope + gate | eventos JSON (nenhum `error`, ultimo `step_finish` com `reason=stop`) + gate; exit 0 nao conta |
+| review | `--mode plan` | sem modo plan: escopo vazio e **todo** comando de shell negado pelo plugin |
+
+O que o lab mostrou (opencode 1.19.0, 2026-10-13, n=1 por caso, notas no
+scratchpad da sessao, **nao commitadas**) e o que o script faz por causa disso:
+
+| observado | consequencia |
+|---|---|
+| `opencode run` com stdin aberto trava (0 bytes ate o timeout) | stdin sempre `/dev/null` |
+| grava `"$schema"` no `opencode.json` do cwd mesmo com `--dir`; de dentro do `.git` achou a arvore e gravou la | os bytes de `opencode.json`/`.jsonc` sao guardados antes de qualquer processo do opencode e restaurados depois de cada um (vira aviso); o preflight roda num diretorio temporario vazio; escopo que cubra esses arquivos e recusado |
+| `permission.bash: deny` faz os modelos gratis falharem na partida (403) | o shell e policiado no plugin, nao em `permission` |
+| `throw` em `tool.execute.before` bloqueia a chamada e o modelo ve o texto | e o mecanismo do guard |
+| escrita por bash passa por cima dos globs de `edit` | redirecionamento e os coreutils de escrita sao negados no plugin; o `git status` pos-run continua sendo a autoridade |
+| `external_directory: deny` funciona | vai no config do run |
+| plugin que reabre a sessao no `session.idle` nao continua o `run` | o loop do gate e externo |
+| `--agent` inexistente sai 0 rodando o agente padrao | nenhum agent customizado |
+| carrega `~/.claude/CLAUDE.md` por padrao; `OPENCODE_DISABLE_CLAUDE_CODE=1` desliga | carrega, como um subagente nativo; `"disable_claude_code": true` na task desliga |
+
+Modelo padrao: `opencode/longcat-2.5-preview-free`. No unico bench de
+qualidade (n=1, porte de um servico CJS com 16 casos de teste, notas no
+scratchpad), longcat, space-bunny e muse-spark passaram o gate e portaram os 16
+casos; o longcat manteve as 22 assercoes um a um como no legado, o space-bunny
+moveu metade para helpers. O longcat foi o mais lento (139 s contra 34 s) e e o
+unico exercitado com o plugin de guard e o loop externo. Pelos docs do Zen,
+longcat, space-bunny e step-5 sao de retencao zero; o muse-spark usa o prompt
+para treino (aceitavel so em projeto pessoal, escolha do usuario).
+
+**Guard mais fraco que o do agy, e por que:** o opencode nao tem allowlist de
+ferramenta no nivel do processo nem modo plan; tudo depende do plugin carregar
+(sem o `SessionStart` dele, o run falha) e de uma lista de regex sobre o
+comando. O que monta caminho em tempo de execucao (`python3 -c`, `node -e`)
+passa, igual ao agy, e os modelos do opencode usam mais o shell.
+
+Smoke tests, n=1 cada, `opencode/longcat-2.5-preview-free`, repo descartavel
+com um modulo Python e `unittest`, 2026-10-13. Nao sao run records:
+
+| run | resultado |
+|---|---|
+| delegate simples (`slugify` + 3 testes) | `ok`, 50 s, 1 run, gate verde |
+| delegate com check que falha so na 1a vez | `ok`, 68 s: gate vermelho no run 1, `run -s` na mesma sessao, verde no run 2 |
+| delegate pedindo `echo reviewed > NOTES.txt` | o modelo recusou sozinho pelas regras do prompt; nao testou o guard |
+| delegate pedindo os testes com `> test-output.log` | `ok`, 105 s: o redirect pelo bash negado, depois o `write` do mesmo arquivo negado; arquivo inexistente, relatado em `out_of_scope_needs` |
+| review `--backend opencode` com `opencode.json` versionado | 1a versao: o preflight gravou o `$schema` antes do snapshot e o veredito nao viu. Corrigido (preflight em dir temporario, snapshot antes dele). 2a: `ok`, `approve`, `opencode.json` com o mesmo sha256 |
+| delegate com `opencode.json` versionado | `ok`, 37 s, aviso de restauracao, `opencode.json` com o mesmo sha256 |
+
+Nao medido: qualidade contra o agy ou o Claude na mesma fatia, taxa de falso
+positivo do guard, `apply_patch` (os modelos testados so usaram `write` e
+`edit`), caminho com espaco no `file://` do plugin, e o que acontece com um
+`OPENCODE_CONFIG_CONTENT` que o usuario ja tenha no ambiente (o do run o
+substitui).
+
 ## Por que nao ha workflow script
 
 A ideia era herdar do `agent-fleet` um workflow que abre varias delegacoes em
@@ -166,7 +235,8 @@ propria sessao (delegate, revisao, commit, proxima), nao um fan-out.
 
 ## Verificacao
 
-`just check` roda `agy_worker.py --self-test`: 155 assercoes sem chamar o agy,
+`just check` roda `agy_worker.py --self-test`: 209 assercoes sem chamar o agy
+nem o opencode,
 num repo git temporario. Cobrem as decisoes do guard (allowlist de ferramentas,
 caminho relativo e absoluto, symlink, `cd`/`Cwd`, `.git` pelo shell, git com
 opcoes globais e com aspas, redirecionamento, `&`, `finish`, gate isento so sem
@@ -178,4 +248,9 @@ devolver `{}`, o gate (escopo, forbid com numero de linha, `{files}` com espaco
 no nome, efeito colateral tolerado, `AGY_WORKER_GATE`), o cache que guarda so
 gate verde, a avaliacao do envelope em cada modo de falha com exit 0, a quota
 contra o formato real do `/usage` de 2026-10-13, e instalar e remover o
-`hooks.json` sem deixar rastro nem sobrescrever um existente.
+`hooks.json` sem deixar rastro nem sobrescrever um existente. Do opencode: a
+traducao de cada ferramenta para a politica do agy (inclusive `apply_patch`
+com alvo fora do escopo e ferramenta desconhecida), as negacoes extras do shell
+so nesse backend, o review negando todo shell, o handler `oc-pre` quebrado
+negando, os eventos que saem 0 e sao falha, a extracao do relatorio, a
+restauracao exata do `opencode.json` e o plugin gerado apontando para o script.

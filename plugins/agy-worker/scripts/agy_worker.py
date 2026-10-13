@@ -5,9 +5,10 @@ Claude plans and reviews; agy executes one well-scoped slice. This script is
 the guard rail between them. Subcommands:
 
   delegate TASK.json   run the task under agy with guard hooks and a gate
-  review [PROMPT...]   read-only second opinion (--mode plan + --json-schema)
+  review [PROMPT...]   read-only second opinion (agy: --mode plan + --json-schema)
   gate TASK.json       run the task's gate by hand (--baseline: commands only)
   hook pre|stop|start  agy workspace hook handlers (installed per run)
+  hook oc-pre          the opencode guard plugin's handler (same policy)
   --self-test          exercises everything that does not need agy itself
 
 Why each check exists is in the plugin README; the short version is that agy
@@ -20,6 +21,14 @@ decision even when it crashes.
 Stdlib only. State lives in `$(git rev-parse --git-path agy-worker)`, so a run
 never dirties the work tree; the only file written into the tree is
 `.agents/hooks.json`, for the duration of the run, and it is removed after.
+
+Second backend, `"backend": "opencode"` in the task (opencode 1.19.0): the
+guard is an opencode plugin generated in the run dir and loaded only through
+that run's OPENCODE_CONFIG_CONTENT; it forwards every tool call to `hook
+oc-pre`, which translates it and asks the same decide_pre. opencode has no
+stop hook and no --json-schema, so the gate loop (run, gate, `run -s` with the
+gate output) and the report parsing are here, and opencode.json's bytes are
+restored after every opencode process (it writes "$schema" into it).
 """
 
 import argparse
@@ -27,6 +36,7 @@ import fnmatch
 import hashlib
 import json
 import os
+import pathlib
 import re
 import shlex
 import shutil
@@ -48,6 +58,12 @@ TESTED_AGY_VERSION = "1.3.4"       # every agy behaviour this script relies on w
 MAX_PROMPT_BYTES = 100_000          # one argv string is capped at 128 KiB on Linux
 MAX_DIFF_BYTES = 60_000
 TAIL_CHARS = 6000
+BACKENDS = ("agy", "opencode")
+OPENCODE_DEFAULT_MODEL = "opencode/longcat-2.5-preview-free"
+TESTED_OPENCODE_VERSION = "1.19.0"
+# opencode writes "$schema" into these, in the process cwd, on every run (seen
+# on 1.19.0 even with --dir); the driver restores their bytes after each run.
+OPENCODE_CONFIG_FILES = ("opencode.json", "opencode.jsonc")
 TIMEOUT_MARKER = "[agy] print timeout"
 AUTO_DENY_MARKER = "auto-denied"
 NO_OUTPUT_MARKER = "run ended with no output"
@@ -115,6 +131,31 @@ DENY_COMMANDS = [
     (r"(^|[\s=:'\"(/<>;&|])\.\.($|[\s/;&|)'\"])", "caminho com .."),
     (r"\$\{?HOME\b|\bprintenv\b|(^|[\s;|&])env\s*($|[;|&])", "home ou ambiente do usuario"),
 ]
+
+# opencode only: its models write through bash where agy's use the edit tools
+# (lab: `printf x > top.txt` past an edit-deny glob), so the file-writing
+# coreutils are denied too. Added to the same deny list, never a second policy.
+OPENCODE_DENY_COMMANDS = [
+    (_CMD + r"(cp|mv|touch|mkdir|rmdir|rm|truncate|install|patch)(\s|$)",
+     "escrita de arquivo pelo shell (use write/edit)"),
+]
+REVIEW_DENY_ALL = [(r"[\s\S]", "review somente leitura: sem shell")]
+
+# opencode tool -> (the agy tool decide_pre knows, {opencode arg: agy arg}).
+# The guard plugin forwards every call here, so one policy covers both.
+OC_TOOLS = {
+    "read": ("view_file", {"filePath": "AbsolutePath"}),
+    "list": ("list_dir", {"path": "DirectoryPath"}),
+    "glob": ("find_by_name", {"path": "SearchDirectory", "pattern": "Pattern"}),
+    "grep": ("grep_search", {"path": "SearchPath", "pattern": "Query", "include": "Includes"}),
+    "write": ("write_to_file", {"filePath": "TargetFile", "content": "CodeContent"}),
+    "edit": ("replace_file_content", {"filePath": "TargetFile", "oldString": "TargetContent",
+                                      "newString": "ReplacementContent"}),
+    "multiedit": ("multi_replace_file_content", {"filePath": "TargetFile", "edits": "ReplacementChunks"}),
+    "bash": ("run_command", {"command": "CommandLine", "workdir": "Cwd"}),
+}
+OC_INERT_TOOLS = {"todowrite", "todoread", "skill", "invalid"}   # no file or process effect
+PATCH_TARGET = re.compile(r"^\*\*\* (?:(?:Add|Update|Delete) File|Move to):\s*(.+?)\s*$", re.M)
 
 DEFAULT_REPORT_SCHEMA = {
     "type": "object",
@@ -234,11 +275,12 @@ def write_json(path: str, obj) -> None:
 # task file
 # --------------------------------------------------------------------------
 
-def load_task(path: str) -> dict:
+def load_task(path: str, **overrides) -> dict:
     path = os.path.abspath(path)
     task = read_json(path)
     if not isinstance(task, dict):
         raise Refusal(f"{path}: nao e um objeto JSON legivel")
+    task.update({k: v for k, v in overrides.items() if v})
     base = os.path.dirname(path)
     if "prompt_file" in task:
         pf = os.path.join(base, task["prompt_file"])
@@ -294,6 +336,14 @@ def normalize_task(task: dict) -> dict:
             re.compile(pat)
         except re.error as exc:
             errs.append(f"deny_commands {pat!r}: regex invalida ({exc})")
+    backend = task.get("backend", "agy")
+    if backend not in BACKENDS:
+        errs.append(f"backend {backend!r}: use um de {BACKENDS}")
+    elif backend == "opencode" and isinstance(scope, list) and any(
+            in_globs(f, scope) for f in OPENCODE_CONFIG_FILES):
+        errs.append("scope cobre opencode.json(c), que o driver restaura depois de cada run do opencode")
+    if not isinstance(task.get("disable_claude_code", False), bool):
+        errs.append("disable_claude_code deve ser booleano")
     try:
         parse_duration(task.get("timeout", DEFAULT_TIMEOUT))
         parse_duration(task.get("gate_timeout", DEFAULT_GATE_TIMEOUT))
@@ -307,7 +357,9 @@ def normalize_task(task: dict) -> dict:
         "gate": {"format": list(gate.get("format", [])), "checks": list(gate.get("checks", [])),
                  "forbid": list(gate.get("forbid", []))},
         "report_schema": schema,
-        "model": task.get("model", DEFAULT_MODEL),
+        "backend": backend,
+        "disable_claude_code": task.get("disable_claude_code", False),
+        "model": task.get("model", OPENCODE_DEFAULT_MODEL if backend == "opencode" else DEFAULT_MODEL),
         "timeout": parse_duration(task.get("timeout", DEFAULT_TIMEOUT)),
         "gate_timeout": parse_duration(task.get("gate_timeout", DEFAULT_GATE_TIMEOUT)),
         "max_gate_attempts": int(task.get("max_gate_attempts", DEFAULT_MAX_GATE_ATTEMPTS)),
@@ -345,7 +397,16 @@ def compose_prompt(task: dict, repo: str) -> str:
 {steps_txt}
   {note}Run the format and check commands yourself before declaring done. The gate is fully described here; do not search the filesystem for it.
 - Final report: fill every field of the required schema. List every behaviour divergence you introduced and why. Do not claim a check passed unless you saw it pass.
-"""
+{report_rule(task)}"""
+
+
+def report_rule(task: dict) -> str:
+    """opencode has no --json-schema: the report is the last JSON object in
+    the final message, and the driver asks again if it is missing."""
+    if task.get("backend") != "opencode":
+        return ""
+    return ("- End your final message with the report as ONE JSON object (no prose after it) matching "
+            f"this JSON schema: {json.dumps(task['report_schema'], separators=(',', ':'))}\n")
 
 
 # --------------------------------------------------------------------------
@@ -501,6 +562,30 @@ def decide_pre(payload: dict, ctx: dict) -> dict:
         if writes_by_redirect(cmd):
             return deny(f"Escrita pelo shell bloqueada (redirecionamento para arquivo): {cmd!r}. Use as "
                         "ferramentas de edicao; redirecione saida so para /dev/null ou 2>&1.")
+    return {"decision": "allow"}
+
+
+def oc_calls(tool: str, args: dict) -> list:
+    """An opencode tool call as the agy-shaped payloads decide_pre judges: one
+    per file an apply_patch touches, none for tools without effects. Unknown
+    tools keep their name, so the allowlist denies them."""
+    if tool in OC_INERT_TOOLS:
+        return []
+    if tool == "apply_patch":
+        targets = PATCH_TARGET.findall(str(args.get("patchText", "")))
+        return ([{"toolCall": {"name": "write_to_file", "args": {"TargetFile": t}}} for t in targets]
+                or [{"toolCall": {"name": "apply_patch", "args": {}}}])
+    name, keys = OC_TOOLS.get(tool, (tool, {}))
+    mapped = {keys.get(k, "Description" if k == "description" else k): v for k, v in args.items()}
+    return [{"toolCall": {"name": name, "args": mapped}}]
+
+
+def decide_oc(payload: dict, ctx: dict) -> dict:
+    args = payload.get("args") if isinstance(payload.get("args"), dict) else {}
+    for call in oc_calls(str(payload.get("tool", "")), args):
+        out = decide_pre(call, ctx)
+        if out["decision"] != "allow":
+            return out
     return {"decision": "allow"}
 
 
@@ -738,6 +823,15 @@ def hook_main(event: str, rundir: str) -> int:
             append_jsonl(log, {"event": "session_start", "model": payload.get("modelName"),
                                "conversation": payload.get("conversationId")})
             out = {}
+        elif event == "oc-pre":
+            out = decide_oc(payload, ctx)
+            entry = {"event": "pre", "tool": payload.get("tool"), "decision": out["decision"]}
+            if out["decision"] != "allow":
+                entry["reason"] = out.get("reason", "")[:300]
+                entry["args"] = {k: (v if len(str(v)) < 300 else str(v)[:300] + "…")
+                                 for k, v in (payload.get("args") or {}).items()
+                                 if k not in ("content", "oldString", "newString", "patchText")}
+            append_jsonl(log, entry)
         elif event == "pre":
             name = (payload.get("toolCall") or {}).get("name", "")
             if name in FINISH_TOOLS and ctx.get("mode") == "delegate":
@@ -781,7 +875,7 @@ def hook_main(event: str, rundir: str) -> int:
         except OSError:
             pass
         out = ({"decision": "deny", "reason": f"guard interno falhou ({exc!r}); chamada negada por seguranca"}
-               if event == "pre" else {"decision": "stop"} if event == "stop" else {})
+               if event in ("pre", "oc-pre") else {"decision": "stop"} if event == "stop" else {})
     print(json.dumps(out, ensure_ascii=False))
     return 0
 
@@ -963,13 +1057,16 @@ def preflight_agy(model: str, min_quota: float, probe_quota: bool, rundir: str) 
     return warns
 
 
-def run_agy(cmd: list, repo: str, rundir: str, timeout_s: int):
-    out_p, err_p = os.path.join(rundir, "agy.stdout"), os.path.join(rundir, "agy.stderr")
+def run_agy(cmd: list, repo: str, rundir: str, timeout_s: int, name: str = "agy", env=None,
+            grace: int = 180):
+    """Run the worker CLI with cwd = repo and stdin closed (opencode hangs on an
+    open stdin pipe). Output goes to <name>.stdout/.stderr in the run dir."""
+    out_p, err_p = os.path.join(rundir, f"{name}.stdout"), os.path.join(rundir, f"{name}.stderr")
     with open(out_p, "w") as fo, open(err_p, "w") as fe:
         proc = subprocess.Popen(cmd, cwd=repo, stdout=fo, stderr=fe, stdin=subprocess.DEVNULL,
-                                start_new_session=True)
+                                start_new_session=True, env=env)
         try:
-            rc = proc.wait(timeout=timeout_s + 180)
+            rc = proc.wait(timeout=timeout_s + grace)
         except (subprocess.TimeoutExpired, KeyboardInterrupt) as exc:
             # Our own child's process group: we started it, so we stop it.
             for sig in (signal.SIGTERM, signal.SIGKILL):
@@ -1023,6 +1120,246 @@ def trap_signals() -> None:
 
 
 # --------------------------------------------------------------------------
+# opencode backend: guard plugin outside the tree, external gate loop
+# --------------------------------------------------------------------------
+
+# No policy in here: every tool call is forwarded to `agy_worker.py hook
+# oc-pre`, and anything but an explicit allow (a crash, no answer) denies.
+# A throw in tool.execute.before blocks the call and the model sees the text
+# (lab E4, opencode 1.19.0).
+OC_GUARD_JS = """// agy-worker guard for opencode, generated for one run; loaded only through
+// OPENCODE_CONFIG_CONTENT of that run. The policy is agy_worker.py's.
+import { spawnSync } from "node:child_process";
+const PY = __PY__, SCRIPT = __SCRIPT__, STATE = __STATE__;
+function ask(event, payload) {
+  const p = spawnSync(PY, [SCRIPT, "hook", event, "--state", STATE],
+                      { input: JSON.stringify(payload), encoding: "utf8", timeout: 120000 });
+  try { return JSON.parse(p.stdout); }
+  catch { return { decision: "deny", reason: `guard sem resposta (rc=${p.status}) ${String(p.stderr || p.error || "").slice(0, 300)}` }; }
+}
+export const AgyWorkerGuard = async () => {
+  ask("start", {});
+  return {
+    "tool.execute.before": async (input, output) => {
+      const d = ask("oc-pre", { tool: String(input.tool), args: output.args ?? {} });
+      if (!d || d.decision !== "allow") throw new Error(`GUARD: ${(d && d.reason) || "negado"}`);
+    },
+  };
+};
+"""
+
+
+def write_oc_guard(rundir: str) -> str:
+    path = os.path.join(rundir, "opencode-guard.js")
+    js = (OC_GUARD_JS.replace("__PY__", json.dumps(sys.executable))
+          .replace("__SCRIPT__", json.dumps(os.path.abspath(__file__)))
+          .replace("__STATE__", json.dumps(rundir)))
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(js)
+    return path
+
+
+def opencode_env(guard: str, disable_claude_code: bool) -> dict:
+    """The guard plugin and external_directory=deny come in through the
+    environment, so nothing is written into the tree or into ~/.config.
+    Shell denial lives in the plugin: `permission.bash: deny` makes the free
+    models fail at startup (403, lab). ~/.claude/CLAUDE.md is loaded unless
+    the task disables it, as for a native subagent."""
+    env = {**os.environ, "OPENCODE_DISABLE_AUTOUPDATE": "1", "OPENCODE_DISABLE_SHARE": "1",
+           "OPENCODE_CONFIG_CONTENT": json.dumps({
+               "plugin": [pathlib.Path(guard).as_uri()],
+               "permission": {"external_directory": "deny"}})}
+    if disable_claude_code:
+        env["OPENCODE_DISABLE_CLAUDE_CODE"] = "1"
+    return env
+
+
+def preflight_opencode(model: str):
+    """(binary, warnings); refuses on a missing binary or model. Runs in an
+    empty temp dir: from the run dir (inside .git) opencode still found the
+    work tree and wrote "$schema" into its opencode.json (lab, 1.19.0)."""
+    oc = shutil.which("opencode") or os.path.expanduser("~/.opencode/bin/opencode")
+    if not os.access(oc, os.X_OK):
+        raise Refusal("opencode nao esta no PATH nem em ~/.opencode/bin")
+    with tempfile.TemporaryDirectory(prefix="agy-worker-oc-") as cwd:
+        run = lambda *a: subprocess.run([oc, *a], capture_output=True, text=True, timeout=120,  # noqa: E731
+                                        cwd=cwd, stdin=subprocess.DEVNULL)
+        lines = run("--version").stdout.strip().splitlines()
+        proc = run("models")
+    version = lines[-1].strip() if lines else "?"
+    warns = []
+    if version != TESTED_OPENCODE_VERSION:
+        warns.append(f"opencode {version}; este script so foi exercitado no {TESTED_OPENCODE_VERSION}. "
+                     "Formato dos eventos, plugin e escrita do $schema podem ter mudado")
+    models = [ln.strip() for ln in proc.stdout.splitlines() if re.fullmatch(r"\S+/\S+", ln.strip())]
+    if proc.returncode != 0 or not models:
+        raise Refusal(f"`opencode models` falhou (rc={proc.returncode}): {tail(proc.stderr.strip(), 300)}")
+    if model not in models:
+        same = [m for m in models if m.split("/")[0] == model.split("/")[0]]
+        raise Refusal(f"modelo {model!r} nao existe para o opencode. Do mesmo provider: {', '.join(same) or '-'}")
+    return oc, warns
+
+
+def snapshot_files(repo: str, names) -> dict:
+    snap = {}
+    for n in names:
+        try:
+            with open(os.path.join(repo, n), "rb") as fh:
+                snap[n] = fh.read()
+        except FileNotFoundError:
+            snap[n] = None
+    return snap
+
+
+def restore_files(repo: str, snap: dict) -> set:
+    """Put back the exact bytes (or absence) of each file; returns what differed."""
+    changed = set()
+    for n, data in snap.items():
+        p = os.path.join(repo, n)
+        try:
+            with open(p, "rb") as fh:
+                cur = fh.read()
+        except FileNotFoundError:
+            cur = None
+        if cur == data:
+            continue
+        changed.add(n)
+        if data is None:
+            os.remove(p)
+        else:
+            with open(p, "wb") as fh:
+                fh.write(data)
+    return changed
+
+
+def evaluate_oc(rc, stdout: str, stderr: str):
+    """(failures, info) for one `opencode run --format json`. It exits 0 on
+    soft denies and on a bogus --agent (lab), so success is read from events:
+    no error event, and the last step finished with reason=stop."""
+    fails, events = [], []
+    if rc == "wrapper-timeout":
+        fails.append("timeout: opencode nao terminou e foi encerrado")
+    elif rc != 0:
+        fails.append(f"opencode saiu com rc={rc}: {tail(stderr.strip(), 400)}")
+    for line in stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(ev, dict):
+            events.append(ev)
+    if not events:
+        fails.append("nenhum evento JSON no stdout")
+    for ev in events:
+        if ev.get("type") == "error":
+            err = ev.get("error") or {}
+            msg = (err.get("data") or {}).get("message") if isinstance(err, dict) else None
+            fails.append(f"evento error: {(msg or json.dumps(err))[:300]}")
+    finishes = [ev.get("part") or {} for ev in events if ev.get("type") == "step_finish"]
+    if events and (not finishes or finishes[-1].get("reason") != "stop"):
+        fails.append("o run nao terminou com reason=stop (ultimo step: "
+                     f"{finishes[-1].get('reason') if finishes else 'nenhum'})")
+    texts = [(ev.get("part") or {}).get("text", "") for ev in events if ev.get("type") == "text"]
+    tokens = {}
+    for f in finishes:
+        for k, v in (f.get("tokens") or {}).items():
+            if isinstance(v, (int, float)):
+                tokens[k] = tokens.get(k, 0) + v
+    info = {"session": next((ev["sessionID"] for ev in events if ev.get("sessionID")), None),
+            "text": texts[-1] if texts else "", "steps": len(finishes), "tokens": tokens,
+            "cost": sum(f.get("cost") or 0 for f in finishes),
+            "tool_errors": sum(1 for ev in events if ev.get("type") == "tool_use"
+                               and ((ev.get("part") or {}).get("state") or {}).get("status") == "error")}
+    return fails, info
+
+
+def extract_report(text: str):
+    """The last top-level JSON object in the worker's final message, or None."""
+    dec, found, pos = json.JSONDecoder(), None, 0
+    text = text or ""
+    while (i := text.find("{", pos)) != -1:
+        try:
+            obj, end = dec.raw_decode(text, i)
+        except ValueError:
+            pos = i + 1
+            continue
+        if isinstance(obj, dict):
+            found = obj
+        pos = end
+    return found
+
+
+def report_problems(report, schema: dict) -> list:
+    if not isinstance(report, dict):
+        return ["relatorio ausente: a ultima mensagem nao traz um objeto JSON"]
+    missing = [k for k in schema.get("required", []) if k not in report]
+    return [f"relatorio sem campos obrigatorios: {missing}"] if missing else []
+
+
+def oc_message(text: str) -> str:
+    return "Task:\n" + text if text.lstrip().startswith("-") else text   # never parsed as a flag
+
+
+def drive_opencode(oc: str, task: dict, repo: str, rundir: str, prompt: str, ctx: dict, saved: dict):
+    """run -> gate -> `run -s <session>` with the gate output, up to
+    max_gate_attempts runs. opencode has no in-process stop hook (a plugin
+    prompting on session.idle did not continue `run`, lab E5), so the loop is
+    here. Returns (failures, warnings, report, info)."""
+    env = opencode_env(write_oc_guard(rundir), task["disable_claude_code"])
+    deadline = time.time() + task["timeout"]
+    fails, warns, runs, restored = [], [], [], set()
+    sid, report, msg, n = None, None, prompt, task["max_gate_attempts"]
+    try:
+        for i in range(1, n + 1):
+            left = int(deadline - time.time())
+            if left < 30:
+                fails.append("timeout da task esgotado antes de o gate e o relatorio ficarem prontos")
+                break
+            cmd = [oc, "run", "--dir", repo, "--format", "json", "-m", task["model"],
+                   *(["-s", sid] if sid else []), oc_message(msg)]
+            eprint(f"agy-worker: opencode run {i}/{n} ({task['model']}{', sessao ' + sid if sid else ''})…")
+            rc, out, err = run_agy(cmd, repo, rundir, left, name=f"opencode-{i}", env=env, grace=0)
+            restored |= restore_files(repo, saved)
+            run_fails, info = evaluate_oc(rc, out, err)
+            sid = sid or info["session"]
+            runs.append({"attempt": i, "rc": rc, **{k: v for k, v in info.items() if k != "text"}})
+            if run_fails:
+                fails += [f"run {i}: {f}" for f in run_fails]
+                break
+            report = extract_report(info["text"])
+            passed, text, _ = gate_cached(rundir, ctx, f"driver:{i}")
+            problems = report_problems(report, task["report_schema"])
+            if passed and not problems:
+                break
+            if not sid:
+                fails.append("nenhum sessionID nos eventos: nao ha como retomar")
+                break
+            parts = []
+            if not passed:
+                parts.append(f"The gate FAILED (attempt {i} of {n}); the task is not done. Fix the real cause, "
+                             "without disabling tests, without forbidden shortcuts and without leaving the "
+                             f"allowed files. Gate output:\n{tail(text)}")
+            if problems:
+                parts.append("Your final message must end with the report as ONE JSON object matching the "
+                             f"schema given before ({'; '.join(problems)}).")
+            msg = "\n\n".join(parts)
+    finally:
+        restored |= restore_files(repo, saved)
+    if restored:
+        warns.append(f"o opencode reescreveu {sorted(restored)} (o \"$schema\"); bytes originais restaurados")
+    if not fails:
+        fails += report_problems(report, task["report_schema"])
+    if isinstance(report, dict) and report.get("status") in ("partial", "blocked"):
+        fails.append(f"o worker se declarou {report['status']!r}")
+    total = {}
+    for r in runs:
+        for k, v in r.get("tokens", {}).items():
+            total[k] = total.get(k, 0) + v
+    return fails, warns, report, {"session": sid, "runs": runs, "tokens": total,
+                                  "cost": sum(r.get("cost") or 0 for r in runs)}
+
+
+# --------------------------------------------------------------------------
 # subcommands
 # --------------------------------------------------------------------------
 
@@ -1032,25 +1369,34 @@ def base_ctx(repo, task, mode):
         "allow_paths": task["allow_paths"], "gate": task["gate"],
         "gate_timeout": task["gate_timeout"], "max_gate_attempts": task["max_gate_attempts"],
         "gate_commands": task["gate"]["format"] + task["gate"]["checks"],
-        "deny_patterns": DENY_COMMANDS + [(p, "regra do projeto") for p in task["deny_commands"]],
+        "deny_patterns": DENY_COMMANDS + (OPENCODE_DENY_COMMANDS if task.get("backend") == "opencode" else [])
+        + [(p, "regra do projeto") for p in task["deny_commands"]],
     }
 
 
 def cmd_delegate(a) -> int:
     trap_signals()
-    task = load_task(a.task)
-    if a.model:
-        task["model"] = a.model
+    task = load_task(a.task, backend=a.backend, model=a.model)
+    opencode = task["backend"] == "opencode"
     repo = repo_root(a.repo or os.getcwd())
     git(repo, "rev-parse", "--verify", "HEAD")
     dirty = changed_paths(repo)
     if dirty:
         raise Refusal("arvore suja; commite ou guarde antes (o diff do worker tem que ser so dele): "
                       + ", ".join(dirty[:10]))
-    refuse_existing_hooks(repo)
+    if not opencode:
+        refuse_existing_hooks(repo)
     rundir = new_rundir(repo, "delegate")
     eprint(f"agy-worker: run dir {rundir}")
-    pre_warns = preflight_agy(task["model"], task["min_quota"], not a.no_quota_probe, rundir)
+    if opencode:
+        saved = snapshot_files(repo, OPENCODE_CONFIG_FILES)    # before any opencode process
+        try:
+            oc, pre_warns = preflight_opencode(task["model"])
+        finally:
+            if restore_files(repo, saved):
+                eprint("agy-worker: o preflight do opencode reescreveu opencode.json; restaurado")
+    else:
+        pre_warns = preflight_agy(task["model"], task["min_quota"], not a.no_quota_probe, rundir)
     ctx = base_ctx(repo, task, "delegate")
     write_json(os.path.join(rundir, "ctx.json"), ctx)
     write_json(os.path.join(rundir, "task.json"), task)
@@ -1062,18 +1408,25 @@ def cmd_delegate(a) -> int:
     head = git(repo, "rev-parse", "HEAD").strip()
     before = snapshot_procs(repo)
     integ_before, ignored_before = integrity_state(repo, rundir), ignored_state(repo)
-    cmd = ["agy", "-p", prompt, "--model", task["model"], "--output-format", "json",
-           "--json-schema", schema_path, "--print-timeout", f"{task['timeout']}s",
-           "--dangerously-skip-permissions"]
-    created = install_hooks(repo, rundir, ctx)
     started = time.time()
-    try:
-        eprint(f"agy-worker: agy rodando ({task['model']}, timeout {task['timeout']}s)…")
-        rc, stdout, stderr = run_agy(cmd, repo, rundir, task["timeout"])
-    finally:
-        remove_hooks(repo, created)
-    wall = round(time.time() - started)
-    fails, warns, env = evaluate_run(rc, stdout, stderr, "delegate", task["report_schema"])
+    if opencode:
+        fails, warns, report, run_info = drive_opencode(oc, task, repo, rundir, prompt, ctx, saved)
+        run_info["wall_seconds"] = round(time.time() - started)
+    else:
+        cmd = ["agy", "-p", prompt, "--model", task["model"], "--output-format", "json",
+               "--json-schema", schema_path, "--print-timeout", f"{task['timeout']}s",
+               "--dangerously-skip-permissions"]
+        created = install_hooks(repo, rundir, ctx)
+        try:
+            eprint(f"agy-worker: agy rodando ({task['model']}, timeout {task['timeout']}s)…")
+            rc, stdout, stderr = run_agy(cmd, repo, rundir, task["timeout"])
+        finally:
+            remove_hooks(repo, created)
+        fails, warns, env = evaluate_run(rc, stdout, stderr, "delegate", task["report_schema"])
+        report = env.get("structured_output") if isinstance(env, dict) else None
+        run_info = {"rc": rc, "wall_seconds": round(time.time() - started), **(
+            {k: env.get(k) for k in ("status", "duration_seconds", "num_turns", "usage", "conversation_id")}
+            if isinstance(env, dict) else {})}
     warns = pre_warns + warns
     tampered = diff_state(integ_before, integrity_state(repo, rundir))
     if tampered:
@@ -1081,7 +1434,8 @@ def cmd_delegate(a) -> int:
                      f"run; o veredito abaixo nao e confiavel: {tampered}")
     events = guard_events(rundir)
     if not any(e.get("event") == "session_start" for e in events):
-        fails.append("os hooks do agy-worker nao carregaram (nenhum SessionStart registrado): "
+        fails.append(("o plugin de guard do opencode nao carregou" if opencode else
+                      "os hooks do agy-worker nao carregaram") + " (nenhum SessionStart registrado): "
                      "o run nao teve guard rails; trate o diff como nao confiavel")
     if git(repo, "rev-parse", "HEAD").strip() != head:
         fails.append("HEAD mudou durante o run (commit ou checkout passou pelo guard)")
@@ -1114,16 +1468,15 @@ def cmd_delegate(a) -> int:
         warns.append("processos novos com cwd no repo ainda vivos (nao foram encerrados): "
                      + "; ".join(f"{p} {c}" for p, c in leftover.items()))
     verdict = {
-        "ok": not fails, "mode": "delegate", "run_dir": rundir, "model": task["model"],
+        "ok": not fails, "mode": "delegate", "backend": task["backend"], "run_dir": rundir,
+        "model": task["model"],
         "failures": fails, "warnings": warns, "changed": cls,
         "gate": {"passed": passed, "source": source, "hook_attempts": st.get("attempts", 0),
                  "tail": tail(text, 2500)},
         "guard_denials": [{k: e.get(k) for k in ("tool", "reason", "args")} for e in denials[-20:]],
         "stop_events": [e for e in events if e.get("event") == "stop"],
-        "report": (env or {}).get("structured_output") if isinstance(env, dict) else None,
-        "agy": {"rc": rc, "wall_seconds": wall, **({k: env.get(k) for k in (
-            "status", "duration_seconds", "num_turns", "usage", "conversation_id")}
-            if isinstance(env, dict) else {})},
+        "report": report,
+        task["backend"]: run_info,
         "next": "Nada foi commitado. Revise `git diff HEAD` contra a fonte da verdade antes de aceitar; "
                 "o gate e necessario, nao suficiente.",
     }
@@ -1148,7 +1501,8 @@ def cmd_review(a) -> int:
         schema = read_json(a.schema)
         if not (isinstance(schema, dict) and schema.get("type") == "object"):
             raise Refusal(f"{a.schema}: schema precisa de raiz type=object")
-    model = a.model or DEFAULT_MODEL
+    opencode = a.backend == "opencode"
+    model = a.model or (OPENCODE_DEFAULT_MODEL if opencode else DEFAULT_MODEL)
     timeout_s = parse_duration(a.timeout)
     diff_txt = ""
     if a.diff:
@@ -1160,44 +1514,75 @@ def cmd_review(a) -> int:
                 "\n…(diff cortado; leia os arquivos para o resto)…"
     rundir = new_rundir(repo, "review")
     eprint(f"agy-worker: run dir {rundir}")
-    pre_warns = preflight_agy(model, a.min_quota, not a.no_quota_probe, rundir)
+    if opencode:
+        saved = snapshot_files(repo, OPENCODE_CONFIG_FILES)    # before any opencode process
+        try:
+            oc, pre_warns = preflight_opencode(model)
+        finally:
+            if restore_files(repo, saved):
+                eprint("agy-worker: o preflight do opencode reescreveu opencode.json; restaurado")
+    else:
+        pre_warns = preflight_agy(model, a.min_quota, not a.no_quota_probe, rundir)
     prompt = question
     if diff_txt:
         prompt += f"\n\n## Diff under review (`git diff {a.diff}`)\n```diff\n{diff_txt}\n```"
     prompt += ("\n\n---\nYou are a read-only reviewer. Do not modify files and do not run commands; "
                f"read files under `{repo}` as needed. Every finding must quote the exact code or text "
                "that supports it in `evidence`. Prefer `unsure` over a guess.\n")
+    prompt += report_rule({"backend": a.backend, "report_schema": schema})
     with open(os.path.join(rundir, "prompt.md"), "w", encoding="utf-8") as fh:
         fh.write(prompt)
+    # opencode has no plan mode: scope [] denies every write, and every shell
+    # command is denied, both by the guard plugin.
     ctx = {"mode": "review", "repo": repo, "scope": [], "side_effects": [], "allow_paths": [],
            "gate": {"format": [], "checks": [], "forbid": []}, "gate_timeout": 60,
-           "max_gate_attempts": 0, "gate_commands": [], "deny_patterns": DENY_COMMANDS}
+           "max_gate_attempts": 0, "gate_commands": [],
+           "deny_patterns": REVIEW_DENY_ALL if opencode else DENY_COMMANDS}
     write_json(os.path.join(rundir, "ctx.json"), ctx)
     schema_path = os.path.join(rundir, "review.schema.json")
     write_json(schema_path, schema)
     fp_before, ignored_before = fingerprint(repo, []), ignored_state(repo)
     integ_before = integrity_state(repo, rundir)
-    cmd = ["agy", "-p", prompt, "--model", model, "--mode", "plan", "--output-format", "json",
-           "--json-schema", schema_path, "--print-timeout", f"{timeout_s}s"]
-    created = install_hooks(repo, rundir, ctx)
-    try:
-        eprint(f"agy-worker: review rodando ({model}, --mode plan)…")
-        rc, stdout, stderr = run_agy(cmd, repo, rundir, timeout_s)
-    finally:
-        remove_hooks(repo, created)
-    fails, warns, env = evaluate_run(rc, stdout, stderr, "review", schema)
-    warns = pre_warns + warns
+    if opencode:
+        env_oc = opencode_env(write_oc_guard(rundir), False)
+        try:
+            eprint(f"agy-worker: review rodando (opencode, {model})…")
+            rc, stdout, stderr = run_agy([oc, "run", "--dir", repo, "--format", "json", "-m", model,
+                                          oc_message(prompt)], repo, rundir, timeout_s,
+                                         name="opencode-1", env=env_oc, grace=0)
+        finally:
+            restored = restore_files(repo, saved)
+        fails, info = evaluate_oc(rc, stdout, stderr)
+        report = extract_report(info.pop("text"))
+        fails += report_problems(report, schema)
+        warns = pre_warns + ([f"o opencode reescreveu {sorted(restored)}; bytes restaurados"] if restored else [])
+        run_info = {"rc": rc, **info}
+    else:
+        cmd = ["agy", "-p", prompt, "--model", model, "--mode", "plan", "--output-format", "json",
+               "--json-schema", schema_path, "--print-timeout", f"{timeout_s}s"]
+        created = install_hooks(repo, rundir, ctx)
+        try:
+            eprint(f"agy-worker: review rodando ({model}, --mode plan)…")
+            rc, stdout, stderr = run_agy(cmd, repo, rundir, timeout_s)
+        finally:
+            remove_hooks(repo, created)
+        fails, warns, env = evaluate_run(rc, stdout, stderr, "review", schema)
+        warns = pre_warns + warns
+        report = env.get("structured_output") if isinstance(env, dict) else None
+        run_info = {"rc": rc, **({k: env.get(k) for k in ("status", "duration_seconds", "num_turns",
+                                                          "usage")} if isinstance(env, dict) else {})}
     if (fingerprint(repo, []) != fp_before or ignored_state(repo) != ignored_before
             or integrity_state(repo, rundir) != integ_before):
         fails.append("a arvore, um arquivo ignorado ou o .git mudou durante um review que devia ser "
                      "somente leitura")
     if not any(e.get("event") == "session_start" for e in guard_events(rundir)):
-        warns.append("hooks nao carregaram (nenhum SessionStart): o review rodou so com --mode plan")
-    verdict = {"ok": not fails, "mode": "review", "run_dir": rundir, "model": model,
-               "failures": fails, "warnings": warns,
-               "report": env.get("structured_output") if isinstance(env, dict) else None,
-               "agy": {"rc": rc, **({k: env.get(k) for k in ("status", "duration_seconds", "num_turns",
-                                                             "usage")} if isinstance(env, dict) else {})},
+        if opencode:
+            fails.append("o plugin de guard do opencode nao carregou (nenhum SessionStart): o review "
+                         "rodou sem nada que o mantivesse somente leitura")
+        else:
+            warns.append("hooks nao carregaram (nenhum SessionStart): o review rodou so com --mode plan")
+    verdict = {"ok": not fails, "mode": "review", "backend": a.backend, "run_dir": rundir, "model": model,
+               "failures": fails, "warnings": warns, "report": report, a.backend: run_info,
                "next": "Segunda opiniao de um modelo mais barato: confira cada evidence no codigo antes de agir."}
     write_json(os.path.join(rundir, "verdict.json"), verdict)
     print(json.dumps(verdict, ensure_ascii=False, indent=2))
@@ -1342,6 +1727,115 @@ def self_test() -> int:
                   "docker compose run test > src/../x", "docker compose run testX"):
             check(dpre(c)["decision"] == "deny", f"gate nao isenta: {c!r}")
 
+        # opencode backend: task fields, and its tool calls judged by the same decide_pre
+        check(task["backend"] == "agy" and task["model"] == DEFAULT_MODEL, "backend padrao e agy")
+        otask = normalize_task({"prompt": "x", "scope": ["src/*"], "backend": "opencode",
+                                "gate": {"checks": ["true"]}})
+        check(otask["model"] == OPENCODE_DEFAULT_MODEL and not otask["disable_claude_code"],
+              "opencode: modelo padrao e CLAUDE.md carregado")
+        for bad, why in ((dict(prompt="x", scope=["a"], gate={"checks": ["t"]}, backend="codex"), "backend"),
+                         (dict(prompt="x", scope=["*"], gate={"checks": ["t"]}, backend="opencode"),
+                          "scope cobre opencode.json"),
+                         (dict(prompt="x", scope=["a"], gate={"checks": ["t"]}, disable_claude_code="1"),
+                          "disable_claude_code nao booleano")):
+            try:
+                normalize_task(bad)
+                check(False, f"task invalida aceita: {why}")
+            except Refusal:
+                check(True, why)
+        check("ONE JSON object" in compose_prompt(otask, repo) and "ONE JSON object" not in
+              compose_prompt(task, repo), "regra do relatorio so no prompt do opencode")
+        octx = base_ctx(repo, otask, "delegate")
+        oc = lambda tool, **args: decide_oc({"tool": tool, "args": args}, octx)["decision"]  # noqa: E731
+        for tool, args, want, why in (
+                ("read", {"filePath": f"{repo}/src/a.txt"}, "allow", "read no repo"),
+                ("read", {"filePath": "/etc/passwd"}, "deny", "read fora do repo"),
+                ("list", {"path": "../.."}, "deny", "list .."),
+                ("glob", {"pattern": "/etc/*"}, "deny", "glob absoluto"),
+                ("glob", {"pattern": "src/**/*.ts"}, "allow", "glob no repo"),
+                ("grep", {"pattern": "/api/v1", "path": "src"}, "allow", "regex do grep nao e caminho"),
+                ("write", {"filePath": f"{repo}/src/b.txt", "content": "/etc/x"}, "allow", "write no escopo"),
+                ("write", {"filePath": f"{repo}/top.txt", "content": "x"}, "deny", "write fora do escopo"),
+                ("edit", {"filePath": "side.json", "oldString": "a", "newString": "b"}, "deny", "edit fora"),
+                ("bash", {"command": "echo x > top.txt", "description": "w"}, "deny", "redirect"),
+                ("bash", {"command": "printf x >> src/a.txt"}, "deny", "redirect mesmo no escopo"),
+                ("bash", {"command": "cp src/a.txt top.txt"}, "deny", "cp no opencode"),
+                ("bash", {"command": "cd src && touch x"}, "deny", "touch no opencode"),
+                ("bash", {"command": "ls", "workdir": "/"}, "deny", "workdir fora"),
+                ("bash", {"command": "python3 -m unittest 2>&1", "description": "Run /etc tests"},
+                 "allow", "description nao e caminho"),
+                ("bash", {"command": "git commit -m x"}, "deny", "commit"),
+                ("apply_patch", {"patchText": "*** Begin Patch\n*** Update File: src/a.txt\n@@\n-a\n+b\n"
+                                 "*** End Patch"}, "allow", "patch no escopo"),
+                ("apply_patch", {"patchText": "*** Add File: top.txt\n+x\n"}, "deny", "patch fora"),
+                ("apply_patch", {"patchText": "*** Update File: src/a.txt\n*** Move to: ../x\n"}, "deny",
+                 "patch move para fora"),
+                ("apply_patch", {"patchText": "garbage"}, "deny", "patch sem alvo"),
+                ("todowrite", {"todos": []}, "allow", "todowrite inerte"),
+                ("webfetch", {"url": "https://example.com"}, "deny", "webfetch"),
+                ("task", {"prompt": "x", "subagent_type": "general"}, "deny", "subagente"),
+                ("batch", {"tool_calls": []}, "deny", "batch"),
+                ("brand_new_tool", {}, "deny", "ferramenta desconhecida")):
+            check(oc(tool, **args) == want, f"opencode {why}: {tool} {args}")
+        check(decide_oc({"tool": "bash", "args": {"command": "cp a b"}}, ctx)["decision"] == "allow",
+              "cp continua permitido no agy (politica do agy inalterada)")
+        rctx = dict(octx, scope=[], deny_patterns=REVIEW_DENY_ALL)
+        check(decide_oc({"tool": "bash", "args": {"command": "ls"}}, rctx)["decision"] == "deny",
+              "review opencode nega todo shell")
+        check(decide_oc({"tool": "write", "args": {"filePath": "src/a.txt"}}, rctx)["decision"] == "deny",
+              "review opencode nega escrita")
+
+        # opencode events: exit 0 is never success
+        sid = "ses_x"
+        evs = lambda *e: "\n".join(json.dumps(dict(x, sessionID=sid)) for x in e)  # noqa: E731
+        fin = lambda r: {"type": "step_finish", "part": {"reason": r, "tokens": {"input": 5, "output": 2},  # noqa: E731
+                                                         "cost": 0}}
+        txt = {"type": "text", "part": {"text": 'Done.\n```json\n{"status": "done", "x": {"y": 1}}\n```'}}
+        f, info = evaluate_oc(0, evs(fin("tool-calls"), txt, fin("stop")), "")
+        check(f == [] and info["session"] == sid and info["tokens"]["input"] == 10, f"stream bom: {f}")
+        check(extract_report(info["text"]) == {"status": "done", "x": {"y": 1}}, "relatorio de bloco json")
+        f, _ = evaluate_oc(0, evs(fin("tool-calls")), "")
+        check(any("reason=stop" in x for x in f), "sem stop final reprova")
+        f, _ = evaluate_oc(0, evs({"type": "error", "error": {"name": "APIError", "data": {
+            "message": "free tier"}}}), "")
+        check(any("free tier" in x for x in f), "evento error reprova com exit 0")
+        f, _ = evaluate_oc(0, "", "")
+        check(any("nenhum evento" in x for x in f), "stdout vazio reprova")
+        f, _ = evaluate_oc(1, evs(fin("stop")), "boom")
+        check(any("rc=1" in x for x in f), "rc != 0 reprova")
+        check(extract_report('{"a": 1} then {"b": {"c": 2}}') == {"b": {"c": 2}}, "ultimo objeto de topo")
+        check(extract_report("no json {here") is None, "sem relatorio")
+        check(report_problems(None, DEFAULT_REPORT_SCHEMA) and report_problems({"status": "done"},
+              DEFAULT_REPORT_SCHEMA), "relatorio ausente ou incompleto")
+        check(oc_message("-rf") == "Task:\n-rf" and oc_message("x") == "x", "mensagem nunca vira flag")
+
+        # opencode.json: exact bytes restored, a created one removed
+        with open(os.path.join(repo, "opencode.json"), "wb") as fh:
+            fh.write(b'{\n  "share": "disabled"\n}\n')
+        snap = snapshot_files(repo, OPENCODE_CONFIG_FILES)
+        with open(os.path.join(repo, "opencode.json"), "wb") as fh:
+            fh.write(b'{\n  "$schema": "https://opencode.ai/config.json",\n  "share": "disabled"\n}\n')
+        with open(os.path.join(repo, "opencode.jsonc"), "w") as fh:
+            fh.write("{}")
+        check(restore_files(repo, snap) == {"opencode.json", "opencode.jsonc"}, "restaura os dois")
+        with open(os.path.join(repo, "opencode.json"), "rb") as fh:
+            check(fh.read() == b'{\n  "share": "disabled"\n}\n', "bytes originais")
+        check(not os.path.exists(os.path.join(repo, "opencode.jsonc")), "criado pelo run e removido")
+        check(restore_files(repo, snap) == set(), "restaurar de novo nao muda nada")
+        os.remove(os.path.join(repo, "opencode.json"))
+
+        # the generated guard forwards to this script and holds no policy of its own
+        grd = os.path.join(tmp, "g")
+        os.makedirs(grd)
+        js = open(write_oc_guard(grd), encoding="utf-8").read()
+        check(json.dumps(os.path.abspath(__file__)) in js and '"oc-pre"' in js and "__" not in js,
+              "guard gerado aponta para este script")
+        envc = json.loads(opencode_env(os.path.join(grd, "opencode-guard.js"), False)["OPENCODE_CONFIG_CONTENT"])
+        check(envc["permission"] == {"external_directory": "deny"} and envc["plugin"][0].startswith("file:///"),
+              "config do run: plugin por file:// e external_directory deny")
+        check("OPENCODE_DISABLE_CLAUDE_CODE" in opencode_env("/x.js", True)
+              and "OPENCODE_DISABLE_CLAUDE_CODE" not in opencode_env("/x.js", False), "flag do CLAUDE.md")
+
         # gate: nothing changed -> fail; in-scope change -> pass; forbid; out of scope
         ok, text, _ = run_gate(repo, ctx)
         check(not ok and "nenhum arquivo do escopo" in text, "gate falha sem mudanca")
@@ -1396,6 +1890,10 @@ def self_test() -> int:
               ["decision"] == "deny", "hook pre nega")
         check(hook("pre", {"toolCall": {"name": "list_dir", "args": {"DirectoryPath": repo}}})
               == {"decision": "allow"}, "hook pre permite explicitamente")
+        check(hook("oc-pre", {"tool": "write", "args": {"filePath": "/tmp/x", "content": "x"}})["decision"]
+              == "deny", "hook oc-pre nega")
+        check(hook("oc-pre", {"tool": "read", "args": {"filePath": f"{repo}/src/a.txt"}})
+              == {"decision": "allow"}, "hook oc-pre permite explicitamente")
         r = hook("stop", {"terminationReason": "NO_TOOL_CALL"})
         check(r["decision"] == "stop", f"stop com gate verde para: {r}")
         r = hook("pre", {"toolCall": {"name": "finish", "args": {}}})
@@ -1416,6 +1914,7 @@ def self_test() -> int:
         check(hook("pre", {"toolCall": {"name": "view_file", "args": {}}})["decision"] == "deny",
               "guard quebrado nega em vez de devolver {}")
         check(hook("stop", {})["decision"] == "stop", "stop quebrado deixa parar")
+        check(hook("oc-pre", {"tool": "read", "args": {}})["decision"] == "deny", "oc-pre quebrado nega")
         events = guard_events(rundir)
         check(any(e.get("event") == "session_start" for e in events), "marcador de SessionStart")
 
@@ -1530,14 +2029,16 @@ def main(argv=None) -> int:
     d = sub.add_parser("delegate", help="roda uma task sob guard rails e gate")
     d.add_argument("task")
     d.add_argument("--model")
+    d.add_argument("--backend", choices=BACKENDS, help="sobrepoe o campo backend da task")
     d.add_argument("--repo")
-    d.add_argument("--no-quota-probe", action="store_true")
+    d.add_argument("--no-quota-probe", action="store_true", help="so agy")
     r = sub.add_parser("review", help="segunda opiniao somente leitura (--mode plan)")
     r.add_argument("prompt", nargs="*")
     r.add_argument("--prompt-file")
     r.add_argument("--diff", help="intervalo para `git diff`, ex.: HEAD~1 ou main...HEAD")
     r.add_argument("--schema")
     r.add_argument("--model")
+    r.add_argument("--backend", choices=BACKENDS, default="agy")
     r.add_argument("--repo")
     r.add_argument("--timeout", default=DEFAULT_REVIEW_TIMEOUT)
     r.add_argument("--min-quota", type=float, default=DEFAULT_MIN_QUOTA)
@@ -1548,7 +2049,7 @@ def main(argv=None) -> int:
     gt.add_argument("--baseline", action="store_true",
                     help="so os comandos de format/checks, sem escopo nem forbid")
     h = sub.add_parser("hook", help="handler de hook do agy (instalado por run)")
-    h.add_argument("event", choices=["pre", "stop", "start"])
+    h.add_argument("event", choices=["pre", "stop", "start", "oc-pre"])
     h.add_argument("--state", required=True)
     a = p.parse_args(argv)
     if a.cmd == "hook":

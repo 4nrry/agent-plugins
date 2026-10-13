@@ -1,6 +1,6 @@
 ---
 name: agy-worker
-description: Delegar uma fatia de codigo bem delimitada e checavel por maquina ao Gemini pelo Antigravity CLI (`agy`) headless, sob guard rails e gate, e pedir segunda opiniao somente leitura. Diz quando delegar (porte mecanico, testes a partir de spec, migracao repetitiva com gate objetivo) e quando nao (spike exploratorio, decisao de design, mudanca sem gate), como escrever a task (prompt, escopo, gate, schema do relatorio), como ler o veredito, e que o diff tem que ser revisado contra a fonte da verdade depois de todo run, porque o gate e necessario e nao suficiente. Use quando a tarefa mencionar agy, Antigravity, Gemini como worker, delegar para um modelo mais barato, poupar quota do Claude, segunda opiniao do Gemini, ou quando houver uma lista de fatias repetitivas com teste objetivo e o usuario quiser tira-las da sessao.
+description: Delegar uma fatia de codigo bem delimitada e checavel por maquina ao Gemini pelo Antigravity CLI (`agy`) headless, sob guard rails e gate, e pedir segunda opiniao somente leitura. Diz quando delegar (porte mecanico, testes a partir de spec, migracao repetitiva com gate objetivo) e quando nao (spike exploratorio, decisao de design, mudanca sem gate), como escrever a task (prompt, escopo, gate, schema do relatorio), como ler o veredito, e que o diff tem que ser revisado contra a fonte da verdade depois de todo run, porque o gate e necessario e nao suficiente. Segundo backend opcional: o opencode com modelos gratis do Zen, quando a quota do agy acabou ou para capacidade extra. Use quando a tarefa mencionar agy, Antigravity, opencode, Gemini como worker, delegar para um modelo mais barato, poupar quota do Claude, segunda opiniao do Gemini, ou quando houver uma lista de fatias repetitivas com teste objetivo e o usuario quiser tira-las da sessao.
 ---
 
 # Gemini como worker, Claude como dono
@@ -16,10 +16,34 @@ em vez de consertar o codigo; "consertou" arquivo que o Nx escreve sozinho;
 inventou alias que nao existia; pulou formatacao. O script deste plugin e o
 guard rail; esta skill e o resto, que o script nao consegue fazer por voce.
 
+## agy ou opencode
+
+O **agy e o primario**. Use `"backend": "opencode"` (ou `--backend opencode`)
+quando a quota do agy acabou (o preflight recusa com a data de renovacao) ou
+para rodar fatias extras sem gastar quota nenhuma. Diga ao usuario o que muda:
+
+- **O guard do shell e mais fraco.** As regras de caminho, escopo e comando sao
+  as mesmas (o plugin do opencode pergunta ao mesmo script), mas nao ha
+  allowlist de ferramenta no processo nem modo plan, e os modelos do opencode
+  escrevem mais pelo shell. Por isso o backend nega tambem `cp`, `mv`, `touch`,
+  `mkdir`, `rm`. Nao use opencode numa fatia em que um escape custe caro.
+- **O gate e um loop externo**: cada tentativa e um `opencode run -s` na mesma
+  sessao com a saida do gate. `max_gate_attempts` conta runs.
+- **O relatorio e texto**: o ultimo objeto JSON da mensagem final. Pode faltar
+  campo; o loop pede de novo.
+- **Dados**: longcat (padrao), space-bunny e step-5 sao de retencao zero pelos
+  docs do Zen; muse-spark treina com o prompt. So use o muse-spark em projeto
+  pessoal, e so se o usuario aceitar.
+- O worker carrega o `~/.claude/CLAUDE.md` do usuario, como um subagente
+  nativo. `"disable_claude_code": true` na task desliga.
+- O opencode grava `"$schema"` no `opencode.json` da raiz; o script restaura os
+  bytes e avisa. Nao cubra `opencode.json` no `scope`: a task e recusada.
+
 ## Pergunte antes do primeiro run
 
 Delegar e revisar mandam o prompt, os arquivos que o worker ler e o diff para
-a Google, gastam a quota do agy do usuario e rodam com
+a Google (agy) ou para o provedor do modelo do Zen (opencode), gastam a quota
+do agy do usuario e, no agy, rodam com
 `--dangerously-skip-permissions` (os hooks sao o limite). Antes do primeiro
 `delegate` ou `review` da sessao, pergunte; depois do sim, nao precisa
 perguntar de novo a cada fatia.
@@ -53,7 +77,7 @@ perguntar de novo a cada fatia.
    ```
    Gate vermelho antes de comecar e o pior caso: o worker nao tem o que
    consertar e vai procurar o gate.
-3. **Nenhum `.agents/hooks.json` no repo.** O agy le um arquivo de hooks por
+3. **Nenhum `.agents/hooks.json` no repo** (so agy). O agy le um arquivo de hooks por
    workspace; o script nao sobrescreve o seu e recusa.
 4. **Os hooks tem que carregar.** O veredito falha com "hooks nao carregaram"
    se nenhum `SessionStart` chegou. A causa **nao e conhecida**: nunca
@@ -78,9 +102,11 @@ Uma task completa de exemplo esta em `task.example.json`, ao lado desta skill.
 | `gate.checks` | lint, typecheck, testes estreitos. Todos tem que sair 0 |
 | `report_schema` | opcional; o padrao pede `status`, `files_changed`, `checks_run`, `divergences`, `out_of_scope_needs` |
 | `side_effects` | globs que ferramentas reescrevem sozinhas (`nx.json`); toleradas, mas listadas no veredito |
-| `model` | padrao `gemini-3.8-flash-high`; validado contra `agy models` antes de rodar |
+| `backend` | `agy` (padrao) ou `opencode` |
+| `model` | padrao `gemini-3.8-flash-high` no agy, `opencode/longcat-2.5-preview-free` no opencode; validado contra `agy models` / `opencode models` antes de rodar |
+| `disable_claude_code` | so opencode: `true` para nao carregar o `~/.claude/CLAUDE.md` (padrao `false`) |
 | `timeout`, `gate_timeout`, `max_gate_attempts` | `30m`, 900 s por comando, 5 |
-| `allow_paths`, `deny_commands`, `min_quota` | caminhos extra de leitura, regex extra de comando negado, quota minima (0.05) |
+| `allow_paths`, `deny_commands`, `min_quota` | caminhos extra de leitura, regex extra de comando negado, quota minima (0.05, so agy) |
 
 Escolha do modelo: comece no `gemini-3.8-flash-high`. Se o Flash nao der conta
 de uma fatia (gate vermelho ate o limite, ou diff que nao sobrevive a revisao),
@@ -116,7 +142,7 @@ O gate:
 ## Rodando
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agy_worker.py" delegate /caminho/TASK.json
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agy_worker.py" delegate /caminho/TASK.json [--backend opencode]
 ```
 
 Pode passar dos 10 minutos do Bash: rode com `run_in_background` e espere a
@@ -143,7 +169,9 @@ qual checagem pegou:
 | structured_output nulo | o agy devolve `SUCCESS` e exit 0 sem relatorio |
 | stdout vazio, `rc != 0`, `status != SUCCESS` | o basico, que o exit code sozinho nao diz |
 | denied_actions / auto-negada | acao recusada sai 0 |
-| hooks nao carregaram | sem `SessionStart` o run nao teve guard rail nenhum |
+| hooks nao carregaram / plugin de guard do opencode nao carregou | sem `SessionStart` o run nao teve guard rail nenhum |
+| evento `error`, ultimo step sem `reason=stop` (opencode) | o opencode sai 0 com erro de API ou run cortado |
+| relatorio ausente (opencode) | nenhum objeto JSON na mensagem final, mesmo depois de pedido de novo |
 | HEAD mudou | um commit ou checkout passou pelo guard |
 | gate falhou no estado final | o gate e rodado de novo sobre a arvore como ficou, salvo se o ultimo gate verde do hook foi exatamente nesse estado |
 | fora do escopo | `git status` depois do run; ve arquivo rastreado e nao rastreado, **nao** arquivo ignorado pelo git |
@@ -188,7 +216,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/agy_worker.py" review --diff HEAD~1 --pro
 A pergunta vai num arquivo fora da arvore: texto livre na linha de comando
 quebra com aspas, parenteses ou `;`.
 
-Roda com `--mode plan`, sem `--dangerously-skip-permissions`, com os mesmos
+Com `--backend opencode`, sem modo plan: escopo vazio e todo comando de shell
+negado pelo plugin. No agy, roda com `--mode plan`, sem `--dangerously-skip-permissions`, com os mesmos
 guards de caminho e escopo vazio, e confere que a arvore nao mudou. O diff vai
 no prompt porque o revisor nao roda comando. Serve como segundo par de olhos
 barato sobre um diff seu ou do worker. Cada finding traz `evidence`: confira no
