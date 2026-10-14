@@ -14,7 +14,7 @@
 # Desinstalar: tarball-install --uninstall <app>
 set -euo pipefail
 
-SCRIPT_VERSION=1.5
+SCRIPT_VERSION=1.6
 
 die() { echo "error: $*" >&2; exit 1; }
 info() { echo ":: $*"; }
@@ -253,7 +253,13 @@ if [ -n "$UNINSTALL" ]; then
     app="$UNINSTALL"
     [ -d "$PREFIX/$app" ] || die "not installed in $PREFIX/$app (use --system if it was installed in /opt)"
     $SUDO rm -rf "$PREFIX/$app" "$BINDIR/$app" "$APPDIR/$app.desktop"
-    $SUDO find "$ICONDIR/hicolor" -name "$app.png" -o -name "$app.svg" 2>/dev/null | while read -r f; do $SUDO rm -f "$f"; done
+    # Sem o diretório hicolor (app instalado sem ícone num HOME novo) o find
+    # sai com erro, e sob pipefail isso derrubava o script aqui — depois de já
+    # ter apagado tudo, sem a mensagem e sem atualizar os caches.
+    if [ -d "$ICONDIR/hicolor" ]; then
+        $SUDO find "$ICONDIR/hicolor" \( -name "$app.png" -o -name "$app.svg" \) 2>/dev/null \
+            | while read -r f; do $SUDO rm -f "$f"; done || true
+    fi
     refresh_caches
     info "removed: $app (profiles/configs in ~/.config and ~/.$app are left untouched)"
     exit 0
