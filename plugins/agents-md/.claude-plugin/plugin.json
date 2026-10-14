@@ -1,0 +1,11 @@
+{
+  "name": "agents-md",
+  "displayName": "AGENTS.md",
+  "version": "0.1.0",
+  "author": {
+    "name": "4nrry",
+    "url": "https://github.com/4nrry"
+  },
+  "license": "MIT",
+  "description": "Escrever, enxugar e auditar o AGENTS.md de um repositorio: o que entra (comando que existe, como provar que terminou, armadilha que falha em silencio, contrato com outro repo), o que sai (arvore, lista derivavel, historia, grito em caixa alta), e onde cada coisa mora quando nao cabe. Junta as regras das docs do Claude Code, do Antigravity, do Codex e do agents.md numa tabela de limites — inclusive as duas armadilhas que mais custaram aqui: um CLAUDE.md na pasta esconde o AGENTS.md do Claude Code, e o Antigravity nao le CLAUDE.md nem expande '@arquivo' solto. Traz um checador mecanico (stdlib, --self-test) que pega comando inexistente, caminho citado que nao existe, arquivo acima do teto e CLAUDE.md que sombreia, antes de gastar agente. Sem alegacao de melhoria: nao ha run records; a origem e uma auditoria de 19 repos em que verificadores baratos acharam 11 afirmacoes falsas em 16 rascunhos ja revisados."
+}

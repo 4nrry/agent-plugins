@@ -11,6 +11,10 @@
       "source": "./plugins/agent-fleet"
     },
     {
+      "name": "agents-md",
+      "source": "./plugins/agents-md"
+    },
+    {
       "name": "crew",
       "source": "./plugins/crew"
     },
