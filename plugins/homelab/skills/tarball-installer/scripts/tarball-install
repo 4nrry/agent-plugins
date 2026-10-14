@@ -14,15 +14,15 @@
 # Desinstalar: tarball-install --uninstall <app>
 set -euo pipefail
 
-SCRIPT_VERSION=1.4
+SCRIPT_VERSION=1.5
 
-die() { echo "erro: $*" >&2; exit 1; }
+die() { echo "error: $*" >&2; exit 1; }
 info() { echo ":: $*"; }
 
 # Sob `set -u`, ler $2 de uma opção sem valor aborta com "unbound variable".
 # need_arg troca isso por uma mensagem que diz o que faltou.
 need_arg() { # $1 = flag, $2 = número de argumentos restantes ($#)
-    [ "$2" -ge 2 ] || die "a opção $1 precisa de um valor — veja --help"
+    [ "$2" -ge 2 ] || die "option $1 needs a value — see --help"
 }
 
 # Escrever por cima de um symlink segue o link: com um atalho quebrado o
@@ -136,32 +136,32 @@ parse_vendor() { # $1 = arquivo .desktop; preenche ENTRY[], TAIL[], VENDOR_ACTIO
 
 usage() {
     cat <<'EOF'
-uso: tarball-install [opções] <arquivo.tar.{xz,gz,bz2,zst}>
-     tarball-install --uninstall <app>
-     tarball-install --list
+usage: tarball-install [options] <file.tar.{xz,gz,bz2,zst}>
+       tarball-install --uninstall <app>
+       tarball-install --list
 
-opções:
-  -n, --name <slug>        id da aplicação (default: derivado do nome do tarball)
-  -N, --title <texto>      nome exibido no menu (default: o slug capitalizado)
-  -e, --exec <caminho>     binário relativo à raiz extraída (default: autodetecta)
-  -i, --icon <caminho>     ícone .png/.svg relativo à raiz extraída, ou caminho
-                           absoluto de um arquivo fora do tarball (default: autodetecta)
-  -V, --app-version <tag>  rótulo da versão do app (default: application.ini ou a data)
-  -a, --args <str>         argumentos no Exec= do .desktop (ex.: '%u')
+options:
+  -n, --name <slug>        application id (default: derived from the tarball name)
+  -N, --title <text>       name shown in the menu (default: the capitalised slug)
+  -e, --exec <path>        binary relative to the extracted root (default: autodetect)
+  -i, --icon <path>        .png/.svg icon relative to the extracted root, or absolute
+                           path to a file outside the tarball (default: autodetect)
+  -V, --app-version <tag>  app version label (default: application.ini or the date)
+  -a, --args <str>         arguments for the .desktop Exec= (e.g. '%u')
   -c, --categories <str>   Categories= (default: Utility;)
   -m, --mime <str>         MimeType=
-  -C, --comment <texto>    Comment=
-  -A, --action <id|Nome|args>   ação extra no .desktop (pode repetir)
-      --terminal           roda em terminal (Terminal=true)
-      --no-desktop         não cria entrada de menu
-      --wm-class <str>     StartupWMClass= (default: o slug)
-  -D, --vendor-desktop <caminho>  .desktop oficial a reaproveitar, relativo à
-                           raiz extraída ou absoluto (default: autodetecta)
-      --no-vendor-desktop  ignora o .desktop do vendor e gera um do zero
-  -k, --keep <n>           versões a manter no total, incluindo a atual (default: 2)
-  -s, --system             instala para todos os usuários (/opt, precisa de sudo)
-      --version            mostra a versão deste script
-  -h, --help               esta ajuda
+  -C, --comment <text>     Comment=
+  -A, --action <id|Name|args>   extra .desktop action (repeatable)
+      --terminal           run in a terminal (Terminal=true)
+      --no-desktop         do not create a menu entry
+      --wm-class <str>     StartupWMClass= (default: the slug)
+  -D, --vendor-desktop <path>  official .desktop to reuse, relative to the
+                           extracted root or absolute (default: autodetect)
+      --no-vendor-desktop  ignore the vendor .desktop and generate one from scratch
+  -k, --keep <n>           versions to keep in total, including the current one (default: 2)
+  -s, --system             install for all users (/opt, needs sudo)
+      --version            show this script's version
+  -h, --help               this help
 EOF
 }
 
@@ -203,11 +203,11 @@ while [ $# -gt 0 ]; do
         # o script diz qual flag usar em vez de ignorar o valor em silêncio.
         --version)
             if [ $# -ge 2 ] && [ "${2#-}" = "$2" ]; then
-                die "para rotular a versão do app use --app-version $2; --version sozinho mostra a versão do script"
+                die "to label the app version use --app-version $2; --version alone shows the script version"
             fi
             echo "tarball-install $SCRIPT_VERSION"; exit 0 ;;
         -h|--help)        usage; exit 0 ;;
-        -*)              die "opção desconhecida: $1" ;;
+        -*)              die "unknown option: $1" ;;
         *)               TARBALL="$1"; shift ;;
     esac
 done
@@ -251,22 +251,22 @@ fi
 
 if [ -n "$UNINSTALL" ]; then
     app="$UNINSTALL"
-    [ -d "$PREFIX/$app" ] || die "não instalado em $PREFIX/$app (use --system se instalou em /opt)"
+    [ -d "$PREFIX/$app" ] || die "not installed in $PREFIX/$app (use --system if it was installed in /opt)"
     $SUDO rm -rf "$PREFIX/$app" "$BINDIR/$app" "$APPDIR/$app.desktop"
     $SUDO find "$ICONDIR/hicolor" -name "$app.png" -o -name "$app.svg" 2>/dev/null | while read -r f; do $SUDO rm -f "$f"; done
     refresh_caches
-    info "removido: $app (perfis/configs em ~/.config e ~/.$app não são tocados)"
+    info "removed: $app (profiles/configs in ~/.config and ~/.$app are left untouched)"
     exit 0
 fi
 
 [ -n "$TARBALL" ] || { usage; exit 1; }
-[ -f "$TARBALL" ] || die "arquivo não encontrado: $TARBALL"
+[ -f "$TARBALL" ] || die "file not found: $TARBALL"
 TARBALL="$(readlink -f "$TARBALL")"
 
 # ---------- extração em área temporária ----------
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-info "extraindo $(basename "$TARBALL")"
+info "extracting $(basename "$TARBALL")"
 tar -xf "$TARBALL" -C "$WORK"
 
 # se o tarball tem um único diretório raiz, usa ele como raiz da aplicação
@@ -302,8 +302,8 @@ if [ -z "$EXEC_REL" ]; then
                     ! -name '*.so*' ! -name '*.sh' -printf '%P\n' | head -1)"
     fi
 fi
-[ -n "$EXEC_REL" ] || die "não achei o executável; passe -e <caminho-relativo>"
-[ -x "$ROOT/$EXEC_REL" ] || die "não é executável: $EXEC_REL"
+[ -n "$EXEC_REL" ] || die "could not find the executable; pass -e <relative-path>"
+[ -x "$ROOT/$EXEC_REL" ] || die "not executable: $EXEC_REL"
 
 if [ -z "$ICON_REL" ]; then
     ICON_REL="$(cd "$ROOT" && find . \( -name '*128*.png' -o -name "$NAME.png" -o -name "$NAME.svg" \) \
@@ -335,14 +335,14 @@ esac
 # um caminho passado à mão que não existe é erro; um palpite da autodetecção que
 # não serve só volta ao comportamento de gerar a entrada do zero
 if [ -n "$VENDOR_SRC" ] && [ ! -f "$VENDOR_SRC" ]; then
-    [ -z "$VENDOR_SET" ] || die ".desktop não encontrado: $VENDOR_REL"
+    [ -z "$VENDOR_SET" ] || die ".desktop not found: $VENDOR_REL"
     VENDOR_SRC=""
 fi
 
 # ---------- instalação ----------
 DEST="$PREFIX/$NAME/$VERSION"
 [ ! -e "$DEST" ] || DEST="$DEST-$(date +%H%M%S)"
-info "instalando em $DEST"
+info "installing to $DEST"
 $SUDO mkdir -p "$PREFIX/$NAME" "$BINDIR" "$APPDIR"
 $SUDO cp -a "$ROOT/." "$DEST/" 2>/dev/null || { $SUDO mkdir -p "$DEST"; $SUDO cp -a "$ROOT/." "$DEST/"; }
 [ "$SYSTEM" = 1 ] && $SUDO chown -R root:root "$DEST"
@@ -351,7 +351,7 @@ $SUDO cp -a "$ROOT/." "$DEST/" 2>/dev/null || { $SUDO mkdir -p "$DEST"; $SUDO cp
 # o ln criaria o link DENTRO dele em vez de substituí-lo. Parar aqui é melhor do
 # que remover sozinho um diretório que pode ser a instalação em uso do usuário.
 if [ -e "$PREFIX/$NAME/current" ] && [ ! -L "$PREFIX/$NAME/current" ]; then
-    die "$PREFIX/$NAME/current existe e não é um symlink (instalação antiga fora do padrão). Mova ou remova esse diretório e rode de novo; a versão nova já está em $DEST"
+    die "$PREFIX/$NAME/current exists and is not a symlink (old non-standard install). Move or remove that directory and run again; the new version is already in $DEST"
 fi
 $SUDO ln -sfn "$DEST" "$PREFIX/$NAME/current"
 
@@ -370,7 +370,7 @@ ICON_VALUE=""
 case "$ICON_REL" in
     "")  ICON_SRC="" ;;
     /*)  ICON_SRC="$ICON_REL"
-         [ -f "$ICON_SRC" ] || die "ícone não encontrado: $ICON_SRC" ;;
+         [ -f "$ICON_SRC" ] || die "icon not found: $ICON_SRC" ;;
     *)   ICON_SRC="$DEST/$ICON_REL" ;;
 esac
 
@@ -404,8 +404,8 @@ if [ -n "$ICON_VALUE" ] && [ -n "$NATIVE" ]; then
         $SUDO mkdir -p "$(dirname "$t")"
         replace "$t"
         scale_icon "$ICON_SRC" "$t" "$s" || {
-            info "aviso: ícone só ficou em $NATIVE — instale imagemagick ou python3-pil"
-            info "       para gerar 128 e 256, senão o menu pode mostrar o ícone de outro app"
+            info "warning: icon only installed at $NATIVE — install imagemagick or python3-pil"
+            info "         to generate 128 and 256, or the menu may show another app's icon"
             break
         }
     done
@@ -416,7 +416,7 @@ if [ "$MAKE_DESKTOP" = 1 ]; then
     [ -n "$EXEC_ARGS" ] && EXEC_LINE="$EXEC_LINE $EXEC_ARGS"
 
     if [ -n "$VENDOR_SRC" ]; then
-        info "reaproveitando o .desktop oficial: ${VENDOR_REL:-$VENDOR_SRC}"
+        info "reusing the official .desktop: ${VENDOR_REL:-$VENDOR_SRC}"
         parse_vendor "$VENDOR_SRC"
     fi
 
@@ -476,13 +476,13 @@ mapfile -t olds < <(find "$PREFIX/$NAME" -mindepth 1 -maxdepth 1 -type d ! -path
                     | sort -rn | tail -n +$((KEEP)) | cut -d' ' -f2-)
 for o in "${olds[@]:-}"; do
     [ -n "$o" ] || continue
-    info "removendo versão antiga: $(basename "$o")"
+    info "removing old version: $(basename "$o")"
     $SUDO rm -rf "$o"
 done
 
 echo
-info "$TITLE $VERSION instalado"
-echo "   app:      $DEST  (current -> $(basename "$keep_from"))"
-echo "   comando:  $BINDIR/$NAME"
-[ "$MAKE_DESKTOP" = 1 ] && echo "   menu:     $APPDIR/$NAME.desktop"
-echo "   remover:  tarball-install --uninstall $NAME$([ "$SYSTEM" = 1 ] && echo ' --system')"
+info "$TITLE $VERSION installed"
+echo "   app:        $DEST  (current -> $(basename "$keep_from"))"
+echo "   command:    $BINDIR/$NAME"
+[ "$MAKE_DESKTOP" = 1 ] && echo "   menu:       $APPDIR/$NAME.desktop"
+echo "   uninstall:  tarball-install --uninstall $NAME$([ "$SYSTEM" = 1 ] && echo ' --system')"
