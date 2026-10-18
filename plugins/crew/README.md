@@ -149,6 +149,19 @@ Python e `unittest`:
 | delegate depois do endurecimento do guard (allowlist de ferramentas, git so leitura, `.git` e redirect negados, `realpath`), com o mesmo `gate_once.py` | `ok`, 71 s, `finish` negado na 1a tentativa e gate verde na 2a. Nenhuma chamada legitima negada: 7 `run_command`, 3 `replace_file_content`, 2 `view_file`, todos permitidos |
 | review `--diff HEAD --prompt-file` sobre esse diff | `ok`, 16 s, `approve` sem findings, arvore e `.git` inalterados, so `view_file` |
 
+Na 0.4.1, dois runs com `gemini-4-argon-medium` no agy **1.4.2** (2026-10-18,
+repo descartavel com um modulo Python, `unittest` e um checador de formato so
+com stdlib no lugar do `ruff`, que nao estava instalado; mesma fatia `slugify`
+\+ 3 testes):
+
+| run | resultado |
+|---|---|
+| sem `.gitignore` no repo | `ok: false`, culpa do lab: o `unittest` do gate escreveu `__pycache__`, que a checagem de escopo pos-run acusou. O diff do worker estava certo. O Argon pediu um caminho absoluto inventado (um segmento do caminho do repo duplicado) e o guard negou |
+| com `__pycache__/` no `.gitignore` | `ok`, 66 s, ~55 mil tokens, gate verde na 1a passada. Diff correto e no estilo do arquivo; uma unica negacao: o worker tentou rodar o checador do gate, que fica fora do repo |
+
+O preflight de quota checou o grupo "Gemini 4 Argon", nao o "Gemini Models".
+Nenhum desses runs mostra que o Argon acerta o que o Flash erra.
+
 ## O que nao foi medido
 
 - **Nenhuma comparacao** com o Claude fazendo a mesma tarefa: nem qualidade,
@@ -432,6 +445,17 @@ O hook de injecao nao tem teste no `just check` alem do shellcheck e da
 checagem de que o `hooks.json` aponta para um executavel.
 
 ## Changelog
+
+**0.4.1** (2026-10-18)
+
+- Preflight de quota do agy: o grupo era achado pela familia do modelo
+  (`gemini`), que no agy 1.4.2 casa tambem com o grupo novo "Gemini 4 Argon".
+  Um Argon esgotado recusava todo run do Flash, e vice-versa, embora no plano
+  Pro as duas quotas sejam separadas. Agora o grupo e achado pela linha do
+  modelo (`flash`, `argon`, `sonnet`, `oss`), e pela familia so como fallback.
+- Escalada do agy: Flash, depois `gemini-4-argon-medium`, depois
+  `claude-sonnet-5-5-medium`. O Argon tem quota propria e nao gasta a dos
+  Claude. Dois runs de fumaca, acima.
 
 **0.4.0** (2026-10-13)
 
