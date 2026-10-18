@@ -60,7 +60,8 @@ separadas. `--no-quota-probe` pula. Com a quota esgotada, o
   dispararam headless ate em pastas fora de `trustedWorkspaces`. Hipoteses,
   nenhuma testada: `hooks.json` invalido, hooks desligados nesta versao,
   confianca no workspace. Diga isso ao usuario; nao edite `~/.gemini`.
-- Testado so no agy **1.3.4**; outra versao vira aviso no veredito.
+- Testado no agy **1.3.4** e, por smoke tests n=1, no **1.4.2**; outra versao
+  que nao a 1.4.2 vira aviso no veredito.
 
 ## O guard e o gate no agy
 
@@ -72,7 +73,7 @@ separadas. `--no-quota-probe` pula. Com a quota esgotada, o
 
 ## Comandos em segundo plano
 
-O `run_command` do agy 1.3.4 manda comando longo (`nx run web:typecheck`) para
+O `run_command` do agy (1.3.4, e ainda na 1.4.2) manda comando longo (`nx run web:typecheck`) para
 uma background task depois de ~4 s, **qualquer que seja** o
 `WaitMsBeforeAsync`: reescrever esse argumento num hook nao funciona (o agy
 aplicou a reescrita e mandou para segundo plano mesmo assim). Depois que o

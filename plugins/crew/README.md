@@ -17,9 +17,10 @@ so durante o run. Ate a 0.3.0 este plugin se chamava `agy-worker` (ver
 | `copilot` | GitHub Copilot CLI, plano Free | outra familia de modelo; sem shell, pago em AI credits |
 
 Requer `git`, `python3` (so stdlib), Linux (`/proc`, para achar os processos
-do run) e o CLI do backend autenticado. So foi exercitado no agy **1.3.4**, no
-opencode **1.19.0** e no copilot **1.0.96**; com outra versao o veredito traz
-um aviso, porque decisao de hook, a ferramenta `finish`, os motivos de Stop e o
+do run) e o CLI do backend autenticado. So foi exercitado no agy **1.3.4** e
+**1.4.2** (este so por smoke tests n=1, abaixo), no opencode **1.19.0** e no
+copilot **1.0.96**; com outra versao (no agy, qualquer uma que nao a 1.4.2) o
+veredito traz um aviso, porque decisao de hook, a ferramenta `finish`, os motivos de Stop e o
 formato do `/usage` sao comportamento observado, nao contrato. Os hooks que o
 run instala sao **do CLI do worker** (no agy, `.agents/hooks.json`, escrito no
 comeco do run e removido no fim, inclusive em SIGTERM e SIGHUP; depois de um
@@ -162,6 +163,29 @@ com stdlib no lugar do `ruff`, que nao estava instalado; mesma fatia `slugify`
 O preflight de quota checou o grupo "Gemini 4 Argon", nao o "Gemini Models".
 Nenhum desses runs mostra que o Argon acerta o que o Flash erra.
 
+### agy 1.4.2: o comportamento de que o script depende
+
+Na 0.4.2, os smoke tests que dependem do comportamento do agy, refeitos no
+**1.4.2** (2026-10-18), n=1 cada, `gemini-3.8-flash-low`, repo descartavel com
+um modulo Python, `unittest` e `__pycache__/` no `.gitignore`. Nao sao run
+records, e o mesmo n=1 da tabela do 1.3.4 acima: dizem que o comportamento
+ainda esta la, nao com que frequencia.
+
+| comportamento | 1.4.2 | como foi visto |
+|---|---|---|
+| hooks de workspace disparam em `-p` | sim, os seis | `agy -p` cru com um `.agents/hooks.json` que so registra: `SessionStart`, `PreInvocation`, `PreToolUse`, `PostToolUse`, `PostInvocation` e `Stop`, todos disparados (24 s) |
+| `PreToolUse` que imprime `{}` nega | sim | mesmo run: o 1o `view_file` recebeu `{}` e falhou com "tool call denied by pre-tool hook", sem `PostToolUse`; o 2o recebeu `allow` e rodou |
+| ferramenta `finish` com `--json-schema` | sim | delegate `slugify` + 3 testes: `finish` permitido com gate verde, relatorio `done`, `ok`, 44 s, ~41 mil tokens, nenhuma negacao. A revisao do diff achou `import re` dentro da funcao, linhas em branco sobrando e um teste chamado `..._non_ascii` sem caractere nao ASCII |
+| motivos de Stop | `NO_TOOL_CALL` e `TERMINAL_STEP_TYPE`, como no 1.3.4 | `NO_TOOL_CALL` no run cru e no 1o Stop do vigia; `TERMINAL_STEP_TYPE` depois do `finish` nos dois delegates e no review. O payload do Stop traz agora `fullyIdle` (true no run cru), que o script nao le |
+| formato do `/usage` | igual: `num_turns: 0`, `command.data.groups[].buckets[].remaining_fraction` | tres grupos ("Gemini Models", "Claude and GPT models", "Gemini 4 Argon"); com cada grupo zerado por vez num JSON copiado do real, o preflight recusou so os modelos daquele grupo (Flash, Sonnet e GPT-OSS, Argon) |
+| vigia de segundo plano | sim | o `./check.sh` do worker (20 s, e 300 s a mais fora do gate) foi para background task (o worker chamou `manage_task` 14 s depois, negado); gate verde no `Stop` (`NO_TOOL_CALL`) as 12:37:27, `continue` pedindo o relatorio, `finish` as 12:37:52, `bash ./check.sh` e `sleep 300` encerrados as 12:38:08; `ok`, 96 s. Os MCP servers filhos do agy (ai-memory, kino) ficaram de fora. O agy logou "waiting up to 15m0s for 1 background task(s)", com `--print-timeout 900s`; no 1.3.4 eram 30m (se o limite segue o print timeout, nao foi testado) |
+| review em `--mode plan` | sim | `--diff HEAD~1 --prompt-file`: `ok`, 83 s, arvore e HEAD inalterados, so `view_file` e `finish`, `request_changes` com 4 findings com `evidence`; dois sao os mesmos da revisao humana (`import re`, o teste `..._non_ascii`). O modo plan nao tentou gravar plano em `~/.gemini` neste run |
+
+Com tudo batendo, o `TESTED_AGY_VERSION` passou a 1.4.2: o aviso de versao
+some no 1.4.2 e aparece no 1.3.4. Nao foi refeito no 1.4.2: o timeout e o
+`--json-schema` impossivel saindo 0, `--sandbox`, o run sem
+`--dangerously-skip-permissions` e o `--agent`.
+
 ## O que nao foi medido
 
 - **Nenhuma comparacao** com o Claude fazendo a mesma tarefa: nem qualidade,
@@ -248,7 +272,8 @@ task sobreviver a ele). Nao sao run records:
 | vigia + pedido de `finish` | gate verde no `Stop` (`NO_TOOL_CALL`) as 11:52:58, `continue` pedindo o relatorio, `finish` permitido as 11:53:02, os dois processos encerrados as 11:53:18; `ok: true`, relatorio `done`, 103 s. O kino de novo intocado. O worker tentou `manage_task` para esperar o comando e foi negado |
 
 Sem o vigia, o mesmo lab teria esperado os 300 s do `sleep` (inferido: nao foi
-rodado sem ele); nos runs reais, ate 30 min.
+rodado sem ele); nos runs reais, ate 30 min. No agy 1.4.2 o mesmo vigia + pedido
+de `finish` passou de novo (n=1, na tabela do 1.4.2 acima).
 
 O aviso "processos novos com cwd no repo", da 0.3.0, listava qualquer processo
 com cwd no repo, e deu falso positivo: o laco `bash -c ... sleep 2` da propria
@@ -445,6 +470,15 @@ O hook de injecao nao tem teste no `just check` alem do shellcheck e da
 checagem de que o `hooks.json` aponta para um executavel.
 
 ## Changelog
+
+**0.4.2** (2026-10-18)
+
+- Smoke tests refeitos no agy 1.4.2, n=1 cada: hooks em `-p`, `{}` negando,
+  `finish` com `--json-schema`, motivos de Stop, formato do `/usage`, o vigia
+  de segundo plano e o review em `--mode plan`. Tudo bateu com o 1.3.4
+  ([tabela](#agy-142-o-comportamento-de-que-o-script-depende)), e o
+  `TESTED_AGY_VERSION` passou a 1.4.2: o aviso de versao agora sai no 1.3.4,
+  nao mais no 1.4.2.
 
 **0.4.1** (2026-10-18)
 
