@@ -19,9 +19,10 @@ PreToolUse hook printing `{}` denies the call, and --sandbox confines nothing.
 So nothing here trusts the exit code, and every hook prints an explicit
 decision even when it crashes.
 
-The agy backend also watches the run: agy 1.3.4 moves long commands to a
-background task whatever WaitMsBeforeAsync says and then waits up to 30 min for
-them, so BackgroundWatcher ends the worker's leftovers once it finished green.
+The agy backend also watches the run: agy (1.3.4, still on 1.4.2) moves long
+commands to a background task whatever WaitMsBeforeAsync says and then waits up
+to 30 min for them (15 min logged on 1.4.2), so BackgroundWatcher ends the
+worker's leftovers once it finished green.
 
 Stdlib only. State lives in `$(git rev-parse --git-path crew)` (`agy-worker`
 before 0.4.0), so a run
@@ -67,7 +68,7 @@ DEFAULT_REVIEW_TIMEOUT = "15m"
 DEFAULT_GATE_TIMEOUT = 900
 DEFAULT_MAX_GATE_ATTEMPTS = 5
 DEFAULT_MIN_QUOTA = 0.05
-TESTED_AGY_VERSION = "1.3.4"       # every agy behaviour this script relies on was seen on this one
+TESTED_AGY_VERSION = "1.4.2"       # every agy behaviour this script relies on was seen on this one
 MAX_PROMPT_BYTES = 100_000          # one argv string is capped at 128 KiB on Linux
 MAX_DIFF_BYTES = 60_000
 TAIL_CHARS = 6000
@@ -2813,7 +2814,9 @@ def self_test() -> int:
             open(flag, "w").close()
             kids = {}
             t0 = time.time()
-            while time.time() - t0 < 5 and len(kids) < 3:
+            # wait for the three sleeps by name: the fake agy's own bash is a
+            # key too, and `env -u ...` shows its own cmdline until it execs
+            while time.time() - t0 < 5 and not {"sleep 60", "sleep 61", "sleep 62"} <= kids.keys():
                 time.sleep(0.05)
                 kids = {}
                 for p in descendants(fake.pid, ppid_map()):
