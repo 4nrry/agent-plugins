@@ -2814,7 +2814,9 @@ def self_test() -> int:
             open(flag, "w").close()
             kids = {}
             t0 = time.time()
-            while time.time() - t0 < 5 and len(kids) < 3:
+            # wait for the three sleeps by name: the fake agy's own bash is a
+            # key too, and `env -u ...` shows its own cmdline until it execs
+            while time.time() - t0 < 5 and not {"sleep 60", "sleep 61", "sleep 62"} <= kids.keys():
                 time.sleep(0.05)
                 kids = {}
                 for p in descendants(fake.pid, ppid_map()):
