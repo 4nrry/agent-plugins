@@ -1179,14 +1179,30 @@ def parse_models(text: str) -> list:
             if "\t" in ln and ln.split("\t", 1)[0].strip()]
 
 
+EFFORT_SUFFIXES = {"low", "medium", "high", "xhigh", "max"}
+
+
+def quota_groups_for(groups: list, model: str) -> list:
+    """The /usage groups that meter `model`. The family alone ("gemini") is too
+    wide since agy 1.4.2: "Gemini 4 Argon" is its own group next to "Gemini
+    Models" (Flash, Pro), and on a Pro plan the two are separate quotas, so an
+    exhausted Argon must not refuse a Flash run nor the reverse. Match on the
+    model line first (flash, argon, sonnet, oss), the family only as fallback."""
+    def text(g):
+        return (str(g.get("name", "")) + " " + str(g.get("description", ""))).lower()
+    parts = model.lower().split("-")
+    lines = [p for p in parts[1:] if p not in EFFORT_SUFFIXES and not any(c.isdigit() for c in p)]
+    hits = [g for g in groups if any(re.search(rf"\b{re.escape(p)}\b", text(g)) for p in lines)]
+    return hits or [g for g in groups if parts[0] in text(g)]
+
+
 def evaluate_quota(envelope: dict, model: str, min_quota: float):
     """None when there is headroom, else a refusal message."""
     groups = (((envelope or {}).get("command") or {}).get("data") or {}).get("groups")
     if not isinstance(groups, list):
         return "nao consegui ler os grupos de quota de `agy -p /usage --output-format json`"
     family = model.split("-", 1)[0].lower()
-    hits = [g for g in groups if family in (str(g.get("name", "")) + " "
-                                            + str(g.get("description", ""))).lower()]
+    hits = quota_groups_for(groups, model)
     if not hits:
         return f"nenhum grupo de quota menciona {family!r}; formato do /usage mudou?"
     for g in hits:
@@ -3048,6 +3064,20 @@ def self_test() -> int:
         check(msg and "esgotada" in msg and "2026-10-15" in msg, "quota claude esgotada")
         check(evaluate_quota(usage, "gpt-oss-120b-medium", 0.05), "gpt no mesmo grupo esgotado")
         check(evaluate_quota({}, "gemini-x", 0.05), "usage ilegivel recusa")
+        # agy 1.4.2 (2026-10-18) adds Argon as its own group; on a Pro plan it is a separate quota
+        argon = {"name": "Gemini 4 Argon", "description": "For paid Pro plans, Argon quota is separate. Higher "
+                 "Argon quota (included as part of the larger Gemini quota bucket) is available on Ultra plans.",
+                 "buckets": [{"name": "Gemini 4 Argon Weekly Limit", "remaining_fraction": 0.01,
+                              "reset_time": "2026-10-25T01:46:00Z"}]}
+        groups = usage["command"]["data"]["groups"]
+        groups.append(argon)
+        check(evaluate_quota(usage, "gemini-3.8-flash-high", 0.05) is None, "argon esgotado nao barra o flash")
+        msg = evaluate_quota(usage, "gemini-4-argon-medium", 0.05)
+        check(msg and "Gemini 4 Argon" in msg, "argon esgotado barra o argon")
+        argon["buckets"][0]["remaining_fraction"] = 0.9
+        groups[0]["buckets"][0]["remaining_fraction"] = 0
+        check(evaluate_quota(usage, "gemini-4-argon-high", 0.05) is None, "flash esgotado nao barra o argon")
+        check(evaluate_quota(usage, "gemini-3.8-flash-low", 0.05), "flash esgotado barra o flash")
         models = parse_models("gemini-3.8-flash-low\tGemini 3.8 Flash (Low)\nFetching available models...\n")
         check(models == ["gemini-3.8-flash-low"], "parse de agy models")
 

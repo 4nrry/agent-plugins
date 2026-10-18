@@ -1,6 +1,6 @@
 ---
 name: agy
-description: Especificos do backend agy (Antigravity CLI, Gemini) do plugin crew - flags do run, modelo padrao gemini-3.8-flash-high, escalada so para claude-sonnet-5-5-medium e nunca Opus, preflight de quota, hooks em .agents/hooks.json e os comandos que o agy joga para segundo plano. Use quando for delegar uma fatia ou pedir review pelo agy.
+description: Especificos do backend agy (Antigravity CLI, Gemini) do plugin crew - flags do run, modelo padrao gemini-3.8-flash-high, escalada para gemini-4-argon-medium e depois claude-sonnet-5-5-medium, nunca Opus, preflight de quota, hooks em .agents/hooks.json e os comandos que o agy joga para segundo plano. Use quando for delegar uma fatia ou pedir review pelo agy.
 ---
 
 # crew pelo agy
@@ -28,7 +28,12 @@ nenhuma no lab: nao conte com ele.
 
 - Comece no `gemini-3.8-flash-high` (padrao).
 - Se o Flash nao der conta de uma fatia (gate vermelho ate o limite, ou diff
-  que nao sobrevive a revisao), suba para `claude-sonnet-5-5-medium`.
+  que nao sobrevive a revisao), suba para `gemini-4-argon-medium`. O Argon
+  tem quota semanal propria no plano Pro: nao gasta a dos Gemini Flash nem a
+  dos Claude. `-high` so se o `-medium` tambem falhar.
+- Se o Argon tambem nao der conta, `claude-sonnet-5-5-medium`.
+- O Argon so passou por fumaca (n=1, fatia trivial; ver "Smoke tests" no README): nada
+  diz ainda que ele resolve o que o Flash erra. Revise o diff igual.
 - **Nunca Opus pelo agy.** Os modelos Claude do agy dividem uma quota semanal,
   e o Opus a esgota em poucas fatias.
 - O modelo e validado contra `agy models` antes de rodar.
@@ -37,7 +42,11 @@ nenhuma no lab: nao conte com ele.
 
 O preflight le `agy -p /usage` (responde sem turno de modelo) e recusa, saida
 2, se o grupo do modelo tiver menos que `min_quota` (padrao 0.05) restante,
-dizendo quando renova. `--no-quota-probe` pula. Com a quota esgotada, o
+dizendo quando renova. O grupo e achado pela linha do modelo (`flash`,
+`argon`, `sonnet`, `oss`) no nome ou na descricao do grupo, e so pela familia
+(`gemini`, `claude`) se nenhum grupo citar a linha: no agy 1.4.2 o Argon tem
+grupo proprio ao lado de "Gemini Models", e no plano Pro as duas quotas sao
+separadas. `--no-quota-probe` pula. Com a quota esgotada, o
 `opencode` e a alternativa gratis (skill `crew:opencode`).
 
 ## Antes do primeiro run
