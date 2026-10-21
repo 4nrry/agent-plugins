@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# tarball-install — instala tarballs de aplicações de forma padronizada no Ubuntu/Kubuntu.
+# tarball-install — installs application tarballs the standardized way on Ubuntu/Kubuntu.
 #
-# Layout criado (modo usuário, padrão):
-#   ~/.local/opt/<app>/<versao>/     arquivos da aplicação
-#   ~/.local/opt/<app>/current  ->   symlink para a versão ativa
-#   ~/.local/bin/<app>               wrapper executável (fica no PATH)
+# Layout (user mode, default):
+#   ~/.local/opt/<app>/<version>/   application files
+#   ~/.local/opt/<app>/current  ->  symlink to the active version
+#   ~/.local/bin/<app>              executable wrapper (on PATH)
 #   ~/.local/share/applications/<app>.desktop
 #   ~/.local/share/icons/hicolor/<size>x<size>/apps/<app>.png
 #
-# Modo --system: mesma estrutura em /opt/<app>, /usr/local/bin,
+# --system mode: same shape in /opt/<app>, /usr/local/bin,
 #                /usr/local/share/applications, /usr/local/share/icons.
 #
-# Desinstalar: tarball-install --uninstall <app>
+# Uninstall: tarball-install --uninstall <app>
 set -euo pipefail
 
 SCRIPT_VERSION=1.6
@@ -19,21 +19,21 @@ SCRIPT_VERSION=1.6
 die() { echo "error: $*" >&2; exit 1; }
 info() { echo ":: $*"; }
 
-# Sob `set -u`, ler $2 de uma opção sem valor aborta com "unbound variable".
-# need_arg troca isso por uma mensagem que diz o que faltou.
-need_arg() { # $1 = flag, $2 = número de argumentos restantes ($#)
+# Under `set -u`, reading $2 of an option with no value aborts with "unbound
+# variable". need_arg replaces that with a message saying what is missing.
+need_arg() { # $1 = flag, $2 = number of remaining arguments ($#)
     [ "$2" -ge 2 ] || die "option $1 needs a value — see --help"
 }
 
-# Escrever por cima de um symlink segue o link: com um atalho quebrado o
-# comando falha, e com um atalho válido sobrescreve o arquivo errado.
-# Todo destino é removido antes de ser regravado.
+# Writing over a symlink follows the link: with a broken link the command
+# fails, and with a valid one it overwrites the wrong file. Every target is
+# removed before it is rewritten.
 replace() { $SUDO rm -f "$1"; }
 
-# Diretório do hicolor para um PNG: lê a dimensão real da imagem (o nome do
-# arquivo nem sempre diz), e arredonda para um tamanho padrão do tema — um
-# diretório fora da escala oficial é ignorado por parte dos ambientes.
-icon_size() { # $1 = arquivo -> "128x128"
+# hicolor directory for a PNG: reads the image's real dimensions (the file name
+# does not always say) and rounds to a standard theme size — a directory off
+# the official scale is ignored by some desktops.
+icon_size() { # $1 = file -> "128x128"
     local px std
     px="$(file -b "$1" 2>/dev/null | grep -o '[0-9]\+ x [0-9]\+' | head -1 | cut -d' ' -f1)"
     [ -n "$px" ] || px="$(basename "$1" | grep -o '[0-9]\{2,3\}' | tail -1)"
@@ -44,8 +44,8 @@ icon_size() { # $1 = arquivo -> "128x128"
     echo "512x512"
 }
 
-# Reduz um PNG. Devolve 1 se não houver com o que redimensionar na máquina.
-scale_icon() { # $1 = origem, $2 = destino, $3 = lado em pixels
+# Shrinks a PNG. Returns 1 if the machine has nothing to resize with.
+scale_icon() { # $1 = source, $2 = target, $3 = side in pixels
     if command -v magick >/dev/null 2>&1; then
         $SUDO magick "$1" -resize "${3}x${3}" "$2" 2>/dev/null
     elif command -v convert >/dev/null 2>&1; then
@@ -60,9 +60,9 @@ Image.open(sys.argv[1]).resize((lado, lado)).save(sys.argv[2])' "$1" "$2" "$3" 2
     fi
 }
 
-# Devolve só os argumentos de uma linha Exec=, descartando o programa. Cobre os
-# prefixos de ambiente (`env VAR=1 prog %f`) e o programa entre aspas.
-strip_program() { # $1 = valor de Exec= -> "%f", "--flag %U", ""
+# Returns only the arguments of an Exec= line, dropping the program. Handles
+# environment prefixes (`env VAR=1 prog %f`) and a quoted program.
+strip_program() { # $1 = Exec= value -> "%f", "--flag %U", ""
     local v="$1" tok rest
     while [ -n "$v" ]; do
         case "$v" in
@@ -72,24 +72,24 @@ strip_program() { # $1 = valor de Exec= -> "%f", "--flag %U", ""
         rest=""
         case "$v" in *[[:space:]]*) rest="${v#*[[:space:]]}" ;; esac
         case "$tok" in
-            env|*=*) v="$rest" ;;        # prefixo de ambiente: segue procurando
+            env|*=*) v="$rest" ;;        # environment prefix: keep looking
             *)       echo "$rest"; return ;;
         esac
     done
     echo ""
 }
 
-entry_has() { # $1 = chave -> 0 se já existe no grupo [Desktop Entry] montado
+entry_has() { # $1 = key -> 0 if already in the assembled [Desktop Entry] group
     local k="$1" l
     for l in "${ENTRY[@]:-}"; do [ "${l%%=*}" = "$k" ] && return 0; done
     return 1
 }
 
-# Reaproveita o .desktop oficial do vendor: tudo que é metadado (Keywords,
-# GenericName e Comment traduzidos, PrefersNonDefaultGPU, X-*) é mantido, e só
-# o que aponta para o binário — Exec, TryExec, Icon — é reescrito para a
-# instalação. As flags da linha de comando continuam tendo a última palavra.
-parse_vendor() { # $1 = arquivo .desktop; preenche ENTRY[], TAIL[], VENDOR_ACTIONS
+# Reuses the vendor's official .desktop: all metadata (translated Keywords,
+# GenericName and Comment, PrefersNonDefaultGPU, X-*) is kept, and only what
+# points at the binary — Exec, TryExec, Icon — is rewritten for this install.
+# Command-line flags still have the last word.
+parse_vendor() { # $1 = .desktop file; fills ENTRY[], TAIL[], VENDOR_ACTIONS
     local src="$1" line key val group="" a
     ENTRY=(); TAIL=(); VENDOR_ACTIONS=""
     while IFS= read -r line || [ -n "$line" ]; do
@@ -100,8 +100,8 @@ parse_vendor() { # $1 = arquivo .desktop; preenche ENTRY[], TAIL[], VENDOR_ACTIO
                    continue ;;
         esac
         key="${line%%=*}"; val="${line#*=}"
-        # comentários e linhas em branco não têm efeito e só atrapalhariam a
-        # ordem do arquivo montado, já que as chaves que faltam entram no fim
+        # comments and blank lines have no effect and would only disturb the order
+        # of the assembled file, since missing keys are appended at the end
         [ "$key" != "$line" ] || continue
         if [ "$group" != "[Desktop Entry]" ]; then
             case "$key" in
@@ -115,12 +115,12 @@ parse_vendor() { # $1 = arquivo .desktop; preenche ENTRY[], TAIL[], VENDOR_ACTIO
                    ENTRY+=("Exec=$BINDIR/$NAME${a:+ $a}") ;;
             TryExec) ENTRY+=("TryExec=$BINDIR/$NAME") ;;
             Icon)  if [ -n "$ICON_VALUE" ]; then ENTRY+=("Icon=$ICON_VALUE")
-                   # sem ícone instalado, um caminho absoluto do vendor apontaria
-                   # para dentro do tarball original; um nome simples ainda pode
-                   # ser resolvido pelo tema, então esse é mantido.
+                   # with no installed icon, an absolute vendor path would point inside the
+                   # original tarball; a bare name can still be resolved by the theme, so
+                   # that one is kept.
                    elif [ "${val#/}" = "$val" ]; then ENTRY+=("$line"); fi ;;
-            # Path apontaria para a árvore de build do vendor e DBusActivatable
-            # exige um serviço D-Bus que esta instalação não registra.
+            # Path would point at the vendor's build tree, and DBusActivatable needs a
+            # D-Bus service this install does not register.
             Path|DBusActivatable) : ;;
             Name|Name\[*\])       [ -n "$TITLE_SET" ]      || ENTRY+=("$line") ;;
             Comment|Comment\[*\]) [ -n "$COMMENT" ]        || ENTRY+=("$line") ;;
@@ -170,9 +170,9 @@ NAME=""; TITLE=""; EXEC_REL=""; ICON_REL=""; VERSION=""; EXEC_ARGS=""
 CATEGORIES="Utility;"; MIME=""; COMMENT=""; TERMINAL="false"; WMCLASS=""
 KEEP=2; SYSTEM=0; MAKE_DESKTOP=1; UNINSTALL=""; LIST=0; TARBALL=""
 VENDOR_REL=""; VENDOR_SET=""; USE_VENDOR=1
-# Título, categorias e wm-class têm default, então "não vazio" não distingue o
-# que o usuário pediu do que o script inventou — e só o que ele pediu pode
-# sobrescrever o .desktop do vendor.
+# Title, categories and wm-class have defaults, so "not empty" cannot tell
+# what the user asked for from what the script made up — and only what the
+# user asked for may override the vendor's .desktop.
 TITLE_SET=""; CATEGORIES_SET=""; WMCLASS_SET=""
 declare -a ACTIONS=() ENTRY=() TAIL=()
 VENDOR_ACTIONS=""
@@ -198,9 +198,9 @@ while [ $# -gt 0 ]; do
         -s|--system)      SYSTEM=1; shift ;;
         --uninstall)      need_arg "$1" $#; UNINSTALL="$2"; shift 2 ;;
         --list)           LIST=1; shift ;;
-        # --version sozinho mostra a versão do script; seguido de um valor é
-        # quase certamente a intenção antiga de rotular a versão do app, então
-        # o script diz qual flag usar em vez de ignorar o valor em silêncio.
+        # --version alone prints the script version; followed by a value it is almost
+        # certainly the old intent of labelling the app version, so the script names
+        # the right flag instead of silently ignoring the value.
         --version)
             if [ $# -ge 2 ] && [ "${2#-}" = "$2" ]; then
                 die "to label the app version use --app-version $2; --version alone shows the script version"
@@ -212,7 +212,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# ---------- destinos ----------
+# ---------- targets ----------
 if [ "$SYSTEM" = 1 ]; then
     PREFIX=/opt; BINDIR=/usr/local/bin
     APPDIR=/usr/local/share/applications; ICONDIR=/usr/local/share/icons
@@ -224,9 +224,9 @@ else
 fi
 
 refresh_caches() {
-    # `if` em vez de `A && B || true`: a segunda forma dispara SC2015 no
-    # linter do CI, que e mais estrito que o desta maquina. Comportamento
-    # identico — cada refresh e best-effort e nunca derruba a instalacao.
+    # `if` instead of `A && B || true`: the latter trips SC2015 in CI's linter,
+    # which is stricter than this machine's. Same behavior — each refresh is
+    # best-effort and never breaks the install.
     if command -v update-desktop-database >/dev/null; then
         $SUDO update-desktop-database "$APPDIR" 2>/dev/null || true
     fi
@@ -253,9 +253,9 @@ if [ -n "$UNINSTALL" ]; then
     app="$UNINSTALL"
     [ -d "$PREFIX/$app" ] || die "not installed in $PREFIX/$app (use --system if it was installed in /opt)"
     $SUDO rm -rf "$PREFIX/$app" "$BINDIR/$app" "$APPDIR/$app.desktop"
-    # Sem o diretório hicolor (app instalado sem ícone num HOME novo) o find
-    # sai com erro, e sob pipefail isso derrubava o script aqui — depois de já
-    # ter apagado tudo, sem a mensagem e sem atualizar os caches.
+    # Without the hicolor directory (app installed with no icon in a fresh HOME)
+    # find exits with an error, and under pipefail that killed the script here —
+    # after everything was deleted, without the message or the cache refresh.
     if [ -d "$ICONDIR/hicolor" ]; then
         $SUDO find "$ICONDIR/hicolor" \( -name "$app.png" -o -name "$app.svg" \) 2>/dev/null \
             | while read -r f; do $SUDO rm -f "$f"; done || true
@@ -269,13 +269,13 @@ fi
 [ -f "$TARBALL" ] || die "file not found: $TARBALL"
 TARBALL="$(readlink -f "$TARBALL")"
 
-# ---------- extração em área temporária ----------
+# ---------- extract to a temporary area ----------
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 info "extracting $(basename "$TARBALL")"
 tar -xf "$TARBALL" -C "$WORK"
 
-# se o tarball tem um único diretório raiz, usa ele como raiz da aplicação
+# if the tarball has a single top-level directory, use it as the app root
 mapfile -t entries < <(find "$WORK" -mindepth 1 -maxdepth 1)
 if [ "${#entries[@]}" -eq 1 ] && [ -d "${entries[0]}" ]; then
     ROOT="${entries[0]}"
@@ -283,10 +283,10 @@ else
     ROOT="$WORK"
 fi
 
-# ---------- nome / versão / binário / ícone ----------
+# ---------- name / version / binary / icon ----------
 if [ -z "$NAME" ]; then
     NAME="$(basename "$TARBALL")"
-    NAME="${NAME%%.tar.*}"                      # tira .tar.xz
+    NAME="${NAME%%.tar.*}"                      # strip .tar.xz
     NAME="${NAME%%-linux*}"; NAME="${NAME%%.linux*}"
     NAME="$(echo "$NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')"
 fi
@@ -316,14 +316,14 @@ if [ -z "$ICON_REL" ]; then
                 -not -path '*/locale/*' -printf '%P\n' 2>/dev/null | head -1)"
 fi
 
-# Muitos projetos (Blender, VS Code, GIMP) já embarcam o .desktop que publicam
-# nos repositórios oficiais, com traduções, Keywords e chaves que ninguém
-# lembraria de passar na mão — PrefersNonDefaultGPU, por exemplo, é o que faz o
-# menu oferecer a placa dedicada. Procurar por ele custa nada e ganha tudo isso.
+# Many projects (Blender, VS Code, GIMP) already ship the .desktop they publish
+# in the distro repositories, with translations, Keywords and keys nobody
+# would think to pass by hand — PrefersNonDefaultGPU, for example, is what makes
+# the menu offer the discrete GPU. Looking for it costs nothing and gains all that.
 if [ "$USE_VENDOR" = 1 ] && [ "$MAKE_DESKTOP" = 1 ] && [ -z "$VENDOR_REL" ]; then
-    # -type f não é decoração: o JBR que a JetBrains embarca tem diretórios
-    # chamados java.desktop e jdk.unsupported.desktop (módulos do JDK), e sem
-    # isso a busca traria um deles em vez de uma entrada de menu.
+    # -type f is not decoration: the JBR JetBrains ships has directories named
+    # java.desktop and jdk.unsupported.desktop (JDK modules), and without it the
+    # search would return one of them instead of a menu entry.
     VENDOR_REL="$(cd "$ROOT" 2>/dev/null || exit 0
     {
         find . -maxdepth 1 -type f -name "$NAME.desktop" -printf '%P\n'
@@ -338,14 +338,14 @@ case "$VENDOR_REL" in
     /*) VENDOR_SRC="$VENDOR_REL" ;;
     *)  VENDOR_SRC="$ROOT/$VENDOR_REL" ;;
 esac
-# um caminho passado à mão que não existe é erro; um palpite da autodetecção que
-# não serve só volta ao comportamento de gerar a entrada do zero
+# a hand-passed path that does not exist is an error; an autodetected guess
+# that does not fit just falls back to generating the entry from scratch
 if [ -n "$VENDOR_SRC" ] && [ ! -f "$VENDOR_SRC" ]; then
     [ -z "$VENDOR_SET" ] || die ".desktop not found: $VENDOR_REL"
     VENDOR_SRC=""
 fi
 
-# ---------- instalação ----------
+# ---------- install ----------
 DEST="$PREFIX/$NAME/$VERSION"
 [ ! -e "$DEST" ] || DEST="$DEST-$(date +%H%M%S)"
 info "installing to $DEST"
@@ -353,9 +353,9 @@ $SUDO mkdir -p "$PREFIX/$NAME" "$BINDIR" "$APPDIR"
 $SUDO cp -a "$ROOT/." "$DEST/" 2>/dev/null || { $SUDO mkdir -p "$DEST"; $SUDO cp -a "$ROOT/." "$DEST/"; }
 [ "$SYSTEM" = 1 ] && $SUDO chown -R root:root "$DEST"
 
-# Se `current` for um diretório de verdade — típico de instalação manual antiga —
-# o ln criaria o link DENTRO dele em vez de substituí-lo. Parar aqui é melhor do
-# que remover sozinho um diretório que pode ser a instalação em uso do usuário.
+# If `current` is a real directory — typical of an old manual install — ln would
+# create the link INSIDE it instead of replacing it. Stopping here beats
+# silently removing a directory that may be the user's working install.
 if [ -e "$PREFIX/$NAME/current" ] && [ ! -L "$PREFIX/$NAME/current" ]; then
     die "$PREFIX/$NAME/current exists and is not a symlink (old non-standard install). Move or remove that directory and run again; the new version is already in $DEST"
 fi
@@ -370,9 +370,9 @@ EOF
 $SUDO chmod 755 "$BINDIR/$NAME"
 
 ICON_VALUE=""
-# --icon aceita um caminho relativo à raiz extraída ou um caminho absoluto para
-# um arquivo fora do tarball — útil quando o app não traz o ícone solto (Electron
-# costuma guardá-lo dentro do app.asar) e você extraiu o PNG por conta própria.
+# --icon takes a path relative to the extracted root or an absolute path to a
+# file outside the tarball — useful when the app ships no loose icon (Electron
+# usually keeps it inside app.asar) and you extracted the PNG yourself.
 case "$ICON_REL" in
     "")  ICON_SRC="" ;;
     /*)  ICON_SRC="$ICON_REL"
@@ -388,8 +388,8 @@ if [ -n "$ICON_SRC" ] && [ -f "$ICON_SRC" ]; then
                tgt="$ICONDIR/hicolor/$NATIVE/apps/$NAME.png" ;;
     esac
     if [ "$(readlink -f "$ICON_SRC")" = "$(readlink -f "$tgt" 2>/dev/null)" ]; then
-        # o ícone já é o próprio destino (reinstalação apontando para o hicolor):
-        # copiar sobre si mesmo destruiria o arquivo, então só reaproveita
+        # the icon already is the target (reinstall pointing at hicolor): copying it
+        # onto itself would destroy the file, so just reuse it
         ICON_VALUE="$NAME"
     else
         $SUDO mkdir -p "$(dirname "$tgt")"
@@ -399,10 +399,10 @@ if [ -n "$ICON_SRC" ] && [ -f "$ICON_SRC" ]; then
     fi
 fi
 
-# Instalar só num tamanho grande é uma armadilha silenciosa: quando o menu pede
-# 32 ou 48px e não encontra tamanho utilizável, a regra de fallback do
-# freedesktop corta o nome no hífen — "antigravity-ide" vira "antigravity" — e o
-# app aparece com o ícone de OUTRO programa, o que parece cache mas não é.
+# Installing only a large size is a silent trap: when the menu asks for 32 or
+# 48px and finds no usable size, the freedesktop fallback rule cuts the name at
+# the hyphen — "antigravity-ide" becomes "antigravity" — and the app shows
+# ANOTHER program's icon, which looks like a cache problem but is not.
 if [ -n "$ICON_VALUE" ] && [ -n "$NATIVE" ]; then
     for s in 128 256; do
         [ "${NATIVE%%x*}" -gt "$s" ] || continue
@@ -426,7 +426,7 @@ if [ "$MAKE_DESKTOP" = 1 ]; then
         parse_vendor "$VENDOR_SRC"
     fi
 
-    # o que foi pedido explicitamente na linha de comando entra por cima
+    # what was asked for explicitly on the command line goes on top
     [ -n "$TITLE_SET" ]      && ENTRY+=("Name=$TITLE")
     [ -n "$COMMENT" ]        && ENTRY+=("Comment=$COMMENT")
     [ -n "$CATEGORIES_SET" ] && ENTRY+=("Categories=$CATEGORIES")
@@ -434,8 +434,8 @@ if [ "$MAKE_DESKTOP" = 1 ]; then
     [ -n "$WMCLASS_SET" ]    && ENTRY+=("StartupWMClass=$WMCLASS")
     [ "$TERMINAL" = "true" ] && ENTRY+=("Terminal=true")
 
-    # e o restante preenche só o que ainda faltar — sem vendor, isso monta a
-    # entrada inteira, que é o comportamento de sempre
+    # and the rest fills only what is still missing — with no vendor file, this
+    # builds the whole entry, as it always did
     entry_has Type           || ENTRY+=("Type=Application")
     entry_has Name           || ENTRY+=("Name=$TITLE")
     entry_has Exec           || ENTRY+=("Exec=$EXEC_LINE")
@@ -476,7 +476,7 @@ fi
 
 refresh_caches
 
-# ---------- limpeza de versões antigas ----------
+# ---------- prune old versions ----------
 keep_from="$(readlink -f "$CURRENT")"
 mapfile -t olds < <(find "$PREFIX/$NAME" -mindepth 1 -maxdepth 1 -type d ! -path "$keep_from" -printf '%T@ %p\n' \
                     | sort -rn | tail -n +$((KEEP)) | cut -d' ' -f2-)
