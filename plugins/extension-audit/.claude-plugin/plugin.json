@@ -1,0 +1,11 @@
+{
+  "name": "extension-audit",
+  "displayName": "Extension Audit",
+  "version": "0.1.0",
+  "author": {
+    "name": "4nrry",
+    "url": "https://github.com/4nrry"
+  },
+  "license": "MIT",
+  "description": "Audits a repository of agent skills, plugins and hooks against Anthropic's authoring guidance and current prompting research: a sourced checklist for the judgment calls and a stdlib linter for the mechanical ones."
+}
