@@ -68,7 +68,7 @@ DEFAULT_REVIEW_TIMEOUT = "15m"
 DEFAULT_GATE_TIMEOUT = 900
 DEFAULT_MAX_GATE_ATTEMPTS = 5
 DEFAULT_MIN_QUOTA = 0.05
-TESTED_AGY_VERSION = "1.4.2"       # every agy behaviour this script relies on was seen on this one
+TESTED_AGY_VERSION = "1.4.4"       # every agy behaviour this script relies on was seen on this one
 MAX_PROMPT_BYTES = 100_000          # one argv string is capped at 128 KiB on Linux
 MAX_DIFF_BYTES = 60_000
 TAIL_CHARS = 6000
@@ -86,6 +86,11 @@ RUN_ENV = "CREW_RUN"
 WORKER_ENV = {"NX_DAEMON": "false"}
 BACKENDS = ("agy", "opencode", "copilot")
 OPENCODE_DEFAULT_MODEL = "opencode/longcat-2.5-preview-free"
+# opencode 2.x dropped `--dir` (the run uses cwd = repo) and by default attaches
+# to a shared background service, which would not see this process's
+# OPENCODE_CONFIG_CONTENT and so would run without the guard plugin.
+# `--standalone` starts a private server that ends with the run.
+OC_RUN_FLAGS = ["--standalone"]
 TESTED_OPENCODE_VERSION = "1.19.0"
 # opencode writes "$schema" into these, in the process cwd, on every run (seen
 # on 1.19.0 even with --dir); the driver restores their bytes after each run.
@@ -135,6 +140,17 @@ CONTENT_KEYS = {"CodeContent", "ReplacementContent", "TargetContent",
 # run_command and finish.
 ALLOWED_TOOLS = {"view_file", "list_dir", "find_by_name", "grep_search", "write_to_file",
                  "replace_file_content", "multi_replace_file_content", "run_command"}
+
+# agy 1.4.4 renamed its file tools (smoke 2026-10-21). They are translated to
+# the names above before any check, so path, scope and secret rules apply
+# unchanged; without this the guard denied them and the worker edited through
+# the shell instead.
+AGY_RENAMED = {
+    "read_file": ("view_file", {"Path": "AbsolutePath"}),
+    "write_file": ("write_to_file", {"Path": "TargetFile", "Content": "CodeContent"}),
+    "edit_file": ("replace_file_content", {"Path": "TargetFile", "Target": "TargetContent",
+                                           "Replacement": "ReplacementContent"}),
+}
 
 SYSTEM_PATHS = ("/dev/null", "/dev/stdout", "/dev/stderr", "/usr/bin",
                 "/bin", "/usr/local/bin")
@@ -653,6 +669,9 @@ def decide_pre(payload: dict, ctx: dict) -> dict:
     args = call.get("args") or {}
     if not isinstance(args, dict):
         args = {}
+    if name in AGY_RENAMED:
+        name, keys = AGY_RENAMED[name]
+        args = {keys.get(k, k): v for k, v in args.items()}
     repo = ctx["repo"]
     extra = ctx.get("allow_paths", [])
     if name in FINISH_TOOLS:
@@ -1697,7 +1716,7 @@ def preflight_opencode(model: str):
         run = lambda *a: subprocess.run([oc, *a], capture_output=True, text=True, timeout=120,  # noqa: E731
                                         cwd=cwd, stdin=subprocess.DEVNULL)
         lines = run("--version").stdout.strip().splitlines()
-        proc = run("models")
+        proc = run("models", "--standalone")
     version = lines[-1].strip() if lines else "?"
     warns = []
     if version != TESTED_OPENCODE_VERSION:
@@ -1828,7 +1847,7 @@ def drive_opencode(oc: str, task: dict, repo: str, rundir: str, prompt: str, ctx
             if left < 30:
                 fails.append("timeout da task esgotado antes de o gate e o relatorio ficarem prontos")
                 break
-            cmd = [oc, "run", "--dir", repo, "--format", "json", "-m", task["model"],
+            cmd = [oc, "run", *OC_RUN_FLAGS, "--format", "json", "-m", task["model"],
                    *(["-s", sid] if sid else []), oc_message(msg)]
             eprint(f"crew: opencode run {i}/{n} ({task['model']}{', sessao ' + sid if sid else ''})…")
             rc, out, err = run_agy(cmd, repo, rundir, left, name=f"opencode-{i}", env=env, grace=0)
@@ -2313,7 +2332,7 @@ def cmd_review(a) -> int:
         env_oc = opencode_env(write_oc_guard(rundir), False)
         try:
             eprint(f"crew: review rodando (opencode, {model})…")
-            rc, stdout, stderr = run_agy([oc, "run", "--dir", repo, "--format", "json", "-m", model,
+            rc, stdout, stderr = run_agy([oc, "run", *OC_RUN_FLAGS, "--format", "json", "-m", model,
                                           oc_message(prompt)], repo, rundir, timeout_s,
                                          name="opencode-1", env=env_oc, grace=0)
         finally:
@@ -2430,6 +2449,13 @@ def self_test() -> int:
         ctx = base_ctx(repo, task, "delegate")
         pre = lambda name, **args: decide_pre({"toolCall": {"name": name, "args": args}}, ctx)  # noqa: E731
         check(pre("view_file", AbsolutePath=f"{repo}/src/a.txt")["decision"] == "allow", "leitura no repo")
+        check(pre("read_file", Path=f"{repo}/src/a.txt")["decision"] == "allow", "agy 1.4.4 read_file in repo")
+        check(pre("read_file", Path="/etc/passwd")["decision"] == "deny", "agy 1.4.4 read_file outside")
+        check(pre("read_file", Path=f"{repo}/.env")["decision"] == "deny", "agy 1.4.4 read_file secret")
+        check(pre("write_file", Path=f"{repo}/side.json", Overwrite=True)["decision"] == "deny",
+              "agy 1.4.4 write_file out of scope")
+        check(pre("edit_file", Path="src/../.git/config", Target="a", Replacement="b")["decision"] == "deny",
+              "agy 1.4.4 edit_file into .git")
         check(pre("view_file", AbsolutePath="/etc/passwd")["decision"] == "deny", "leitura fora do repo")
         check(pre("list_dir", DirectoryPath="~/.claude")["decision"] == "deny", "home negado")
         check(pre("run_command", CommandLine="cat /tmp/x")["decision"] == "deny", "/tmp negado")
@@ -2464,6 +2490,10 @@ def self_test() -> int:
         check(pre("write_to_file", TargetFile=f"{repo}/src/b.txt", CodeContent="/etc/x")["decision"]
               == "allow", "escrita no escopo; conteudo nao e escaneado")
         check(pre("write_to_file", TargetFile=f"{repo}/side.json")["decision"] == "deny", "fora do escopo")
+        check(pre("write_file", Path=f"{repo}/src/b.txt", Content="/etc/x", Overwrite=True)["decision"]
+              == "allow", "agy 1.4.4 write_file in scope, path-like content ignored")
+        check(pre("edit_file", Path=f"{repo}/src/b.txt", Target="/etc/a", Replacement="/etc/b")["decision"]
+              == "allow", "agy 1.4.4 edit_file in scope")
         check(pre("replace_file_content", TargetFile="src/../.git/config")["decision"] == "deny", ".git")
         check(pre("write_to_file", TargetFile="/tmp/out.txt")["decision"] == "deny", "escrita fora do repo")
         check(pre("invoke_subagent", Task="x")["decision"] == "deny", "subagente negado")
