@@ -1,5 +1,5 @@
 {
-  "description": "UserPromptSubmit sem `if`, de proposito: o filtro nao e uma permission rule, e o casamento do nome do jogo contra os appmanifests instalados. Um `if` aqui teria que carregar uma lista fixa de jogos, que envelhece calada — a lista vem do disco a cada disparo. Custo por prompt: uma leitura dos .acf, sem rede.",
+  "description": "UserPromptSubmit with no `if`: the filter is the game name matched against the installed appmanifests, read from disk on every prompt, not a fixed list that would go stale. Cost per prompt: reading the .acf files, no network.",
   "hooks": {
     "UserPromptSubmit": [
       {

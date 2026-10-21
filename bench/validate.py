@@ -403,6 +403,37 @@ def check_self_tests() -> None:
                  + (proc.stdout + proc.stderr).strip()[:2000])
 
 
+LINTER = REPO / "plugins/extension-audit/skills/auditing-agent-extensions/scripts/lint_extensions.py"
+
+
+def check_extensions() -> None:
+    """10. The extension-audit linter over every plugin: its errors fail the
+    build, its warnings are reported as one line per plugin and rule (run the
+    linter on the plugin for the file and line of each)."""
+    global checks_run
+    if not LINTER.is_file():
+        fail(rel(LINTER), "extension linter missing")
+        return
+    checks_run += 1
+    proc = subprocess.run([sys.executable, str(LINTER), str(REPO / "plugins"), "--json"],
+                          capture_output=True, text=True, timeout=SELF_TEST_TIMEOUT)
+    try:
+        found = json.loads(proc.stdout)
+    except ValueError:
+        fail(rel(LINTER), "linter output is not JSON:\n" + (proc.stdout + proc.stderr)[-800:])
+        return
+    counts: dict[tuple, int] = {}
+    for f in found:
+        where = rel(pathlib.Path(f["path"]))
+        if f["level"] == "error":
+            fail(f"{where}:{f['line']}", f"[{f['rule']}] {f['message']}")
+        else:
+            plugin = "/".join(where.split("/")[:2])
+            counts[(plugin, f["rule"])] = counts.get((plugin, f["rule"]), 0) + 1
+    for (plugin, rule), n in sorted(counts.items()):
+        warn(plugin, f"extension lint [{rule}] x{n}")
+
+
 def main() -> int:
     plugin_dirs = check_plugins()
     check_marketplace(plugin_dirs)
@@ -411,6 +442,7 @@ def main() -> int:
     check_claims_hashes()
     check_shell()
     check_self_tests()
+    check_extensions()
 
     for w in warnings:
         print(f"warn  {w}")

@@ -1,109 +1,68 @@
 ---
 name: agents-md
-description: Escrever, enxugar ou auditar o AGENTS.md (ou CLAUDE.md, GEMINI.md) de um repositorio — o que entra, o que sai, tamanho, onde cada coisa mora, e como checar que o arquivo nao mente sobre o codigo. Cobre os limites de cada ferramenta (Claude Code, Antigravity, Codex), o CLAUDE.md que esconde o AGENTS.md, e um checador mecanico que pega comando inexistente, ponteiro quebrado e arquivo grande demais sem gastar agente. Use quando a tarefa mencionar AGENTS.md, CLAUDE.md, GEMINI.md, .cursorrules, instrucoes do agente, "rules token budget", arquivo de instrucoes desatualizado ou gigante, ou /init.
+description: Writes, trims and audits a repository's AGENTS.md (or CLAUDE.md, GEMINI.md) — what belongs in it, what to cut, size limits per tool, and a mechanical check for missing commands, dead paths, oversize files and a CLAUDE.md that hides AGENTS.md. Use when a task mentions AGENTS.md, CLAUDE.md, GEMINI.md, .cursorrules, agent instructions, a rules token budget, an outdated or bloated instructions file, or /init.
 ---
 
-# AGENTS.md que o agente segue
+# AGENTS.md
 
-Arquivo de instrucoes e contexto carregado em toda sessao. Cada linha custa
-token em toda tarefa, e arquivo inchado faz o agente ignorar justamente a
-regra que importa. O teste de toda linha: **se eu tirar isto, o agente erra?**
-Se nao erra, sai.
+The file loads into every session, so every line costs tokens on every task,
+and a long file makes the agent miss the rule that matters. Test each line:
+without it, would the agent get something wrong? If not, cut it.
 
-## Entra
+## Keep
 
-- Comandos exatos e que existem: instalar, rodar, o teste mais estreito,
-  lint/typecheck, migration. Agente roda o check que estiver listado.
-- Como provar que terminou: o comando que da passou/falhou. Sem ele, "parece
-  pronto" e o unico sinal que o agente tem.
-- Armadilhas que falham em silencio: o comando que passa sem testar nada, a env
-  var sem a qual tudo sobe errado, a config que precisa de restart.
-- Contratos com outros repos que daqui nao se deduzem: fila/routing key,
-  header, formato de ID, porta exposta.
-- Convencoes que fogem do padrao da linguagem ou do framework.
-- Etiqueta do repo: branch base, nome de branch, squash ou nao, o que rodar
-  antes de commitar.
-- Decisao de arquitetura com o porque, so quando o codigo nao explica sozinho.
-- Mapa curto: onde moram as 3 a 5 coisas que se procuram toda hora.
-- Ponteiro com gatilho para o que mora em outro arquivo: "antes de mexer em
-  X, leia `<subpasta>/AGENTS.md`" ou o `AGENTS.md` comum acima dos repos.
+- Exact commands that exist: install, run, the narrowest test, lint/typecheck, migrations.
+- How to prove the work is done: the command that passes or fails.
+- Traps that fail silently: a command that passes without testing anything, a required env var, config that needs a restart.
+- Contracts with other repos that this code does not reveal: queue or routing key, header, ID format, exposed port.
+- Conventions that depart from the language or framework default.
+- Repo etiquette: base branch, branch naming, squash or not, what to run before committing.
+- Architecture decisions with their reason, only where the code does not show it.
+- A short map: where the 3–5 most-searched things live.
+- Pointers with a trigger: "before editing X, read `<subdir>/AGENTS.md`".
 
-## Sai
+## Cut
 
-- Arvore de diretorios, lista de endpoints, dump de schema, lista de
-  dependencias, descricao arquivo por arquivo. O agente le o codigo.
-- Tutorial e documentacao de API: link, nao copia.
-- O que muda toda hora: versao, contagem, "ultima atualizacao", estado de
-  sprint. E o primeiro trecho a ficar velho.
-- Conselho obvio ("escreva codigo limpo", "use tipos").
-- Changelog e historia de ticket: o git guarda.
-- Instrucao de uma ferramenta so ("use o MCP X primeiro").
-- Segredo, URL com token, dado de cliente.
+- Directory trees, endpoint lists, schema dumps, dependency lists, per-file descriptions: the agent reads the code.
+- Tutorials and API docs: link them.
+- Anything that changes often: versions, counts, "last updated", sprint state.
+- Obvious advice ("write clean code").
+- Changelog and ticket history: git has them.
+- Single-tool instructions ("use MCP X first").
+- Secrets, tokenized URLs, customer data.
 
-## Forma
+## Form
 
-- Bullets curtos sob cabecalhos. Paragrafo denso e seguido pior.
-- Concreto e verificavel: "rode `npm test -- foo`", nao "teste suas mudancas".
-- Tom calmo, com o motivo. `IMPORTANT` em no maximo uma linha; se tudo grita,
-  nada se destaca, e modelos atuais aplicam frase agressiva demais.
-- Duas instrucoes que se contradizem fazem o agente escolher no chute: revise o
-  arquivo da raiz contra os aninhados.
-- Nota so para humanos vai em `<!-- comentario -->` de bloco: o Claude Code a
-  remove antes de carregar.
+- Short bullets under headings; dense paragraphs are followed less.
+- Concrete and checkable: "run `npm test -- foo`", not "test your changes".
+- Calm tone with the reason. `IMPORTANT` on one line at most: current models overapply aggressive phrasing.
+- No contradictions between the root file and nested ones; the agent picks one at random.
+- Human-only notes go in `<!-- block comments -->`, which Claude Code strips before loading.
 
-## Tamanho e onde mora
+## Size and placement
 
-| ferramenta | o que le | limite |
-|---|---|---|
-| Claude Code | `CLAUDE.md`; `AGENTS.md` nativo desde 2.1.277, **so se nao houver `CLAUDE.md` nem `CLAUDE.local.md` na pasta ou acima** | recomenda < 200 linhas; carrega ate 4 MiB |
-| Antigravity | `AGENTS.md`, `GEMINI.md`, `.agents/rules/`; **nao le `CLAUDE.md`**; `@arquivo` solto nao e inlinado, so `@[label](path)` | 24 KB por arquivo (corta o resto); 20 mil tokens somando tudo que esta always-on |
-| Codex | `AGENTS.override.md` ou `AGENTS.md`, da raiz do git ate o cwd | para de juntar em 32 KiB somados |
+- Target 60–100 lines and under 6 KB; cap at 150 lines / 10 KB.
+- One `AGENTS.md` for every tool. A `CLAUDE.md` or `CLAUDE.local.md` in the same folder or above hides `AGENTS.md` from Claude Code unless it imports `@AGENTS.md`.
+- `@import` saves nothing: imported files load at startup too.
+- Rules for one part of the code go in a nested `AGENTS.md` (nearest wins). A loose doc in `docs/` only if someone audits it against the code.
+- A multi-step procedure becomes a skill; a rule that must never fail becomes a hook.
+- Per-tool file names, limits and global locations: [references/tool-limits.md](references/tool-limits.md).
 
-- Meta: 60 a 100 linhas e menos de 6 KB. Teto: 150 linhas / 10 KB.
-- `@import` nao economiza: o importado tambem carrega no inicio.
-- Um arquivo so, `AGENTS.md`, para todas as ferramentas. Um `CLAUDE.md` ou
-  `CLAUDE.local.md` na mesma pasta ou acima esconde o `AGENTS.md` do Claude.
-- O que vale para parte do codigo vai para um `AGENTS.md` aninhado na
-  subpasta (o mais proximo vence). Doc solto em `docs/` so se alguem o audita:
-  doc velho engana o agente que o le, e ninguem o confere contra o codigo.
-- Procedimento de varios passos vira skill. Regra que nao pode falhar nunca
-  vira hook: o arquivo e orientacao, o hook e garantia.
-- Arquivo global: o Claude Code le so `~/.claude/CLAUDE.md` (nao ha
-  `AGENTS.md` de usuario); o Antigravity le `~/.gemini/config/AGENTS.md` (ou
-  `GEMINI.md`). Sao dois arquivos: mantenha um e gere o outro a partir dele.
-- O Claude Code procura `AGENTS.md` em todas as pastas acima do cwd; o
-  Antigravity e o Codex param na raiz do git. Um `AGENTS.md` comum acima dos
-  repos so chega a eles por ponteiro no `AGENTS.md` de cada repo.
-- Workspace com varios repos abertos soma os arquivos de todos no Antigravity.
-  Abra o repo da tarefa, nao a pasta-mae, antes de cortar arquivo bom.
+## Audit cheaply
 
-## Auditar sem torrar uso
-
-1. Checagem mecanica primeiro, de graca:
+1. Run the mechanical check from this skill's directory:
 
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/check_agents_md.py" <repo>
+   python3 scripts/check_agents_md.py <repo>    # exit 1 when anything is flagged
    ```
 
-   Aponta: arquivo acima do teto, `npm run X` que nao existe no
-   `package.json`, caminho citado em crase que nao existe, palavras de grito,
-   `CLAUDE.md`/`CLAUDE.local.md` que escondem o `AGENTS.md`, `GEMINI.md` com
-   `@arquivo` que o Antigravity nao expande. Caminho relativo curto pode dar
-   falso positivo: confira antes de mexer.
-2. Audite contra o codigo da branch padrao do origin, nao o checkout local
-   (que costuma estar atrasado): `git archive origin/<padrao> | tar -x -C <dir>`.
-3. Para fatos que o script nao alcanca (fila, porta, env var, nome de modulo),
-   um agente barato (Haiku) por arquivo, que devolve **so** as afirmacoes
-   falsas com `path:linha`. Confira cada apontamento antes de aplicar: o
-   verificador acerta muito, mas nao sempre.
-4. No Claude Code, `/doctor` sugere cortes e `/doctor prompt-audit` acha
-   comando inexistente e contradicao entre arquivos.
+   It flags oversize files, `npm run X` with no such script, cited paths that do not exist, shouting, a shadowing `CLAUDE.md`, and `GEMINI.md` bare `@file` lines Antigravity does not expand. Paths relative to another repo are expected false positives.
+2. Audit against the default branch on origin, not a stale checkout: `git archive origin/<default> | tar -x -C <dir>`.
+3. For facts a regex cannot reach (queues, ports, env vars, module names), give one cheap-tier agent per file the task of returning **only** false statements with `path:line`. Check each before applying it.
+4. In Claude Code, `/doctor prompt-audit` finds missing commands and contradictions across files.
 
-## Manter
+## Maintain
 
-- Revise no PR que muda comando, porta, fila ou layout. Arquivo velho e pior
-  que arquivo nenhum: o agente acredita nele.
-- Acrescente uma linha quando o agente repete um erro, quando o review pega
-  algo que ele deveria saber, ou quando voce digita a mesma correcao de novo.
-- Mudou uma regra? Veja se o comportamento mudou. Se o agente continua
-  ignorando, o arquivo esta longo demais ou a frase esta ambigua.
+- Review the file in any PR that changes a command, port, queue or layout. A stale file is worse than none: the agent believes it.
+- Add a line when the agent repeats a mistake or a review catches something it should have known.
+- After changing a rule, check that behavior changed. If not, the file is too long or the sentence is ambiguous.

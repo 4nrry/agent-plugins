@@ -1,95 +1,81 @@
 ---
 name: copilot
-description: Especificos do backend copilot (GitHub Copilot CLI) do plugin crew - plano Free so com --model auto, cada run pago em AI credits, worker sem shell e com o gate inteiro no agentStop, COPILOT_ALLOW_ALL so no processo do run, e o worker que declara checks que nao pode ter rodado. Use quando for delegar uma fatia ou pedir review pelo Copilot CLI.
+description: Specifics of crew's GitHub Copilot CLI backend — Free plan with --model auto only, every run paid in AI credits, a worker with no shell whose whole gate runs at agentStop, COPILOT_ALLOW_ALL set only for the run's process, and a worker that claims checks it could not have run. Use when delegating a slice or asking for a review through Copilot CLI.
 ---
 
-# crew pelo Copilot CLI
+# crew through Copilot CLI
 
-Antes de tudo, leia `${CLAUDE_PLUGIN_ROOT}/shared/delegate.md` se ainda nao leu
-nesta sessao: quando delegar e quando nao, como escrever a task, o gate, como
-ler o veredito, a revisao obrigatoria do diff contra a fonte da verdade, os
-arquivos de segredo e a pergunta ao usuario antes do primeiro run. Aqui esta
-so o que e do Copilot CLI.
-
-## Quando usar
-
-Raramente, e sabendo que custa: no plano **Free** nao ha quota gratis, cada
-run gasta **AI credits** (0,53 num delegate pequeno com uma volta de gate e
-0,41 num review, n=1 cada). Serve para uma fatia em que se queira um modelo de
-outra familia (o Auto serviu gpt-5.6-luna) e em que **o gate inteiro roda sem
-o worker**: ele nao tem shell, entao nao roda teste, formatter nem git. O
-enunciado tem que bastar sem executar nada. Requer o `copilot` no PATH e
-logado; testado so no **1.0.96** (outra versao vira aviso).
+Read the `delegate` skill first. Commands below run from the `delegate`
+skill's directory. Requires `copilot` on PATH and logged in; a version other
+than the tested one is a warning.
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/crew.py" delegate /caminho/TASK.json --backend copilot
+python3 scripts/crew.py delegate /path/TASK.json --backend copilot
 ```
 
-## Antes do primeiro run
+## When to use
 
-Pergunte ao usuario: o codigo vai para a GitHub e cada run consome creditos.
-Diga tambem que o run seta `COPILOT_ALLOW_ALL=true` so no processo do copilot,
-porque e a unica forma de os hooks do repo carregarem, e que isso carrega
-tambem skills, plugins, MCP servers e hooks do proprio repo (o veredito avisa
-os hooks que encontrar em `.github/hooks/`). Nao use num checkout em que voce
-nao confie.
+Rarely, and knowing it costs: the Free plan has no free quota, so every run
+spends AI credits (well under one per small run). It fits a slice where a model
+from another family is wanted and **the whole gate runs without the worker**:
+it has no shell, so it cannot run tests, formatters or git. The brief must be
+enough without running anything.
 
-## Modelo e creditos
+## Before the first run
 
-- So `auto` (validado; outro e recusado). Num plano pago,
-  `"copilot_model_override": true` libera outro slug, caminho **nunca
-  testado**: diga isso ao usuario se for usar.
-- `max_ai_credits`: padrao e minimo 30 (o CLI recusa menos). E freio contra um
-  run que dispare, nao orcamento: um run normal gasta menos de 1.
-- `copilot.usage` no veredito traz `ai_credits`, `premium_requests` e
-  `served_models`: **reporte os creditos gastos ao usuario.**
+Ask the user: the code goes to GitHub and each run spends credits. Also say
+that the run sets `COPILOT_ALLOW_ALL=true` for the copilot process only — the
+only way the repo's hooks load — which also loads the repo's own skills,
+plugins, MCP servers and hooks (the verdict warns about hooks it finds in
+`.github/hooks/`). Do not use it in a checkout you do not trust.
 
-## Sem shell
+## Model and credits
 
-- O run passa `--excluded-tools bash task`. **Nunca exclua `bash` sem
-  `task`**: excluir so o `bash` levou a 2826 chamadas de subagente `task` e
-  ~5,5 creditos no lab. O script sempre exclui os dois.
-- Chamada de shell ou de `task` no stream de eventos reprova o run.
-- O gate inteiro (escopo, `forbid`, `format`, `checks`) roda do nosso lado no
-  `agentStop`, que devolve `block` com a saida do gate ate
-  `max_gate_attempts` (**no maximo 8**: o CLI ignora o hook depois de 8
-  bloqueios seguidos). Diga no `prompt` o que o worker precisa saber sobre os
-  comandos, porque ele nao pode roda-los para ver.
+- Only `auto` is accepted. On a paid plan `"copilot_model_override": true`
+  allows another slug — an untested path; say so.
+- `max_ai_credits`: default and minimum 30 (the CLI refuses less). A brake on a
+  runaway run, not a budget.
+- **Report `copilot.usage.ai_credits` to the user** after every run.
 
-## O worker declara checks que nao rodou
+## No shell
 
-`report.checks_run` e ainda menos confiavel aqui: no smoke o worker escreveu
-`python3 -m unittest ... PASS` para um teste que ele, sem shell, nao tinha
-como rodar. So o gate conta.
+- The run passes `--excluded-tools bash task`. Never exclude `bash` without
+  `task`: excluding only `bash` sent the worker into thousands of `task`
+  subagent calls.
+- A shell or `task` call in the event stream fails the run.
+- The whole gate (scope, `forbid`, `format`, `checks`) runs on crew's side at
+  `agentStop`, which blocks with the gate's output up to `max_gate_attempts`
+  (**at most 8**: the CLI ignores the hook after 8 blocks in a row). Tell the
+  worker in the brief what it needs to know about the commands.
+- `report.checks_run` is even less reliable here: the worker has reported a
+  passing test it could not have run. Only the gate counts.
 
-## Task
+## Task fields
 
-| campo | o que e |
+| Field | Meaning |
 |---|---|
-| `max_gate_attempts` | no maximo 8 |
-| `max_ai_credits` | padrao e minimo 30 |
-| `copilot_model_override` | `true` para aceitar modelo diferente de `auto` (nao testado) |
-| `scope` | nao pode cobrir `.github/hooks/`, `.github/copilot/settings*.json` nem `.claude/settings*.json`: de la o copilot carrega hooks |
+| `max_gate_attempts` | at most 8 |
+| `max_ai_credits` | default and minimum 30 |
+| `copilot_model_override` | `true` to accept a model other than `auto` (untested) |
+| `scope` | must not cover `.github/hooks/`, `.github/copilot/settings*.json` or `.claude/settings*.json`: copilot loads hooks from there |
 
-O run escreve `.github/hooks/crew-<run>.json` e o remove no fim. Se um run
-morrer por SIGKILL, o proximo recusa e diz qual arquivo remover (tambem os
-`agy-worker-*.json` de antes da 0.4.0); enquanto ele existir, um `copilot`
-com `COPILOT_ALLOW_ALL=true` nesta pasta carrega os hooks de um run morto.
+The run writes `.github/hooks/crew-<run>.json` and removes it at the end. After
+a SIGKILL the next run refuses and names the file to remove.
 
-## Falhas que so o copilot tem
+## Failures only copilot has
 
-| falha | por que existe |
+| Failure | Why it exists |
 |---|---|
-| hooks nao carregaram (nenhum evento de hook) | sem `COPILOT_ALLOW_ALL=true` exato os hooks somem em silencio (lab) |
-| chamada de shell observada / subagente observado | `bash` e `task` deviam estar excluidos; se apareceram, a exclusao falhou |
-| nenhum evento `result`, ou `exitCode` diferente de 0 | o run foi cortado; o exit 0 do processo nao prova nada |
-| arquivo de hooks do run mudou | o guard pode ter sido trocado durante o run |
+| hooks did not load (no hook event) | without the exact `COPILOT_ALLOW_ALL=true` the hooks vanish silently |
+| shell or subagent call observed | `bash` and `task` should have been excluded |
+| no `result` event, or `exitCode` not 0 | the run was cut; the process's exit 0 proves nothing |
+| the run's hooks file changed | the guard may have been replaced mid-run |
 
 ## Review
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/crew.py" review --backend copilot --diff HEAD~1 --prompt-file /scratchpad/pergunta.md
+python3 scripts/crew.py review --backend copilot --diff HEAD~1 --prompt-file /path/question.md
 ```
 
-Sem shell nem `apply_patch` (`--excluded-tools bash task apply_patch`), com o
-hook negando toda escrita. Reporte os creditos.
+No shell and no `apply_patch` (`--excluded-tools bash task apply_patch`), with
+the hook denying every write. Report the credits.

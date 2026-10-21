@@ -1,60 +1,32 @@
 ---
 name: expo-metro
-description: O que quebra em silencio num projeto Expo/React Native — o prebuild que nao roda e nao avisa, o Metro que serve o bundle de outro checkout, node_modules ausente que derruba so o bundler enquanto tsc e jest passam, e EXPO_PUBLIC_ que carrega segredo para dentro do APK. Leia antes de gerar build local, antes de mexer em app.json ou em config plugin, e quando uma mudanca "nao fizer efeito" sem erro nenhum.
+description: Covers what fails silently in an Expo / React Native project — a prebuild that does not run and says nothing, a Metro serving another checkout's bundle, a missing node_modules that breaks only the bundler while tsc and jest pass, native modules that never reached the device, and EXPO_PUBLIC_ variables that ship secrets inside the APK. Use before a local build, before editing app.json or a config plugin, and when a change "has no effect" with no error.
 ---
 
 # Expo / Metro
 
-O padrao das falhas aqui e o mesmo: **sucesso aparente**. O comando termina em
-zero, o build diz `BUILD SUCCESSFUL`, e o efeito que voce esperava nao aconteceu.
-Voce entao depura o lugar errado.
+The pattern here is apparent success: exit 0, `BUILD SUCCESSFUL`, and the
+change you expected is not there.
 
-## O prebuild que nao roda
+## The prebuild that does not run
 
-A armadilha mais cara, porque nao emite aviso nenhum.
-
-**Documentado.** Com o diretorio `android/` ja presente, `expo run:android`
-**nao prebuilda**. A doc de Continuous Native Generation e explicita: *"If native
-directories are absent, npx expo prebuild will run once for the specific
-platform. On subsequent uses of these run commands, manually run npx expo
-prebuild --clean"*.
-
-**Observado, nao documentado:** que isso acontece **sem aviso nenhum**. Mudanca em
-`app.json`, em config plugin ou em icone e ignorada, o Gradle reaproveita os
-recursos antigos e responde `BUILD SUCCESSFUL` em segundos. A doc descreve o
-comportamento; nao caracteriza o silencio.
-
-Sintoma para reconhecer: build que **deveria** regenerar recurso e termina rapido
-demais, com o log indo direto para a fase de compilacao sem nenhuma linha de
-prebuild.
+With `android/` present, `expo run:android` does not prebuild, and says
+nothing. Changes to `app.json`, config plugins or icons are ignored; Gradle
+reuses old resources and finishes suspiciously fast. Regenerate explicitly:
 
 ```bash
 npx expo prebuild --platform android --clean
 ```
 
-O `--clean` importa: *"The --clean option deletes any existing native directories
-before generating. Re-running npx expo prebuild without the --clean option will
-layer changes on top of the existing files, which is faster, but may not produce
-the same results in some cases."*
+`--clean` deletes the native directories first; without it changes are
+layered on old files. Gradle's `> Task :x:preBuild` lines are not Expo's
+prebuild — `grep prebuild` matches them.
 
-Um falso positivo comum ao procurar isso no log: as tarefas `> Task :algo:preBuild`
-do Gradle **nao** sao o prebuild do Expo. E coincidencia de nome, e um `grep
-prebuild` no log dispara nelas.
+## The SDK does not reach a non-interactive shell
 
-## O SDK nao chega ao shell nao interativo
-
-**Observado (2026-10-08).** `expo run:android` passou pelo prebuild, entrou no
-Gradle e parou em `SDK location not found. Define a valid SDK location with an
-ANDROID_HOME environment variable or by setting the sdk.dir path in your
-project's local properties file`. O `ANDROID_HOME` estava no `~/.bashrc` — e o
-`~/.bashrc` do Ubuntu retorna cedo quando o shell nao e interativo, que e o
-shell de qualquer ferramenta de agente. A variavel chega vazia e o erro so
-aparece minutos depois, no fim do caminho.
-
-**Documentado:** o Gradle do Android le `ANDROID_HOME` ou `sdk.dir` em
-`local.properties`, nesta ordem de preferencia (a mensagem acima e a propria
-doc). Duas saidas, e a primeira vale para qualquer ferramenta que o projeto
-chame:
+Ubuntu's `~/.bashrc` returns early for non-interactive shells, so an
+`ANDROID_HOME` set there is empty in any agent tool, and Gradle fails minutes
+later with `SDK location not found`. Export it in the command:
 
 ```bash
 export ANDROID_HOME="$HOME/Android/Sdk" JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
@@ -62,156 +34,66 @@ export PATH="$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator"
 npx expo run:android
 ```
 
-Ou `sdk.dir=/home/<voce>/Android/Sdk` em `android/local.properties` — que o
-`prebuild --clean` apaga junto com o diretorio, entao nao sobrevive ao item
-anterior. O guarda do `expo run:*` avisa quando os dois faltam.
+`sdk.dir` in `android/local.properties` also works but is deleted by
+`prebuild --clean`.
 
-O mesmo vale para o `emulator`: por caminho absoluto, ou a variavel antes.
+## A new native module is not in the build
 
-## Modulo nativo novo: o JS nao reclama
-
-Entrou um pacote com codigo nativo (`expo-haptics`, por exemplo). O `npm
-install` passa, o `tsc` passa, o Fast Refresh entrega o JS, e o aparelho roda
-o build antigo, **sem o modulo** — e nada quebra na cara.
-
-**Documentado:** modulos Expo que podem faltar sao carregados por
-`requireOptionalNativeModule`, que devolve `null` em vez de lancar. Um wrapper
-com `try/catch` por cima, que e o certo para nao derrubar o app, esconde o
-resto: a funcao roda, nao vibra, nao avisa.
-
-A ordem que funciona, com o diretorio nativo ja presente:
+After adding a package with native code, `npm install`, `tsc` and Fast
+Refresh all succeed while the device runs the old binary. Optional Expo
+modules load through `requireOptionalNativeModule`, which returns `null`
+instead of throwing, so the call just does nothing. Rebuild, then prove the
+module was linked:
 
 ```bash
-npx expo prebuild --platform android --clean   # o run:android NAO faz isso
-npx expo run:android                           # recompila e reinstala
-```
-
-E prove que o modulo entrou, porque o build nao deixa rastro facil — o Gradle
-nao cria `node_modules/<pacote>/android/build`, e `grep` em `android/` nao
-acha o nome. O que responde e o resolvedor do autolinking, que e o que o
-Gradle consultou:
-
-```bash
+npx expo prebuild --platform android --clean
+npx expo run:android
 npx expo-modules-autolinking resolve -p android --json | jq -r '.modules[].packageName'
 ```
 
-Se o pacote novo aparece ao lado dos que ja funcionam, entrou pelo mesmo
-caminho que eles.
+The build leaves Gradle and Kotlin daemons resident (GBs of RSS). Stop the
+Gradle one with `./gradlew --stop` in `android/`.
 
-**Observado:** o build deixa residentes o daemon do Gradle e o do Kotlin
-(medido: 4 GB e 2 GB de RSS depois de um `BUILD SUCCESSFUL`). Nao e erro, e
-custo. `./gradlew --stop` em `android/` encerra o do Gradle; o do Kotlin se
-desliga sozinho depois de duas horas, ou pelo PID.
+## One Metro per port
 
-## Um Metro por porta, e a porta e do primeiro
+Metro listens on 8081 (React Native's default). A second Metro does not start
+cleanly, and the dev client keeps talking to the first — you edit one checkout
+and see another's bundle. Find the owner with `ss -ltnp | grep ':8081'` and
+`readlink /proc/<pid>/cwd`. Prefer another port (`--port 8082`, plus the
+matching deep link) over killing a process that may be another session's.
 
-O bundler escuta 8081 por padrao — documentado do lado do React Native
-(*"The Metro bundler runs on port 8081"*), nao na doc do Metro, que so expoe
-`server.port` como opcao sem default declarado.
+## node_modules missing breaks only Metro
 
-**Observado:** se ja ha um Metro ali, o segundo nao sobe limpo, e o dev client
-continua falando com o primeiro. Voce edita um checkout e ve o bundle do outro,
-sem nada indicando isso. A doc oficial trata apenas o conflito de porta e oferece
-duas saidas — matar o processo, ou trocar a porta. **Prefira trocar a porta**: o
-processo pode ser de outra sessao.
+In a worktree or checkout without its own `node_modules`, `npx expo`, `tsc`
+and `jest` resolve upward and pass; Metro returns 404 for the bundle with an
+unresolved module. A symlink to another checkout's `node_modules` runs the
+app but must not produce a build: Metro does not follow symlinks outside
+`watchFolders`, and the artifact compiles against the other branch's
+dependencies.
 
-A pergunta que importa, quando ha mais de um checkout ou worktree, e de qual
-diretorio e o processo que esta no ar:
+## Fast Refresh can stick
 
-```bash
-ss -ltnp | grep ':8081'
-readlink /proc/<pid>/cwd
-```
+Renaming or adding a module constant across two edits can leave HMR in an
+intermediate state with a render error and a clean typecheck. Reload before
+hunting the bug. When a test depends on new code reaching the device, change
+a visible marker on screen to prove it arrived.
 
-Para trabalhar em paralelo, porta explicita (`--port 8082`) e o deep link
-correspondente. Nao basta subir na outra porta e esperar que o app siga.
+## EXPO_PUBLIC_ ships inside the artifact
 
-## node_modules ausente derruba so o bundler
-
-Assimetria que confunde: num diretorio sem `node_modules` proprio — worktree, ou
-um checkout onde o install nao rodou — `npx expo`, `tsc` e `jest` funcionam
-normalmente, porque o Node resolve subindo a arvore. **So o Metro quebra**, com
-404 no bundle e uma mensagem de modulo nao resolvido.
-
-**Observado, nao documentado:** o Metro parece pedir o caminho literal relativo
-a raiz do projeto, e ali ele nao existe. Nenhuma doc oficial descreve esse modo
-de falha. Se tudo passa menos carregar o bundle, suspeite disso antes de
-suspeitar do codigo.
-
-Cuidado ao remediar com symlink, e ha base documentada para a cautela: o Metro
-**nao segue symlinks automaticamente**, e arquivos fora do `projectRoot` exigem
-`watchFolders` explicito. Alem disso o symlink entrega a arvore de dependencias
-de OUTRO checkout — serve para rodar o app, **nao serve para gerar build**. Se a
-branch mexeu em `package.json`, o artefato sai compilado contra a versao errada e
-nada avisa; o erro so aparece em runtime.
-
-Sobre paralelismo, o que e documentado: `maxWorkers` do Metro tem default de
-aproximadamente **metade** dos cores reportados por `os.availableParallelism()`,
-valores acima do numero de cores nao tem efeito, e ha dois pools independentes —
-transformacao e construcao do mapa de arquivos — cada um com essa contagem.
-
-## Fast Refresh pode ficar preso
-
-**Observado, nao documentado.** Ao renomear ou criar uma constante de modulo em
-duas edicoes separadas, o HMR as vezes fica no estado intermediario e mostra erro
-de render com o typecheck limpo. Recarregue o app antes de caçar bug inexistente.
-
-Nao confunda com o que a doc DESCREVE, que e outro caso: quando o arquivo editado
-exporta algo consumido fora da arvore React, o Fast Refresh cai para reload
-completo. Isso e degradacao prevista, nao o travamento acima.
-
-Corolario para automacao: quando um teste depende de codigo novo ter chegado ao
-aparelho, prove que chegou. Um marcador visivel na tela — um texto que voce
-mudou de proposito — custa nada e distingue "a mudanca nao funcionou" de "a
-mudanca nao chegou".
-
-## EXPO_PUBLIC_ viaja dentro do artefato
-
-**Documentado, e com aviso explicito na propria doc:** *"Do not store sensitive
-info, such as private keys, in EXPO_PUBLIC_ variables. These variables will be
-visible in plain-text in your compiled application."*
-
-Tudo que comeca com `EXPO_PUBLIC_` e substituido no bundle em tempo de build. Nao
-e lido em runtime, nao fica no servidor: **vai dentro do APK**, e sai de la com
-`unzip` mais `strings`.
-
-Consequencia pratica: um `.env.local` com credencial de bancada produz um
-artefato com aquela credencial embutida. Aceitavel num build interno apontando
-para homologacao; vazamento num build de producao.
-
-Para gerar um artefato sem carregar os arquivos `.env`:
+Every `EXPO_PUBLIC_` variable is inlined into the bundle at build time and is
+readable in the APK. A `.env.local` with a bench credential produces an
+artifact that contains it. Build without dotenv files with
+`EXPO_NO_DOTENV=1 npx expo ...`, and check an artifact before distributing it
+(the bundle is Hermes bytecode, so extract strings first):
 
 ```bash
-EXPO_NO_DOTENV=1 npx expo ...
+unzip -p app.apk assets/index.android.bundle | strings -n 6 | grep -F "<value>"
 ```
 
-Antes de distribuir qualquer artefato, confira o que foi parar dentro dele. O
-bundle e bytecode Hermes, entao `grep` direto da falso negativo — extraia as
-strings primeiro:
+## The dev client opens on the launcher
 
-```bash
-unzip -p app.apk assets/index.android.bundle | strings -n 6 | grep -F "<valor>"
-```
-
-## Quando o dev client abre no launcher
-
-Depois de subir o Metro, o dev client pode abrir a tela do launcher em vez de
-carregar o bundle, e a tela parada parece travamento.
-
-A doc oferece os caminhos previstos: conectar pelo bundler detectado na rede
-local, pela conta Expo logada nos dois lados, ou pelo QR code. **Nenhum deles e o
-deep link.** O deep link abaixo e atalho util em automacao, quando nao ha quem
-escaneie QR code — nao e o mecanismo documentado:
-
-```
-<scheme>://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081
-```
-
-O menu de desenvolvedor costuma abrir por cima na primeira carga. Feche antes de
-concluir que a tela nao respondeu.
-
-## O que este documento nao cobre
-
-API de pacote, configuracao de `app.json`, EAS Build e workflow do Expo: use a
-documentacao versionada oficial. Ela e a fonte, e envelhece menos que qualquer
-copia. Este documento cobre so o que falha sem dizer que falhou.
+The documented paths are the detected LAN bundler, the logged-in Expo account,
+or the QR code. In automation, the deep link
+`<scheme>://expo-development-client/?url=http%3A%2F%2Flocalhost%3A8081` is a
+useful shortcut, not the documented mechanism. Close the developer menu that
+opens on first load before concluding the screen is stuck.

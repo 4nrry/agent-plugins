@@ -1,5 +1,5 @@
 {
-  "description": "Guardas de comando para trabalho mobile. Cada handler carrega seu proprio `if` — sem ele, todo comando Bash da sessao spawnaria um processo. O `if` segura exatamente uma permission rule: sem &&, sem ||, sem lista, entao e um handler por condicao, e duas formas de invocar o mesmo comando viram dois handlers apontando para o mesmo script.",
+  "description": "Command guards for mobile work. Each handler carries its own `if` — without it, every Bash command in the session would spawn a process. An `if` holds exactly one permission rule (no &&, no ||, no list), so there is one handler per condition, and two ways to invoke the same command become two handlers pointing at the same script.",
   "hooks": {
     "PreToolUse": [
       {
