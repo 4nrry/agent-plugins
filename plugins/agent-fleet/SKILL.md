@@ -86,6 +86,18 @@ context — so the schema has to be right *before* the run, not after.
   behind it was right, in every measured case. On those pages the verbatim
   unit is the exact cell: a version string or a table row is shorter than any
   sentence and more distinctive than most.
+- The breadth tier does not have to be your own subagents. With a shell,
+  `scripts/fleet_worker.py` runs the search and fetch-and-extract phases on
+  another agent CLI — grok, agy, opencode or hermes — in an empty temp dir, in
+  each one's read-only mode, against the same closed schemas, and strips
+  invisible code points from what the pages returned. You keep scope, the
+  adversarial pass and synthesis. Search can run on several engines at once
+  (`--backend grok,hermes,agy`): different indexes find different sources,
+  and the merge marks which engines agreed. The README's routing table says
+  which backend to start with per phase. Run `check` and `--self-test` first, ask the
+  user before the first run (it spends their quota or sends the question to
+  that provider), and string-check its quotes like any other agent's: a free
+  model is exactly the small writer that fuses sentences.
 - Prefer several small runs to one large one; resume by run id rather than
   relaunching.
 - Try small and solo first — one fetch, one quote check, a ten-line throwaway
