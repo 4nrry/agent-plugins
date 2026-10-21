@@ -1,5 +1,5 @@
 {
-  "description": "Uma guarda so, estreita, que avisa e nunca bloqueia. O `if` segura exatamente uma permission rule, como no mobile-agent: um handler por condicao.",
+  "description": "One narrow guard that warns and never blocks. The `if` holds exactly one permission rule, as in mobile-agent: one handler per condition.",
   "hooks": {
     "PreToolUse": [
       {

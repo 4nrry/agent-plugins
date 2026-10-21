@@ -5,139 +5,69 @@ description: Rules for multi-agent work — routing each phase to the right mode
 
 # Agent Fleet
 
-Agents are cheap to launch and expensive to trust. These rules cover both
-halves: what to send them, and what to believe when they come back.
+Agents are cheap to launch and expensive to trust. These rules cover what to
+send them and what to believe when they come back. Tiers, not models: cheap,
+mid, and you, the orchestrator — [references/harnesses.md](references/harnesses.md)
+maps them per harness.
 
-`/deep-research` is the usual consumer, and its four stages map onto the
-sections below — the fan-out is sized here, the model for each stage is chosen
-here, and "adversarially verify claims" is the section on what comes back. The
-synthesis stage is the one the rules hand to you rather than to an agent.
+## Before dispatch
 
-A predefined workflow is a fleet someone else designed, and these rules do not
-reach inside its script on their own. Before dispatching one — `/deep-research`
-included — open the script and look for `model:` on its `agent()` calls: no
-override means every agent inherits the session's model, and a top-tier
-session pays top tier once per agent. In the one measured failure, a ~97-agent
-run reached its verification fan-out with everything inheriting the top model
-while these rules sat loaded in context — nobody had read the script. Caught
-late, the fix is cheap: stop the run and resume it with edited overrides; the
-unchanged prefix replays from cache, so the phases already paid for are kept,
-not repaid.
-
-Under `ultracode` the fan-out stops being a decision and becomes the session
-default, because Claude orchestrates dynamic workflows for substantive tasks on
-its own. A dynamic workflow also changes what you get to see: the script holds
-the loop and the intermediate results, and only the final answer reaches the
-context — so the schema has to be right *before* the run, not after.
+- Read any predefined workflow (a deep-research command, a saved script, a set
+  of agent definitions) and find where each agent's model is set. Unset means
+  every agent inherits your model: a top-tier session pays top tier per agent.
+  A ~97-agent run did exactly that with these rules loaded. If caught late,
+  stop and resume with overrides where the harness can resume.
+- A scripted fan-out returns only its final answer, so get the schema right
+  before the run.
 
 ## Model choice
 
-- Route by phase, not by task. Long tool loops — fetch, retry, copy exactly —
-  hold the volume and run fine on the cheapest tier. Adversarial passes need
-  depth, and that is where depth pays: a corrected verdict comes from the pass
-  that contests it, almost never from the breadth that found it. So widening
-  the fan-out buys coverage, not correctness, and the budget belongs to the
-  pass that argues back. The mid tier delivers that depth: paired runs put it
-  even with the top model at contesting, so no stage of the pipeline needs an
-  expensive subagent — the top model's remaining edge is orchestrating.
-- A small model is a good detector and an unsafe writer for source-grounded
-  work: recall holds up, quote fidelity does not — it fuses two non-adjacent
-  sentences, drops the one qualifying word, and the result still reads right.
-  Cheap is safe here only because the schema is closed and the quotes are
-  string-checked; without both, this stops being true.
-- Its failures are diligence, not reasoning — prose in identifier fields, a
-  real quote attached to the wrong source URL, which passes a reading review.
-  So tighten the schema rather than avoid the model; a bare `string` invites a
-  status sentence, and it validates.
-- Price the mix, not the volume. A routed pipeline spends roughly the same
-  tokens as an all-top-tier one; the saving is that most of them run on a
-  cheaper meter. Check whether the tiers currently scale uniformly across
-  input and output — when they do, the cost ratio between tiers is all you
-  need, and phases can be costed by token share alone. Breadth holds the
-  volume, so the larger the fan-out, the closer total cost converges to the
-  breadth tier's rate: the orchestrator's expensive share shrinks as the fleet
-  grows. Look up current per-MTok prices instead of carrying them from memory,
-  and when cost is the target, have each agent report its token total back so
-  the mix is measured rather than estimated.
+- Route by phase. Long tool loops (search, fetch, copy exactly) go to the cheap
+  tier; the adversarial pass goes to the mid tier, which matched the top model
+  at contesting in paired runs. Widening the fan-out buys coverage, not
+  correctness.
+- A small model detects well and writes unsafely: it fuses non-adjacent
+  sentences and drops qualifiers. Cheap is safe only with a closed schema and
+  string-checked quotes.
+- Its failures are diligence — prose in an identifier field, a real quote on
+  the wrong URL. Tighten the schema; a bare `string` invites a status sentence.
+- Price the mix, not the volume: a routed run spends about the same tokens on
+  a cheaper meter. Look up current prices; when cost matters, have each agent
+  report its tokens.
 
 ## Fan-out
 
-- Fan out for breadth, never for prose. Agents find; you write — agent-written
-  drafts get rewritten by hand anyway. Check what survived the last fan-out
-  before designing the next.
-- Size by the shape of the work, not by ambition. Independent items belong in a
-  pipeline, each finishing as it can. A barrier that waits for the whole set
-  earns its cost only when the next step genuinely needs all of it — a dedup, a
-  total, an early exit — because a barrier is priced at its slowest item every
-  time.
-- Constrain the output schema to what will be used: status, evidence line,
-  citation, URL, verbatim quote. A free-text proposal field spends the budget
-  on the part you throw away — and read every field you did ask for, since one
-  you never open is budget spent on nothing. When a field enumerates verdicts,
-  define the boundary cases too — where does right-conclusion-wrong-mechanism
-  fall? Left open, each model settles it by disposition, one reading it as
-  false and another as true-with-a-caveat, both defensibly — the largest
-  source of verdict variance in paired runs, and it moves your aggregate with
-  the model choice.
-- Fit the quote requirement to the page's shape. A verbatim-sentence rule
-  fails on structured pages — package tables, milestone lists — where no
-  sentence exists to copy; held to fifteen words of prose, the agent
-  synthesises them, and the synthesis fails the string check while the fact
-  behind it was right, in every measured case. On those pages the verbatim
-  unit is the exact cell: a version string or a table row is shorter than any
-  sentence and more distinctive than most.
-- Prefer several small runs to one large one; resume by run id rather than
-  relaunching.
-- Try small and solo first — one fetch, one quote check, a ten-line throwaway
-  script.
-- Triage rather than staging waves. One agent per item for breadth, then a
-  mechanical filter over everything they returned, then depth only on what the
-  filter flagged. A wave per stage — fifty to find, fifty to summarise, fifty
-  to audit — pays a model three times per item, and two of those three produce
-  either prose you were going to rewrite or a check a script does better and
-  cheaper. The filter is what shrinks the fleet: it decides which handful is
-  worth an expensive second look.
-- Bound what agents may install, in the prompt. Simulating an install answers
-  availability, a throwaway container answers behaviour, and the host gets only
-  what the user approved; auditing the machine afterwards is the expensive
-  fallback. Container results transfer for behaviour, not for timing or
-  anything needing a desktop.
-- Forbid writes structurally when the task is detection, not in prose. A
-  detector that can also delete will eventually delete something it misjudged
-  — and telling it not to is weaker than it looks. In two measured runs a
-  collector overwrote a shared file despite an explicit ban in its own prompt,
-  and the behaviour stopped only when the agent type changed to one with no
-  write tool in its box. Hand out a toolset that cannot write; the sentence in
-  the prompt is a courtesy to a fleet that already can't, not a control.
+- Fan out for breadth, never for prose. Agents find; you write.
+- Pipeline independent items. Add a barrier only when the next step needs the
+  whole set (dedup, total, early exit): it costs the slowest item every time.
+- Ask only for fields you will use — status, evidence, URL, verbatim quote —
+  and read every one. For verdict enums, define the boundary cases (right
+  conclusion, wrong mechanism); left open, models split by disposition.
+- On structured pages (tables, version lists) the verbatim unit is the cell,
+  not a sentence.
+- Triage instead of waves: one agent per item, a mechanical filter over the
+  results, depth only on what the filter flagged.
+- Several small runs beat one large one; try one item solo first.
+- Forbid writes with a toolset that cannot write, not with a sentence. A
+  collector told not to overwrite a file did it anyway in two runs.
+- Bound installs in the prompt: simulate, or use a throwaway container.
+- The cheap tier can be another CLI: `scripts/fleet_worker.py` runs search and
+  extract on grok, agy, opencode or hermes, read-only. See
+  [references/cli-workers.md](references/cli-workers.md). Ask the user before
+  the first run: it spends their quota or sends the question to that provider.
 
 ## Verifying what comes back
 
-- Every claim carries a URL the agent fetched and a verbatim quote. Verify by
-  fetching and string-searching, no model in the loop — the only check that
-  cannot be talked into agreeing, and the only one that catches a real quote on
-  the wrong source. Use `scripts/verify_citations.py` instead of writing your
-  own: run `--self-test` first, which proves both ends in two seconds. Its
-  header lists seven ways this check silently fails, each of which turns a true
-  quote into an apparent fabrication — the expensive outcome, because you then
-  go and correct something that was already right.
-- Report near-misses as a ratio, not pass/fail. Markup breaks sentences across
-  tags; roughly half or less means the agent wrote from memory. The ratio only
-  carries information above a sentence or so, and a high one proves presence,
-  not anchoring — three common tokens will match somewhere on almost any page,
-  including the paragraph that does not support the verdict. On a short quote,
-  check where it landed rather than whether it landed; the exception is a
-  distinctive identifier — a version string, a package name with its epoch —
-  where matching at all is the anchor.
-- An unreachable page is its own answer — neither pass nor failure. Some hosts
-  refuse scripted GETs, some render client-side. Keep a per-project list rather
-  than rediscovering it each run; archive mirrors and plain-HTML alternatives
-  usually work.
-- Treat a verifier's corrected text as research, not copy. Rewrite it to the
-  surrounding register.
-- Verify the agents' verdicts, not just their findings — and expect the error
-  to point both ways. The breadth fleet under-marks: told to flag uncertainty,
-  it flags none, and hands back dry verdicts. A delegated adversarial pass
-  over-marks: it wants a caveat on claims nobody disputes, in every tier —
-  measured on the same two claims with both a mid and a top model contesting.
-  You arbitrate both directions. A contester's caveat is a claim to verify
-  against the source, not a correction to accept.
+- Every claim carries a fetched URL and a verbatim quote. Check by fetching and
+  string-matching, no model in the loop: run `scripts/verify_citations.py`
+  (`--self-test` first). It is the only check that catches a real quote on the
+  wrong source.
+- Read the match ratio, not pass/fail. About half or less means written from
+  memory. Above a sentence the ratio means presence, not support: check where a
+  short quote landed, unless it is a distinctive identifier.
+- An unreachable page is neither pass nor fail. Try an archive mirror; keep a
+  per-project list of hosts that refuse scripts.
+- Verify verdicts in both directions: the breadth tier under-marks uncertainty,
+  an adversarial pass over-marks caveats. A contester's caveat is a claim to
+  check, not a correction to accept.
+- Rewrite verifier text to your own register before using it.

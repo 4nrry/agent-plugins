@@ -19,6 +19,10 @@
       "source": "./plugins/crew"
     },
     {
+      "name": "extension-audit",
+      "source": "./plugins/extension-audit"
+    },
+    {
       "name": "game-facts",
       "source": "./plugins/game-facts"
     },

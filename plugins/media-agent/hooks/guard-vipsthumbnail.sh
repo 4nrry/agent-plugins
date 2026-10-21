@@ -1,31 +1,30 @@
 #!/usr/bin/env bash
-# PreToolUse / Bash — avisa quando `vipsthumbnail -o NOME` vai gravar no lugar errado.
+# PreToolUse / Bash: warn when `vipsthumbnail -o NAME` will write to the wrong place.
 #
-# Por que: o `-o` do vipsthumbnail e um FORMATO de nome, nao um caminho de saida.
-# Sem barra, o arquivo nasce no diretorio do arquivo de ENTRADA, nao no cwd.
-# Observado nesta colecao: `vipsthumbnail repo/public/foto.jpg -s 480 -o foto-480.png`
-# rodado de um scratch deixou `foto-480.png` untracked dentro do repositorio e o
-# scratch vazio; o comando seguinte, que esperava o arquivo no cwd, falhou com
-# "No such file" e o arquivo perdido so apareceu no `git status` de outro projeto.
+# Why: vipsthumbnail's `-o` is a name FORMAT, not an output path. Without a slash
+# the file lands in the INPUT file's directory, not the cwd. For example,
+# `vipsthumbnail repo/public/photo.jpg -s 480 -o photo-480.png` run from a scratch
+# dir leaves an untracked `photo-480.png` inside the repo and the scratch dir empty.
 set -uo pipefail
 
 input=$(cat) || exit 0
 cmd=$(jq -r '.tool_input.command // empty' <<<"$input" 2>/dev/null) || exit 0
 [[ -n "$cmd" ]] || exit 0
 
-# Interessa so `-o`/`--output` cujo valor nao tem barra. Valor com barra e caminho
-# explicito e faz o que parece.
+# Only `-o`/`--output` values without a slash matter; a value with a slash is an
+# explicit path and does what it looks like.
 grep -qE '(^|[;&|[:space:]])vipsthumbnail[[:space:]].*(-o|--output)[[:space:]=]+[^/[:space:]"'"'"']+([[:space:]]|$)' <<<"$cmd" || exit 0
 
 jq -n '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
     additionalContext: (
-      "`vipsthumbnail -o NOME` sem barra grava NOME no diretorio do arquivo de " +
-      "ENTRADA, nao no diretorio atual. Se a entrada esta num repositorio, o " +
-      "thumbnail nasce la dentro, untracked, e o cwd continua vazio. Passe um " +
-      "caminho com diretorio em -o (por exemplo `-o /tmp/x/%s-480.png` ou " +
-      "`-o ./saida.png`), ou use `magick IN -resize 480x480 OUT`."
+      "`vipsthumbnail -o NAME` without a slash writes NAME to the INPUT " +
+      "file'"'"'s directory, not the current directory. If the input is in a " +
+      "repository, the thumbnail lands there, untracked, and the cwd stays " +
+      "empty. Pass a path with a directory in -o (for example " +
+      "`-o /tmp/x/%s-480.png` or `-o ./out.png`), or use " +
+      "`magick IN -resize 480x480 OUT`."
     )
   }
 }'

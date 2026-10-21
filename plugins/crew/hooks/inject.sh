@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # UserPromptSubmit hook: when the prompt names agy, opencode or copilot as a
 # whole word (case-insensitive), inject that backend's SKILL.md plus a line
-# pointing at the shared delegation doc. Advisory only: it never blocks, always
+# pointing at the delegate skill and the real path of crew.py. Advisory only: it never blocks, always
 # exits 0, reads only the prompt and files in this plugin, no network.
 #
 # Why a hook and not the skill descriptions: agent-fleet measured description
@@ -30,8 +30,7 @@ for backend in "${matched[@]}"; do
     echo "crew plugin hook: $skill not found; skill not injected" >&2
     continue
   fi
-  # shellcheck disable=SC2016  # the literal ${CLAUDE_PLUGIN_ROOT} is the point: SKILL.md uses it
-  printf 'The crew:%s skill applies to this request (matched the word "%s"). Read %s/shared/delegate.md before delegating or reviewing through it. ${CLAUDE_PLUGIN_ROOT} below is %s.\n\n' \
+  printf 'The crew:%s skill applies to this request (matched the word "%s"). Read %s/skills/delegate/SKILL.md before delegating or reviewing through it. In both skills, scripts/crew.py is %s/skills/delegate/scripts/crew.py.\n\n' \
     "$backend" "$backend" "$PLUGIN_ROOT" "$PLUGIN_ROOT"
   cat "$skill"
   printf '\n'

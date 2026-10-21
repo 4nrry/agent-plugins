@@ -1,184 +1,100 @@
 ---
 name: android-device
-description: O que quebra em silencio quando um agente dirige um aparelho Android ou emulador — dump de UI que serve estado velho, superficie de GL invisivel para acessibilidade, screenshot que estoura a sessao por memoria, tuneis do adb que caem sozinhos, e processos que nao sao seus. Leia antes de automatizar qualquer fluxo em device, e de novo quando uma tela "travar" sem erro nenhum. Nao ensina o CLI `android`: para isso use `android skills add` e `android docs search`, que o Google mantem.
+description: Covers what fails silently when an agent drives an Android device or emulator — UI dumps that serve stale state, GL surfaces invisible to accessibility, screenshots that exhaust session memory, adb tunnels that drop on their own, and processes that belong to someone else. Use before automating any on-device flow, and again when a screen seems stuck with no error. For the `android` CLI itself, use `android skills add` and `android docs search`, which Google maintains.
 ---
 
-# Android Device
+# Android device
 
-Dirigir um app num aparelho e diferente de compila-lo. O que falha aqui quase
-nunca levanta erro — devolve dado velho, ou nada, e voce diagnostica a coisa
-errada por meia hora.
+Failures here rarely raise an error: they return stale data or nothing, and
+you debug the wrong thing. The `android` CLI's own catalog (`android skills
+list`, `android docs search "<term>"`) covers the CLI, AGP, Compose and the
+SDK better than this file; this file covers the silent failures.
 
-## O que este documento nao cobre, de proposito
+## Before starting anything, see what is already up
 
-O `android` CLI tem catalogo proprio de skills, mantido por quem escreve o
-binario, com canal de update ciente de agente:
-
-```bash
-android skills list                 # 22 skills no catalogo, hoje
-android skills add <skill>          # instala para os agentes detectados
-android docs search "<termo>"       # base de conhecimento oficial
-```
-
-Se a duvida e sobre um comando do CLI, sobre AGP, Compose, CameraX ou R8, o
-catalogo deles responde melhor e envelhece menos. Este documento cobre a camada
-que o catalogo nao toca: o agente, e as falhas silenciosas.
-
-## Antes de subir qualquer coisa, veja o que ja esta de pe
-
-Os recursos sao unicos por maquina: uma porta de bundler, um lock por emulador,
-um servidor adb. Subir o que ja esta rodando raramente da erro claro — da um
-sintoma torto, e em geral na sessao de outra pessoa.
+Ports, emulator locks and the adb server are one per machine, and starting a
+second one breaks someone else's session. Run the `preflight` skill, or:
 
 ```bash
-adb devices                    # ja ha aparelho ou emulador?
-adb reverse --list             # que tuneis existem?
-ss -ltnp | grep -E ':(8081|8082)'   # quem e dono do bundler
+adb devices; adb reverse --list; ss -ltnp | grep -E ':(8081|8082)'
+readlink /proc/<pid>/cwd          # which checkout owns a process
 ```
 
-Com worktree ou multiplos checkouts, a pergunta que importa e de qual diretorio
-e o processo que esta no ar:
+## Reading the screen
 
-```bash
-readlink /proc/<pid>/cwd
-```
-
-## Ler a tela: dois caminhos, e um ponto cego
-
-**Arvore de acessibilidade** e barata e precisa, e e o caminho padrao. Mas leia
-pelo stdout, nunca por arquivo:
+Use the accessibility tree, read from stdout — a dump to a file can fail
+silently and leave the previous one in place:
 
 ```bash
 adb exec-out uiautomator dump /dev/tty
 ```
 
-**Observado, nao documentado.** Nada na doc do UI Automator descreve isso, mas o
-dump para arquivo falha em silencio de vez em quando — e quando falha, o arquivo
-anterior continua la: voce le a arvore da rodada passada e conclui que a tela
-travou quando ela ja mudou. A mitigacao acima custa nada e remove a classe
-inteira de erro, entao vale mesmo sem doc que a sustente.
-
-**O ponto cego, e ele e observacao, nao doc.** Superficie de GL nao aparece na
-arvore: mapa, video, WebView, canvas — o dump volta vazio ou sem os elementos de
-dentro, e isso NAO significa app travado. A doc de acessibilidade de custom views
-nao trata desse caso. Medido num app com MapLibre: a arvore devolveu 24 elementos
-e nenhum de dentro do mapa; o caminho visual rotulou cerca de 50 la dentro.
-
-Para essas telas, o caminho e visual:
+GL surfaces (maps, video, WebView, canvas) do not appear in the tree; an empty
+or shallow dump there does not mean the app is stuck. Use the visual path:
 
 ```bash
 android screen capture --annotate -o shot.png
 adb shell input $(android screen resolve --screenshot shot.png --string "tap #34")
 ```
 
-Repare em `--screenshot`. A documentacao do proprio skill do Google diz
-`--screen`, e o binario responde `Missing required option: '--screenshot=PARAM'`.
-O script empacotado aqui checa isso contra o binario instalado:
+The flag is `--screenshot`; Google's own skill text says `--screen`, which the
+binary rejects. Bundled helpers, from this skill's directory:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/verify_tool_facts.py
+scripts/adb-ui.sh dump              # labels and bounds from stdout; explains an empty tree
+scripts/adb-ui.sh tap "Continue"    # taps the smallest clickable node that matches
+scripts/adb-ui.sh shot out.jpg      # screenshot already downscaled, safe to read
+scripts/verify_tool_facts.py        # checks the CLI flags cited here against the installed binary
 ```
 
-O plugin tambem empacota a ferramenta, nao so o conselho:
+## Screenshots
+
+A full screenshot is several MB; reading it raw can kill the agent session.
+Downscale first: `vipsthumbnail shot.png --size 640x -o small.jpg[Q=85]`.
+`screencap` takes about a second (record with `screenrecord` for fast
+transitions) and sometimes returns white before a repaint; a micro-swipe fixes
+it.
+
+## Input
+
+- Leave about 0.3 s between `input` events; a tight loop triggers "Not
+  Responding".
+- Check what `input text` does in your app first: in a dev client some
+  characters trigger developer shortcuts and reload the bundle. Type in
+  chunks around them.
+
+## Wireless debugging
+
+Connect by mDNS service name, not `IP:port` — the name works where the
+address listed by mDNS can fail:
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/adb-ui.sh dump              # rotulo + bounds, pelo stdout
-${CLAUDE_PLUGIN_ROOT}/scripts/adb-ui.sh tap "Continuar"   # toca o menor no clicavel que casa
-${CLAUDE_PLUGIN_ROOT}/scripts/adb-ui.sh shot out.jpg      # screenshot ja reduzido, seguro de ler
-```
-
-Quando a arvore volta vazia, o `dump` explica que provavelmente e superficie de
-GL e mostra o caminho visual, em vez de deixar voce concluir que o app travou.
-
-## Screenshot custa mais do que parece
-
-Um screenshot cheio e alguns MB. Ler isso direto numa sessao de agente e o
-caminho conhecido para derrubar o processo por memoria — reduza antes:
-
-```bash
-adb exec-out screencap -p > shot.png
-vipsthumbnail shot.png --size 640x -o small.jpg[Q=85]
-```
-
-Duas armadilhas de tempo: `screencap` leva perto de um segundo, entao nao serve
-para flagrar transicao rapida — grave com `screenrecord` e extraia quadros. E
-ele volta branco as vezes, porque pega o buffer antes do repaint; um micro-swipe
-resolve.
-
-## Entrada: nao afogue a fila
-
-`adb shell input swipe` em laco sem pausa deixa a janela "Not Responding". Deixe
-cerca de 0,3 s entre eventos.
-
-E confira o que `input text` faz no SEU app antes de confiar: em app com dev
-client, certos caracteres disparam atalho de desenvolvedor e recarregam o bundle
-no meio do fluxo. Se acontecer, digite em pedacos, cortando antes do caractere
-problematico.
-
-## Aparelho fisico sem cabo: conecte pelo nome
-
-A depuracao sem fio (Android 11+) poe o aparelho na rede como um servico mDNS.
-Depois do pareamento, a conexao que funciona e **pelo nome do servico**:
-
-```bash
-adb mdns services                       # adb-<serial>-xxxx  _adb-tls-connect._tcp  IP:porta
+adb mdns services
 adb connect adb-<serial>-xxxx._adb-tls-connect._tcp
 ```
 
-**Observado, nao documentado:** `adb connect IP:porta` com o mesmo IP e porta
-que o mDNS acabou de listar falhou, e pelo nome conectou — mesmo aparelho,
-mesma rede, mesmo minuto. A doc descreve os dois caminhos sem distingui-los.
+## Tunnels drop
 
-Tudo o que vale por USB vale aqui: `adb reverse`, `screencap`, `input`, e o
-scrcpy para ver a tela (skill `espelhar-celular`). O hub USB que reenumera
-derruba o cabo; o Wi-Fi nao.
+`adb kill-server` (or a client/server version mismatch) drops every session's
+`adb reverse` tunnels, and the app shows a network error as if the backend
+were down. Check `adb reverse --list` and re-apply before debugging the
+backend. Never run `adb kill-server` as a retry reflex.
 
-## Os tuneis caem sozinhos
+## Processes that are not yours
 
-`adb reverse` e o mecanismo oficial de forwarding do device para o host, e a doc
-confirma que `adb kill-server` termina o servidor, que volta a subir no proximo
-comando adb.
+- Do not kill an emulator, bundler, container or dev server you did not start;
+  ask.
+- Never `pkill -f`/`pgrep -f` with a pattern that appears in your own command
+  line: it matches your shell. Use `-x` with the exact name, or a PID.
+- Stop the emulator with `adb emu kill`, not SIGTERM, which leaves the AVD
+  lock behind.
 
-**O que e observacao, nao doc:** quando isso acontece, os tuneis **de todas as
-sessoes** se perdem. A doc nao diz o que acontece com eles. O sintoma engana — o
-app perde a stack e mostra erro de rede, como se o backend estivesse fora.
+## Emulator limits
 
-Antes de cacar bug no backend, confira `adb reverse --list` e reaplique. E nao
-rode `adb kill-server` como reflexo de retry — e ele que produz esse estado.
+The emulator has no Bluetooth hardware: a scan returns nothing and raises no
+error. Real-radio behavior needs a physical device.
 
-## Processos que nao sao seus
+## The `android` bootstrapper
 
-Emulador, bundler, container e dev server podem ser de outra sessao, ou do
-usuario. Nao mate o que voce nao subiu; se algo precisa cair, pergunte.
-
-Para casar processo, nunca use `-f` com um padrao que aparece na sua propria
-linha de comando: `pkill -f foo` dentro de um comando que contem `foo` mata o
-proprio shell, e `pgrep -f` reporta um processo que e voce mesmo. O truque do
-colchete nao resolve. Use `-x` com o nome exato, ou o PID de um `ps` anterior.
-
-Para desligar o emulador, o comando documentado e `kill` no console dele; `adb
-emu kill` e o atalho que envia esse comando. Qualquer um dos dois, menos SIGTERM
-— **observado:** matar direto deixa o lock do AVD para tras.
-
-## O radio do emulador e sintetico
-
-**A causa e documentada:** *"The Android Emulator doesn't include virtual
-hardware for the following: Bluetooth"*. Nao ha radio de verdade.
-
-**O modo de falha e observado:** um scan **nao lanca erro, simplesmente nao
-encontra nada**. Se vier vazio, isso e o emulador, nao o seu codigo — nao gaste
-tempo depurando. Contrato com hardware real exige aparelho fisico.
-
-## Ferramenta muda; verifique antes de citar
-
-O `android` CLI e novo e se move. Nenhum fato de flag aqui vale sem checagem
-contra o binario que voce tem:
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/verify_tool_facts.py          # asserta as flags citadas neste documento
-${CLAUDE_PLUGIN_ROOT}/scripts/verify_tool_facts.py --self-test
-```
-
-Um detalhe que pega: o `android` de `cmdline-tools/latest/bin` e um
-bootstrapper. Qualquer invocacao — inclusive `--version` — baixa e instala o CLI
-de verdade, na casa das centenas de MB. Nao e um comando de leitura.
+`cmdline-tools/latest/bin/android` downloads and installs the real CLI (hundreds
+of MB) on any invocation, `--version` included. It is not a read-only command.

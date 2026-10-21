@@ -24,10 +24,11 @@ Or paste `4nrry/agent-plugins` into the Claude Desktop **Add marketplace** dialo
 |---|---|
 | [agent-fleet](plugins/agent-fleet/) | Rules for multi-agent work — model routing per phase, fan-out sizing, output schemas, and citation verification. Two hooks, because the prose alone measurably did not fire. |
 | [agents-md](plugins/agents-md/) | Write, slim and audit a repo's AGENTS.md: what goes in, what comes out, per-tool limits (Claude Code, Antigravity, Codex), and a stdlib checker for missing scripts, dead paths, oversize files and the CLAUDE.md that hides AGENTS.md from Claude Code. |
-| [crew](plugins/crew/) | Cheap headless workers through three agent CLIs, without fighting Claude's harness: Claude writes the task, sets scope and gate, and reviews the diff; the worker runs one slice under its own CLI's hooks, installed for the run only. Backends: agy (Antigravity CLI, Gemini; default), opencode (free Zen models, weaker shell guard) and GitHub Copilot CLI (Free plan: `--model auto` only, paid in AI credits, no shell). The verdict never reads exit 0 as success — in agy 1.3.4 timeouts, denied actions and an unmet `--json-schema` all exit 0 (observed, n=1 each). One skill per backend plus a shared delegation doc, injected by a UserPromptSubmit hook when the prompt names the CLI, and a watcher that ends the background commands agy would otherwise wait 30 min for. |
+| [crew](plugins/crew/) | Cheap headless workers through three agent CLIs without fighting Claude's harness: Claude writes the task, sets scope and gate and reviews the diff; the worker runs one slice under its own CLI's hooks, installed for the run only. Backends: agy (Antigravity, Gemini; default), opencode 2.x (free Zen models, weaker shell guard) and GitHub Copilot CLI (no shell, paid in AI credits). The verdict never reads the CLI's exit 0 as success. |
+| [extension-audit](plugins/extension-audit/) | Audit skills, plugins and hooks against Anthropic's authoring guidance and current prompting research: a sourced checklist for judgment calls and a stdlib linter for the mechanical ones, which `just check` runs over this repo. |
 | [game-facts](plugins/game-facts/) | Pins the installed game's version before the agent answers from training memory. A UserPromptSubmit hook reads Steam appmanifests and injects appid, buildid and update date — so the version never has to be typed into the prompt. |
 | [homelab](plugins/homelab/) | Software you maintain yourself on a Linux box, where the official docs stop. A Palworld dedicated server (the config the server erases on shutdown), WireGuard through NetworkManager (the IPv6 leak that passes the IP test), and tarball installs (one versioned layout, and why a self-updating app must not live in /opt). Machine state stays out of the repo. |
-| [media-agent](plugins/media-agent/) | Producao de midia numa maquina propria com GPU de 8 GB: locucao a -16 LUFS com `say` separado da legenda, trilha e bancos com a licenca de cada item, retoque no ComfyUI so com modelos comerciais, turntable no Blender headless, video como codigo edicao de video pronto pelo MCP do Kinocut, imagem e video gerados pelas assinaturas de Gemini e Grok, e a ElevenLabs alem da voz: SFX, trilha, limpeza de gravacao, legenda e dublagem. Um hook que avisa onde o `vipsthumbnail -o` vai gravar de verdade. |
+| [media-agent](plugins/media-agent/) | Media production by an agent on a machine with an 8 GB GPU and commercial licensing: voice-over at -16 LUFS, music and stock media with per-item licenses, headless ComfyUI retouching with commercial models, generated images and video, a headless Blender turntable, video as code in Remotion, finished-video editing through the Kinocut MCP, and ElevenLabs beyond voice. One hook warns where vipsthumbnail -o really writes. |
 | [mobile-agent](plugins/mobile-agent/) | What breaks silently in a mobile app: the device layer (adb, emulator, UI dumps) and the bundler layer (Expo, Metro, prebuild). Six narrow PreToolUse guards that warn and never block. |
 
 Each plugin's own README carries its components, its measurements, and what
@@ -62,7 +63,9 @@ metadata, every hook command points at an executable file, every run record
 conforms to [`bench/schema/run.schema.json`](bench/schema/run.schema.json),
 every `eval_ref` resolves *and* hashes to the `eval_sha256` beside it, every
 `bench/` path cited in a plugin description exists, shellcheck passes, and every
-script advertising `--self-test` passes it. CI runs the same one command.
+script advertising `--self-test` passes it, and the
+[extension-audit](plugins/extension-audit/) linter reports no errors (its
+warnings are listed, not fatal). CI runs the same one command.
 
 ## Layout
 

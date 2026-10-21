@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
-# PreToolUse / Bash — avisa antes de `apt install scrcpy` (ou `adb`): o pacote
-# do Ubuntu instala um SEGUNDO adb em /usr/bin, na frente do adb do SDK.
+# PreToolUse / Bash — warns before `apt install scrcpy` (or `adb`): the Ubuntu
+# package installs a SECOND adb in /usr/bin, ahead of the SDK adb.
 #
-# Por que: o pacote `scrcpy` do Ubuntu depende do pacote `adb` (documentado).
-# A doc do React Native manda ANEXAR o platform-tools ao PATH, entao /usr/bin
-# vence, e dois adb de versoes diferentes reiniciam o servidor a cada chamada
-# ("adb server version doesn't match this client; killing..."). Isso leva
-# junto todos os `adb reverse` e a conexao sem fio — o mesmo estrago do
-# `adb kill-server`, so que silencioso e repetido.
+# Why: Ubuntu's `scrcpy` depends on its `adb` package, and React Native docs say
+# to APPEND platform-tools to PATH, so /usr/bin wins. Two adb versions restart
+# the server on every call ("adb server version doesn't match this client;
+# killing..."), dropping all `adb reverse` tunnels and the wireless connection.
 #
-# Nunca bloqueia: instalar e decisao do usuario. Avisa so quando ha um adb do
-# SDK para ser sombreado; sem SDK na maquina, o adb do apt e o unico, e nao ha
-# o que dizer.
+# Never blocks: installing is the user's call. Warns only when an SDK adb exists
+# to be shadowed; without an SDK the apt adb is the only one.
 set -uo pipefail
 
 input=$(cat) || exit 0
@@ -28,13 +25,13 @@ jq -n --arg sdk "$sdk" '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
     additionalContext: (
-      "O pacote `scrcpy` do apt depende do pacote `adb`, que vai para /usr/bin — " +
-      "ANTES do adb do SDK (" + $sdk + ") no PATH que a doc do React Native " +
-      "manda montar. Dois adb de versoes diferentes reiniciam o servidor a cada " +
-      "chamada e derrubam todos os `adb reverse` e a conexao sem fio.\n" +
-      "Alternativa sem segundo adb: o tarball oficial do release do scrcpy, com " +
-      "um wrapper que exporta ADB=" + $sdk + " (skill espelhar-celular).\n" +
-      "Se seguir com o apt: confira `which -a adb` depois e deixe UM na frente."
+      "The apt `scrcpy` package depends on the `adb` package, which lands in " +
+      "/usr/bin — BEFORE the SDK adb (" + $sdk + ") on the PATH that the React " +
+      "Native docs tell you to set up. Two adb versions restart the server on " +
+      "every call and drop all `adb reverse` tunnels and the wireless connection.\n" +
+      "Alternative with no second adb: the official scrcpy release tarball, with " +
+      "a wrapper that exports ADB=" + $sdk + " (skill android-mirror).\n" +
+      "If you go ahead with apt: run `which -a adb` afterwards and leave ONE in front."
     )
   }
 }' 2>/dev/null || exit 0
