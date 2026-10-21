@@ -168,37 +168,37 @@ _CMD = r"(?:^|[;&|(\n`]|\$\()\s*"
 DENY_COMMANDS = [
     (r"\bgit\s+" + _GIT_OPTS + r"(?!(?:status|diff|log|show|ls-files|ls-tree|grep|blame|"
      r"shortlog|describe|cat-file|rev-list|merge-base|add|rm|mv)\b)[^\s-]",
-     "git fora da lista de leitura (status, diff, log, show, grep, add...)"),
-    (r"\bgit\b.*--(git-dir|git-path|git-common-dir|absolute-git-dir)\b", "caminho do .git"),
-    (r"(^|[\s/='\"<>:])\.(git|agents)($|[\s/'\"])", "acesso ao .git ou ao .agents"),
-    (r"\brm\s(?:[^;&|\n]*\s)?(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)(\s|$)", "rm recursivo"),
-    (r"\bfind\b[^;&|\n]*\s-(delete|exec|execdir|ok|okdir|fprint\w*|fls)\b", "find que escreve ou executa"),
+     "git outside the read-only list (status, diff, log, show, grep, add...)"),
+    (r"\bgit\b.*--(git-dir|git-path|git-common-dir|absolute-git-dir)\b", "git directory path"),
+    (r"(^|[\s/='\"<>:])\.(git|agents)($|[\s/'\"])", "access to .git or .agents"),
+    (r"\brm\s(?:[^;&|\n]*\s)?(?:-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)(\s|$)", "recursive rm"),
+    (r"\bfind\b[^;&|\n]*\s-(delete|exec|execdir|ok|okdir|fprint\w*|fls)\b", "find that writes or executes"),
     (_CMD + r"(ln|chmod|chown|chgrp|crontab|at|batch|nohup|setsid|disown|systemctl|service)(\s|$)",
-     "link, permissao, agendamento ou processo destacado"),
-    (r"(^|[^&>|])&($|[^&>])", "processo em segundo plano (&)"),
+     "link, permission change, scheduling or detached process"),
+    (r"(^|[^&>|])&($|[^&>])", "background process (&)"),
     (r"\b(npm|pnpm|yarn|bun)\s+(install|i|ci|add|remove|rm|uninstall|update|"
-     r"upgrade|up|link|publish)\b", "install ou publish de pacote"),
+     r"upgrade|up|link|publish)\b", "package install or publish"),
     (r"\b(pip3?|poetry|cargo|gem|composer)\s+(install|add|remove|uninstall|publish)\b"
      r"|\bgo\s+(get|install)\b|\buv\s+(add|remove|sync|pip\s+install)\b",
-     "install de pacote"),
-    (r"\b(apt|apt-get|dnf|yum|pacman|brew|snap|flatpak)\b", "gerenciador de pacotes do sistema"),
-    (r"\b(npx|bunx)\s+(-y|--yes)\b|\bpnpm\s+dlx\b", "execucao de pacote baixado"),
-    (r"(^|[\s;|&(])(sudo|su|doas)(\s|$)", "elevacao de privilegio"),
+     "package install"),
+    (r"\b(apt|apt-get|dnf|yum|pacman|brew|snap|flatpak)\b", "system package manager"),
+    (r"\b(npx|bunx)\s+(-y|--yes)\b|\bpnpm\s+dlx\b", "running a downloaded package"),
+    (r"(^|[\s;|&(])(sudo|su|doas)(\s|$)", "privilege escalation"),
     (r"\b(npm|pnpm|yarn|bun|npx|nx|make|just|task|turbo)\b[^;&|\n]*\b(deploy|publish|release)\b",
-     "deploy ou publish"),
+     "deploy or publish"),
     (r"\b(wrangler|vercel|netlify|firebase|flyctl|heroku|kubectl|helm|terraform|"
-     r"pulumi|docker|podman|gcloud|aws|az)\b", "infra, deploy ou container"),
+     r"pulumi|docker|podman|gcloud|aws|az)\b", "infra, deploy or container"),
     (r"\b(prisma|drizzle-kit|knex|sequelize|alembic|typeorm)\b.*\b(migrate|push|reset|seed)\b"
      r"|\bdb:(migrate|push|reset|seed|drop)\b|\bmanage\.py\s+migrate\b",
-     "migracao ou escrita de banco"),
-    (r"\b(psql|mysql|sqlite3|mongosh|redis-cli)\b", "cliente de banco"),
+     "database migration or write"),
+    (r"\b(psql|mysql|sqlite3|mongosh|redis-cli)\b", "database client"),
     (r"\bsed\b[^|;&]*\s(-[a-zA-Z]*i|--in-place)|\bperl\s+-[a-zA-Z]*i|\btee\b|(^|[\s;|&])dd\s",
-     "edicao de arquivo pelo shell"),
-    (r"\b(curl|wget|ssh|scp|rsync|nc|ncat|telnet|ftp)\b", "rede"),
+     "file edit through the shell"),
+    (r"\b(curl|wget|ssh|scp|rsync|nc|ncat|telnet|ftp)\b", "network"),
     (r"(^|[\s;|&(])(ps|pgrep|pkill|kill|killall|top|htop|lsof)(\s|$)|/proc\b",
-     "inspecao de processos"),
-    (r"(^|[\s=:'\"(/<>;&|])\.\.($|[\s/;&|)'\"])", "caminho com .."),
-    (r"\$\{?HOME\b|\bprintenv\b|(^|[\s;|&])env\s*($|[;|&])", "home ou ambiente do usuario"),
+     "process inspection"),
+    (r"(^|[\s=:'\"(/<>;&|])\.\.($|[\s/;&|)'\"])", "path with .."),
+    (r"\$\{?HOME\b|\bprintenv\b|(^|[\s;|&])env\s*($|[;|&])", "user home or environment"),
 ]
 
 # opencode only: its models write through bash where agy's use the edit tools
@@ -206,9 +206,9 @@ DENY_COMMANDS = [
 # coreutils are denied too. Added to the same deny list, never a second policy.
 OPENCODE_DENY_COMMANDS = [
     (_CMD + r"(cp|mv|touch|mkdir|rmdir|rm|truncate|install|patch)(\s|$)",
-     "escrita de arquivo pelo shell (use write/edit)"),
+     "file write through the shell (use write/edit)"),
 ]
-REVIEW_DENY_ALL = [(r"[\s\S]", "review somente leitura: sem shell")]
+REVIEW_DENY_ALL = [(r"[\s\S]", "read-only review: no shell")]
 
 # opencode tool -> (the agy tool decide_pre knows, {opencode arg: agy arg}).
 # The guard plugin forwards every call here, so one policy covers both.
@@ -310,7 +310,7 @@ def git(repo: str, *args: str, check: bool = True, binary: bool = False):
                           capture_output=True, text=not binary)
     if check and proc.returncode != 0:
         err = proc.stderr if not binary else proc.stderr.decode(errors="replace")
-        raise Refusal(f"git {' '.join(args)} falhou: {err.strip()}")
+        raise Refusal(f"git {' '.join(args)} failed: {err.strip()}")
     return proc.stdout
 
 
@@ -318,7 +318,7 @@ def repo_root(start: str) -> str:
     try:
         out = git(start, "rev-parse", "--show-toplevel")
     except (Refusal, FileNotFoundError, NotADirectoryError) as exc:
-        raise Refusal(f"{start} nao e um repositorio git: {exc}") from exc
+        raise Refusal(f"{start} is not a git repository: {exc}") from exc
     return os.path.realpath(out.strip())
 
 
@@ -331,13 +331,13 @@ def parse_duration(text) -> int:
         return int(text)
     m = re.fullmatch(r"\s*(\d+)\s*([smh]?)\s*", str(text))
     if not m:
-        raise Refusal(f"duracao invalida: {text!r} (use 90s, 20m, 1h)")
+        raise Refusal(f"invalid duration: {text!r} (use 90s, 20m, 1h)")
     n, unit = int(m.group(1)), m.group(2) or "s"
     return n * {"s": 1, "m": 60, "h": 3600}[unit]
 
 
 def tail(text: str, n: int = TAIL_CHARS) -> str:
-    return text if len(text) <= n else "…(cortado)…\n" + text[-n:]
+    return text if len(text) <= n else "…(truncated)…\n" + text[-n:]
 
 
 def in_globs(rel: str, globs) -> bool:
@@ -374,7 +374,7 @@ def load_task(path: str, **overrides) -> dict:
     path = os.path.abspath(path)
     task = read_json(path)
     if not isinstance(task, dict):
-        raise Refusal(f"{path}: nao e um objeto JSON legivel")
+        raise Refusal(f"{path}: not a readable JSON object")
     task.update({k: v for k, v in overrides.items() if v})
     base = os.path.dirname(path)
     if "prompt_file" in task:
@@ -388,7 +388,7 @@ def load_task(path: str, **overrides) -> dict:
         sp = os.path.join(base, task["report_schema"])
         task["report_schema"] = read_json(sp)
         if task["report_schema"] is None:
-            raise Refusal(f"report_schema {sp}: nao parseia")
+            raise Refusal(f"report_schema {sp}: does not parse")
     return normalize_task(task)
 
 
@@ -396,55 +396,55 @@ def normalize_task(task: dict) -> dict:
     errs = []
     prompt = task.get("prompt")
     if not isinstance(prompt, str) or not prompt.strip():
-        errs.append("prompt (ou prompt_file) ausente")
+        errs.append("prompt (or prompt_file) missing")
     elif len(prompt.encode()) > MAX_PROMPT_BYTES:
-        errs.append(f"prompt maior que {MAX_PROMPT_BYTES} bytes; aponte para arquivos em vez de cola-los")
+        errs.append(f"prompt larger than {MAX_PROMPT_BYTES} bytes; point to files instead of pasting them")
     scope = task.get("scope")
     if not (isinstance(scope, list) and scope and all(isinstance(s, str) and s for s in scope)):
-        errs.append("scope deve ser uma lista nao vazia de globs relativos a raiz do repo")
+        errs.append("scope must be a non-empty list of globs relative to the repo root")
     elif any(s.startswith("/") or ".." in s.split("/") for s in scope):
-        errs.append("scope: globs sao relativos a raiz do repo, sem / inicial e sem ..")
+        errs.append("scope: globs are relative to the repo root, with no leading / and no ..")
     gate = task.get("gate")
     if not isinstance(gate, dict):
-        errs.append("gate deve ser um objeto {format, checks, forbid}")
+        errs.append("gate must be an object {format, checks, forbid}")
         gate = {}
     for key in ("format", "checks", "forbid"):
         val = gate.get(key, [])
         if not (isinstance(val, list) and all(isinstance(x, str) for x in val)):
-            errs.append(f"gate.{key} deve ser lista de strings")
+            errs.append(f"gate.{key} must be a list of strings")
     if not gate.get("checks") and not gate.get("format"):
-        errs.append("gate sem nenhum comando: sem checks o gate so confere escopo, e isso nao prova nada")
+        errs.append("gate has no command: without checks it only verifies scope, which proves nothing")
     for pat in gate.get("forbid", []) or []:
         try:
             re.compile(pat)
         except re.error as exc:
-            errs.append(f"gate.forbid {pat!r}: regex invalida ({exc})")
+            errs.append(f"gate.forbid {pat!r}: invalid regex ({exc})")
     schema = task.get("report_schema", DEFAULT_REPORT_SCHEMA)
     if not (isinstance(schema, dict) and schema.get("type") == "object"):
-        errs.append("report_schema precisa de raiz \"type\": \"object\" (agy 1.2.14+ recusa outra raiz)")
+        errs.append("report_schema needs a root \"type\": \"object\" (agy 1.2.14+ rejects any other root)")
     for key in ("side_effects", "allow_paths", "deny_commands", "secret_globs"):
         val = task.get(key, [])
         if not (isinstance(val, list) and all(isinstance(x, str) for x in val)):
-            errs.append(f"{key} deve ser lista de strings")
+            errs.append(f"{key} must be a list of strings")
     for pat in task.get("deny_commands", []) or []:
         try:
             re.compile(pat)
         except re.error as exc:
-            errs.append(f"deny_commands {pat!r}: regex invalida ({exc})")
+            errs.append(f"deny_commands {pat!r}: invalid regex ({exc})")
     backend = task.get("backend", "agy")
     if backend not in BACKENDS:
-        errs.append(f"backend {backend!r}: use um de {BACKENDS}")
+        errs.append(f"backend {backend!r}: use one of {BACKENDS}")
     elif backend == "opencode" and isinstance(scope, list) and any(
             in_globs(f, scope) for f in OPENCODE_CONFIG_FILES):
-        errs.append("scope cobre opencode.json(c), que o driver restaura depois de cada run do opencode")
+        errs.append("scope covers opencode.json(c), which the driver restores after every opencode run")
     if not isinstance(task.get("disable_claude_code", False), bool):
-        errs.append("disable_claude_code deve ser booleano")
+        errs.append("disable_claude_code must be a boolean")
     if not isinstance(task.get("copilot_model_override", False), bool):
-        errs.append("copilot_model_override deve ser booleano")
+        errs.append("copilot_model_override must be a boolean")
     max_attempts = task.get("max_gate_attempts", DEFAULT_MAX_GATE_ATTEMPTS)
     credits = task.get("max_ai_credits", COPILOT_MIN_AI_CREDITS)
     if not isinstance(credits, (int, float)) or isinstance(credits, bool) or credits < COPILOT_MIN_AI_CREDITS:
-        errs.append(f"max_ai_credits deve ser numero >= {COPILOT_MIN_AI_CREDITS} (minimo do copilot)")
+        errs.append(f"max_ai_credits must be a number >= {COPILOT_MIN_AI_CREDITS} (copilot minimum)")
     if backend == "copilot":
         model_err = copilot_model_problem(task.get("model", COPILOT_DEFAULT_MODEL),
                                           task.get("copilot_model_override", False))
@@ -452,10 +452,10 @@ def normalize_task(task: dict) -> dict:
             errs.append(model_err)
         if isinstance(max_attempts, (int, str)) and str(max_attempts).isdigit() and \
                 int(max_attempts) > COPILOT_MAX_STOP_BLOCKS:
-            errs.append(f"max_gate_attempts {max_attempts} > {COPILOT_MAX_STOP_BLOCKS}: o copilot ignora o "
-                        f"agentStop depois de {COPILOT_MAX_STOP_BLOCKS} bloqueios seguidos")
+            errs.append(f"max_gate_attempts {max_attempts} > {COPILOT_MAX_STOP_BLOCKS}: copilot ignores "
+                        f"agentStop after {COPILOT_MAX_STOP_BLOCKS} consecutive blocks")
         if isinstance(scope, list) and any(in_globs(f, scope) for f in COPILOT_HOOK_SAMPLES):
-            errs.append("scope do copilot cobre um arquivo de onde o copilot carrega hooks "
+            errs.append("scope covers a file copilot loads hooks from "
                         "(.github/hooks/, .github/copilot/settings*.json, .claude/settings*.json)")
     try:
         parse_duration(task.get("timeout", DEFAULT_TIMEOUT))
@@ -463,7 +463,7 @@ def normalize_task(task: dict) -> dict:
     except Refusal as exc:
         errs.append(str(exc))
     if errs:
-        raise Refusal("task invalida:\n  - " + "\n  - ".join(errs))
+        raise Refusal("invalid task:\n  - " + "\n  - ".join(errs))
     return {
         "prompt": prompt,
         "scope": list(scope),
@@ -493,10 +493,10 @@ def copilot_model_problem(model, override: bool):
         return None
     if override and isinstance(model, str) and model:
         return None
-    return (f"copilot: modelo {model!r} recusado. Nesta conta (plano Free, copilot 1.0.96, 2026-10-13) so "
-            "`--model auto` funcionou: os 32 modelos do catalogo foram recusados com `--model`, e o Auto "
-            "roteou sempre para gpt-5.6-luna. Num plano pago, `\"copilot_model_override\": true` na task (ou "
-            "--copilot-model-override no review) libera outro modelo: caminho NAO testado.")
+    return (f"copilot: model {model!r} refused. On the Free plan (copilot 1.0.96) only `--model auto` "
+            "worked: every catalog model was refused with `--model`, and Auto always routed to "
+            "gpt-5.6-luna. On a paid plan, `\"copilot_model_override\": true` in the task (or "
+            "--copilot-model-override for review) allows another model: UNTESTED path.")
 
 
 def compose_prompt(task: dict, repo: str) -> str:
@@ -643,9 +643,8 @@ def is_gate_command(cmd: str, gate_cmds) -> bool:
 
 
 def secret_reason(what: str) -> str:
-    return (f"Arquivo de segredo bloqueado: {what}. O worker nao le nem escreve .env, chaves ou "
-            "certificados; se a tarefa precisa de um valor de config, diga no relatorio "
-            "(out_of_scope_needs).")
+    return (f"Secret file blocked: {what}. Do not read or write .env files, keys or certificates; "
+            "if the task needs a config value, say so in the report (out_of_scope_needs).")
 
 
 def deny(reason: str) -> dict:
@@ -687,9 +686,9 @@ def decide_pre(payload: dict, ctx: dict) -> dict:
     if name in FINISH_TOOLS:
         return {"decision": "allow"}
     if name not in ALLOWED_TOOLS:
-        return deny(f"Ferramenta {name} bloqueada neste worker: so as ferramentas de arquivo e o "
-                    "run_command passam pelos guard rails. Faca o trabalho com elas, dentro do escopo.")
-    outside = (f"Trabalhe so dentro de {repo}. O gate esta descrito no enunciado; nao procure por ele.")
+        return deny(f"Tool {name} is blocked for this worker: only the file tools and run_command are "
+                    "allowed. Do the work with them, inside the scope.")
+    outside = f"Work only inside {repo}. The gate is described in the task; do not search for it."
     # Path-valued arguments (AbsolutePath, DirectoryPath, SearchPath, Cwd,
     # TargetFile...), relative ones included, resolved through symlinks.
     for key, val in arg_strings(args):
@@ -697,7 +696,7 @@ def decide_pre(payload: dict, ctx: dict) -> dict:
             continue
         if val.startswith(("/", "~", ".")) or "/" in val:
             if not path_allowed(resolve(val, repo), repo, extra):
-                return deny(f"Acesso fora do repositorio bloqueado: {key}={val}. {outside}")
+                return deny(f"Access outside the repository blocked: {key}={val}. {outside}")
         if (key.endswith(("Path", "File", "Paths", "Files")) or val.startswith(("/", "~", "."))
                 or "/" in val) and is_secret(val, ctx.get("secret_globs", [])):
             return deny(secret_reason(val))
@@ -705,21 +704,22 @@ def decide_pre(payload: dict, ctx: dict) -> dict:
     if isinstance(target, str) and target:
         rel = os.path.relpath(resolve(target, repo), repo)
         if rel.startswith("..") or rel.split("/")[0] in (".git", ".agents"):
-            return deny(f"Escrita fora da area de trabalho: {target}.")
+            return deny(f"Write outside the workspace blocked: {target}.")
         if not in_globs(rel, ctx.get("scope", [])):
-            allowed = " ".join(ctx.get("scope", [])) or "(nenhum: modo somente leitura)"
-            return deny(f"Fora do escopo desta tarefa: {rel}. Permitidos: {allowed}. Nao contorne pelo "
-                        "shell; se outro arquivo precisar mudar, diga no relatorio (out_of_scope_needs).")
+            allowed = " ".join(ctx.get("scope", [])) or "(none: read-only mode)"
+            return deny(f"Outside this task's scope: {rel}. Allowed: {allowed}. Do not work around it "
+                        "through the shell; if another file must change, say so in the report "
+                        "(out_of_scope_needs).")
     cmd = args.get("CommandLine")
     if isinstance(cmd, str) and cmd.strip():
         for tok in shell_path_tokens(cmd):
             if not path_allowed(tok, repo, extra):
-                return deny(f"Acesso fora do repositorio bloqueado: {tok}. {outside}")
+                return deny(f"Access outside the repository blocked: {tok}. {outside}")
         cwd = args.get("Cwd") if isinstance(args.get("Cwd"), str) and args.get("Cwd") else repo
         for m in CD_TARGET.finditer(cmd):
             dest = m.group(1)
             if dest in ("", "-") or not path_allowed(resolve(dest, cwd), repo, extra):
-                return deny(f"cd para fora do repositorio bloqueado: {m.group(0).strip()!r}. {outside}")
+                return deny(f"cd outside the repository blocked: {m.group(0).strip()!r}. {outside}")
         for word in SHELL_WORDS.findall(cmd):
             if is_secret(word, ctx.get("secret_globs", [])):
                 return deny(secret_reason(word))
@@ -728,12 +728,12 @@ def decide_pre(payload: dict, ctx: dict) -> dict:
         bare = unquote_shell(cmd)
         for pat, label in ctx.get("deny_patterns", []):
             if re.search(pat, cmd) or re.search(pat, bare):
-                return deny(f"Comando bloqueado ({label}): {cmd!r}. Edite so com as ferramentas de edicao; "
-                            "sem commit, push, install, deploy, migracao, rede ou processos. Testes, lint, "
-                            "typecheck e leitura sao permitidos.")
+                return deny(f"Command blocked ({label}): {cmd!r}. Edit only with the edit tools; no commit, "
+                            "push, install, deploy, migration, network or processes. Tests, lint, "
+                            "typecheck and reads are allowed.")
         if writes_by_redirect(cmd):
-            return deny(f"Escrita pelo shell bloqueada (redirecionamento para arquivo): {cmd!r}. Use as "
-                        "ferramentas de edicao; redirecione saida so para /dev/null ou 2>&1.")
+            return deny(f"Shell write blocked (redirect to a file): {cmd!r}. Use the edit tools; "
+                        "redirect output only to /dev/null or 2>&1.")
         return allow_cmd(ctx)
     return {"decision": "allow"}
 
@@ -784,14 +784,14 @@ def decide_cp(payload: dict, ctx: dict) -> dict:
     harmless-looking command, and the verdict fails the run."""
     tool = str(payload.get("toolName", ""))
     if tool in COPILOT_SHELL_TOOLS:
-        return deny(f"Ferramenta {tool} bloqueada: este worker nao tem shell. Edite com as ferramentas "
-                    "de arquivo; o gate roda sozinho quando voce para.")
+        return deny(f"Tool {tool} blocked: this worker has no shell. Edit with the file tools; "
+                    "the gate runs by itself when you stop.")
     for call in cp_calls(tool, payload.get("toolArgs")):
         target = (call["toolCall"].get("args") or {}).get("TargetFile")
         if isinstance(target, str) and target:
             rel = os.path.relpath(resolve(target, ctx["repo"]), ctx["repo"])
             if rel.startswith(COPILOT_HOOK_PREFIXES):
-                return deny(f"Escrita bloqueada em {rel}: o copilot carrega hooks dali.")
+                return deny(f"Write blocked in {rel}: copilot loads hooks from there.")
         out = decide_pre(call, ctx)
         if out["decision"] != "allow":
             return out
@@ -938,10 +938,10 @@ def run_gate(repo: str, ctx: dict, baseline: bool = False):
     files = [f for f in cls["in_scope"] if os.path.exists(os.path.join(repo, f))]
     if not baseline:
         for p in cls["out_of_scope"]:
-            say(f"GATE: alterado fora do escopo: {p} (reverta; se precisava mudar, diga no relatorio)")
+            say(f"GATE: changed outside the scope: {p} (revert it; if it had to change, say so in the report)")
             ok = False
         if not cls["in_scope"]:
-            say("GATE: nenhum arquivo do escopo foi alterado")
+            say("GATE: no file in the scope was changed")
             ok = False
         if ctx["gate"]["forbid"] and files:
             tracked = set(git(repo, "ls-files", "-z").split("\0"))
@@ -949,14 +949,14 @@ def run_gate(repo: str, ctx: dict, baseline: bool = False):
                 for n, text in added_lines(repo, f, tracked):
                     for pat in ctx["gate"]["forbid"]:
                         if re.search(pat, text):
-                            say(f"GATE: atalho proibido /{pat}/ em {f}:{n}: {text.strip()[:160]}")
+                            say(f"GATE: forbidden shortcut /{pat}/ in {f}:{n}: {text.strip()[:160]}")
                             ok = False
     quoted = " ".join(shlex.quote(f) for f in files)
     for kind in ("format", "checks"):
         for cmd in ctx["gate"][kind]:
             if "{files}" in cmd:
                 if not files:
-                    say(f"GATE: [{kind}] {cmd}: pulado, nenhum arquivo do escopo")
+                    say(f"GATE: [{kind}] {cmd}: skipped, no file in the scope")
                     continue
                 cmd = cmd.replace("{files}", quoted)
             # CREW_GATE lets a command tell the gate run from the worker's own
@@ -981,7 +981,7 @@ def run_gate(repo: str, ctx: dict, baseline: bool = False):
                 say(f"GATE: [{kind}] {cmd}: ok")
             else:
                 ok = False
-                say(f"GATE: [{kind}] {cmd}: FALHOU (rc={rc})")
+                say(f"GATE: [{kind}] {cmd}: FAILED (rc={rc})")
                 say(tail(out.strip(), 3000))
     say("GATE: PASS" if ok else "GATE: FAIL")
     return ok, "\n".join(lines), cls
@@ -1028,7 +1028,7 @@ def gate_cached(rundir: str, ctx: dict, trigger: str):
 def load_ctx(rundir: str) -> dict:
     ctx = read_json(os.path.join(rundir, "ctx.json"))
     if not isinstance(ctx, dict):
-        raise RuntimeError(f"ctx.json ilegivel em {rundir}")
+        raise RuntimeError(f"ctx.json unreadable in {rundir}")
     ctx["deny_patterns"] = [tuple(x) for x in ctx.get("deny_patterns", [])]
     return ctx
 
@@ -1078,9 +1078,9 @@ def hook_main(event: str, rundir: str) -> int:
                     out = {"decision": "allow"}
                 else:
                     out = {"decision": "deny", "reason":
-                           f"O gate FALHOU (tentativa {n} de {ctx['max_gate_attempts']}); a tarefa nao "
-                           "esta pronta. Corrija a causa real, sem desativar teste nem sair do escopo, e "
-                           f"so entao chame finish de novo. Saida do gate:\n{tail(text)}"}
+                           f"The gate FAILED (attempt {n} of {ctx['max_gate_attempts']}); the task is not "
+                           "done. Fix the real cause, without disabling tests or leaving the scope, and "
+                           f"only then call finish again. Gate output:\n{tail(text)}"}
             else:
                 out = decide_pre(payload, ctx)
             entry = {"event": "pre", "tool": name, "decision": out["decision"]}
@@ -1103,8 +1103,8 @@ def hook_main(event: str, rundir: str) -> int:
                 asks = sum(1 for e in prior if e.get("event") == "stop" and e.get("ask") == "report")
                 if passed and not finished and asks < AGY_REPORT_ASKS:
                     out = {"decision": "continue", "reason":
-                           "O gate PASSOU. Falta so o relatorio: chame a ferramenta finish agora, com o "
-                           "relatorio pedido. Nao espere comando em segundo plano nem rode mais nada."}
+                           "The gate PASSED. Only the report is missing: call the finish tool now with the "
+                           "requested report. Do not wait for a background command or run anything else."}
                     append_jsonl(log, {"event": "stop", "reason": reason, "decision": "continue",
                                        "ask": "report"})
                     print(json.dumps(out, ensure_ascii=False))
@@ -1113,9 +1113,9 @@ def hook_main(event: str, rundir: str) -> int:
                     out = {"decision": "stop"}
                 else:
                     out = {"decision": "continue", "reason":
-                           f"Voce declarou terminado, mas o gate FALHOU (tentativa {n} de "
-                           f"{ctx['max_gate_attempts']}). Corrija a causa real, sem desativar teste, "
-                           f"sem atalho proibido e sem sair do escopo. Saida do gate:\n{tail(text)}"}
+                           f"You declared done, but the gate FAILED (attempt {n} of "
+                           f"{ctx['max_gate_attempts']}). Fix the real cause, without disabling tests, "
+                           f"without forbidden shortcuts and without leaving the scope. Gate output:\n{tail(text)}"}
                 append_jsonl(log, {"event": "stop", "reason": reason, "decision": out["decision"]})
         else:
             out = {}
@@ -1124,7 +1124,7 @@ def hook_main(event: str, rundir: str) -> int:
             append_jsonl(log, {"event": f"{event}_error", "error": repr(exc)[:500]})
         except OSError:
             pass
-        out = ({"decision": "deny", "reason": f"guard interno falhou ({exc!r}); chamada negada por seguranca"}
+        out = ({"decision": "deny", "reason": f"internal guard failure ({exc!r}); call denied for safety"}
                if event in ("pre", "oc-pre", "cp-pre") else {"decision": "stop"} if event == "stop"
                else {"decision": "allow"} if event == "cp-stop" else {})
     print(cp_hook_output(event, out) if event in ("cp-pre", "cp-stop") else json.dumps(out, ensure_ascii=False))
@@ -1141,7 +1141,7 @@ def cp_hook_output(event: str, out: dict) -> str:
         if out.get("decision") == "allow":
             return ""
         return json.dumps({"permissionDecision": "deny",
-                           "permissionDecisionReason": out.get("reason") or "negado"}, ensure_ascii=False)
+                           "permissionDecisionReason": out.get("reason") or "denied"}, ensure_ascii=False)
     if out.get("decision") == "block":
         return json.dumps({"decision": "block", "reason": out.get("reason", "")}, ensure_ascii=False)
     return json.dumps({"decision": "allow"})
@@ -1230,21 +1230,21 @@ def evaluate_quota(envelope: dict, model: str, min_quota: float):
     """None when there is headroom, else a refusal message."""
     groups = (((envelope or {}).get("command") or {}).get("data") or {}).get("groups")
     if not isinstance(groups, list):
-        return "nao consegui ler os grupos de quota de `agy -p /usage --output-format json`"
+        return "could not read the quota groups from `agy -p /usage --output-format json`"
     family = model.split("-", 1)[0].lower()
     hits = quota_groups_for(groups, model)
     if not hits:
-        return f"nenhum grupo de quota menciona {family!r}; formato do /usage mudou?"
+        return f"no quota group mentions {family!r}; did the /usage format change?"
     for g in hits:
         for b in g.get("buckets") or []:
             if b.get("disabled"):
                 continue
             rf = b.get("remaining_fraction")
             if not isinstance(rf, (int, float)):
-                return f"quota {g.get('name')}/{b.get('name')}: remaining_fraction ausente"
+                return f"quota {g.get('name')}/{b.get('name')}: remaining_fraction missing"
             if rf < min_quota:
-                return (f"quota esgotada: {g.get('name')} / {b.get('name')} = {rf:.0%} "
-                        f"(minimo {min_quota:.0%}); renova em {b.get('reset_time', '?')}")
+                return (f"quota exhausted: {g.get('name')} / {b.get('name')} = {rf:.0%} "
+                        f"(minimum {min_quota:.0%}); resets at {b.get('reset_time', '?')}")
     return None
 
 
@@ -1253,26 +1253,26 @@ def evaluate_run(rc, stdout: str, stderr: str, mode: str, schema: dict):
     fails, warns = [], []
     strict_denials = mode == "delegate"
     if rc == "wrapper-timeout":
-        fails.append("timeout do wrapper: agy nao terminou e foi encerrado")
+        fails.append("wrapper timeout: agy did not finish and was stopped")
     elif rc != 0:
         m = re.search(r"AGY_ERROR:\s*(\{.*\})", stderr)
         detail = m.group(1)[:400] if m else tail(stderr.strip(), 400)
-        fails.append(f"agy saiu com rc={rc}: {detail}")
+        fails.append(f"agy exited with rc={rc}: {detail}")
     if TIMEOUT_MARKER in stderr:
-        fails.append("print timeout do agy: a saida e parcial (o agy sai com 0 mesmo assim)")
+        fails.append("agy print timeout: the output is partial (agy exits 0 anyway)")
     if NO_OUTPUT_MARKER in stderr:
-        fails.append("agy terminou sem saida e sem erro registrado")
+        fails.append("agy ended with no output and no logged error")
     if AUTO_DENY_MARKER in stderr:
         (fails if strict_denials else warns).append(
-            "permissao auto-negada em modo headless: " + tail(stderr.strip(), 300))
+            "permission auto-denied in headless mode: " + tail(stderr.strip(), 300))
     env, parsed = None, False
     if not stdout.strip():
-        fails.append("stdout vazio")
+        fails.append("empty stdout")
     else:
         try:
             env, parsed = json.loads(stdout), True
         except ValueError:
-            fails.append("stdout nao e o envelope JSON esperado: " + tail(stdout.strip(), 300))
+            fails.append("stdout is not the expected JSON envelope: " + tail(stdout.strip(), 300))
     if isinstance(env, dict):
         if env.get("status") != "SUCCESS":
             fails.append(f"status={env.get('status')!r} error={str(env.get('error'))[:300]}")
@@ -1281,17 +1281,17 @@ def evaluate_run(rc, stdout: str, stderr: str, mode: str, schema: dict):
             (fails if strict_denials else warns).append(f"denied_actions: {json.dumps(denied)[:300]}")
         so = env.get("structured_output")
         if so is None:
-            fails.append("structured_output nulo: o relatorio nao satisfez o schema "
-                         "(o agy devolve status SUCCESS mesmo assim)")
+            fails.append("structured_output is null: the report did not satisfy the schema "
+                         "(agy returns status SUCCESS anyway)")
         elif isinstance(so, dict):
             missing = [k for k in schema.get("required", []) if k not in so]
             if missing:
-                fails.append(f"relatorio sem campos obrigatorios: {missing}")
+                fails.append(f"report missing required fields: {missing}")
             if mode == "delegate" and so.get("status") in ("partial", "blocked"):
-                fails.append(f"o worker se declarou {so['status']!r}")
+                fails.append(f"the worker declared itself {so['status']!r}")
     elif parsed:
         env = None
-        fails.append(f"stdout e JSON mas nao um objeto: {tail(stdout.strip(), 200)}")
+        fails.append(f"stdout is JSON but not an object: {tail(stdout.strip(), 200)}")
     return fails, warns, env
 
 
@@ -1511,12 +1511,12 @@ def refuse_existing_hooks(repo: str) -> None:
         return
     spec = read_json(path)
     if isinstance(spec, dict) and list(spec) in (["crew"], ["agy-worker"]):    # agy-worker: pre-0.4.0
-        raise Refusal(f"{path} e sobra de um run do crew que morreu sem limpar (SIGKILL?), ou "
-                      "de um run ainda em curso neste workspace. Se nenhum `agy` estiver rodando aqui, "
-                      f"remova so esse arquivo: rm {shlex.quote(path)}. Enquanto ele existir, um `agy` "
-                      "interativo nesta pasta carrega os guards de um run morto.")
-    raise Refusal(f"{HOOK_FILE} ja existe neste repo; o agy le um so arquivo de hooks por "
-                  "workspace e este script nao sobrescreve o seu. Mova-o ou rode noutro worktree.")
+        raise Refusal(f"{path} is left over from a crew run that died without cleaning up (SIGKILL?), or "
+                      "from a run still in progress in this workspace. If no `agy` is running here, "
+                      f"remove only that file: rm {shlex.quote(path)}. While it exists, an interactive "
+                      "`agy` in this folder loads the guards of a dead run.")
+    raise Refusal(f"{HOOK_FILE} already exists in this repo; agy reads a single hooks file per "
+                  "workspace and this script does not overwrite yours. Move it or run in another worktree.")
 
 
 def install_hooks(repo: str, rundir: str, ctx: dict) -> bool:
@@ -1558,19 +1558,19 @@ def remove_hooks(repo: str, created_dir: bool) -> None:
 def preflight_agy(model: str, min_quota: float, probe_quota: bool, rundir: str) -> list:
     """Refuses on a missing model or quota; returns warnings."""
     if not shutil.which("agy"):
-        raise Refusal("agy nao esta no PATH")
+        raise Refusal("agy is not on PATH")
     warns = []
     proc = subprocess.run(["agy", "--version"], capture_output=True, text=True, timeout=60)
     version = proc.stdout.strip().splitlines()[-1].strip() if proc.stdout.strip() else "?"
     if version != TESTED_AGY_VERSION:
-        warns.append(f"agy {version}; este script so foi exercitado no {TESTED_AGY_VERSION}. Decisao "
-                     "de hook, ferramenta finish, motivos de Stop e formato do /usage podem ter mudado")
+        warns.append(f"agy {version}; this script was only exercised on {TESTED_AGY_VERSION}. Hook "
+                     "decision, finish tool, Stop reasons and /usage format may have changed")
     proc = subprocess.run(["agy", "models"], capture_output=True, text=True, timeout=120)
     slugs = parse_models(proc.stdout)
     if proc.returncode != 0 or not slugs:
-        raise Refusal(f"`agy models` falhou (rc={proc.returncode}): {tail(proc.stderr.strip(), 300)}")
+        raise Refusal(f"`agy models` failed (rc={proc.returncode}): {tail(proc.stderr.strip(), 300)}")
     if model not in slugs:
-        raise Refusal(f"modelo {model!r} nao existe nesta conta. Disponiveis: {', '.join(slugs)}")
+        raise Refusal(f"model {model!r} does not exist on this account. Available: {', '.join(slugs)}")
     if not probe_quota:
         return warns
     proc = subprocess.run(["agy", "-p", "/usage", "--output-format", "json"],
@@ -1583,7 +1583,7 @@ def preflight_agy(model: str, min_quota: float, probe_quota: bool, rundir: str) 
         env = None
     msg = evaluate_quota(env, model, min_quota)
     if msg:
-        raise Refusal(msg + " (use --no-quota-probe para pular esta checagem)")
+        raise Refusal(msg + " (use --no-quota-probe to skip this check)")
     return warns
 
 
@@ -1728,7 +1728,7 @@ def preflight_opencode(model: str):
     work tree and wrote "$schema" into its opencode.json (lab, 1.19.0)."""
     oc = shutil.which("opencode") or os.path.expanduser("~/.opencode/bin/opencode")
     if not os.access(oc, os.X_OK):
-        raise Refusal("opencode nao esta no PATH nem em ~/.opencode/bin")
+        raise Refusal("opencode is not on PATH nor in ~/.opencode/bin")
     with tempfile.TemporaryDirectory(prefix="crew-oc-") as cwd:
         run = lambda *a: subprocess.run([oc, *a], capture_output=True, text=True, timeout=120,  # noqa: E731
                                         cwd=cwd, stdin=subprocess.DEVNULL)
@@ -1742,16 +1742,16 @@ def preflight_opencode(model: str):
         raise Refusal(f"opencode {version}: the guard needs the 2.x plugin API; update opencode")
     warns = []
     if version != TESTED_OPENCODE_VERSION:
-        warns.append(f"opencode {version}; este script so foi exercitado no {TESTED_OPENCODE_VERSION}. "
-                     "Formato dos eventos, plugin e escrita do $schema podem ter mudado")
+        warns.append(f"opencode {version}; this script was only exercised on {TESTED_OPENCODE_VERSION}. "
+                     "Event format, plugin and the $schema write may have changed")
     models = [ln.strip() for ln in proc.stdout.splitlines() if re.fullmatch(r"\S+/\S+", ln.strip())]
     if proc.returncode != 0 or not models:
-        raise Refusal(f"`opencode models` falhou (rc={proc.returncode}): {tail(proc.stderr.strip(), 300)}")
+        raise Refusal(f"`opencode models` failed (rc={proc.returncode}): {tail(proc.stderr.strip(), 300)}")
     if model not in OPENCODE_MODELS:
-        raise Refusal(f"modelo {model!r} fora da lista permitida: {', '.join(OPENCODE_MODELS)}")
+        raise Refusal(f"model {model!r} is not in the allowed list: {', '.join(OPENCODE_MODELS)}")
     if model not in models:
         same = [m for m in models if m.split("/")[0] == model.split("/")[0]]
-        raise Refusal(f"modelo {model!r} nao existe para o opencode. Do mesmo provider: {', '.join(same) or '-'}")
+        raise Refusal(f"model {model!r} does not exist for opencode. Same provider: {', '.join(same) or '-'}")
     return oc, warns
 
 
@@ -1793,9 +1793,9 @@ def evaluate_oc(rc, stdout: str, stderr: str):
     no error event, and the last step finished with reason=stop."""
     fails, events = [], []
     if rc == "wrapper-timeout":
-        fails.append("timeout: opencode nao terminou e foi encerrado")
+        fails.append("timeout: opencode did not finish and was stopped")
     elif rc != 0:
-        fails.append(f"opencode saiu com rc={rc}: {tail(stderr.strip(), 400)}")
+        fails.append(f"opencode exited with rc={rc}: {tail(stderr.strip(), 400)}")
     for line in stdout.splitlines():
         try:
             ev = json.loads(line)
@@ -1804,12 +1804,12 @@ def evaluate_oc(rc, stdout: str, stderr: str):
         if isinstance(ev, dict):
             events.append(ev)
     if not events:
-        fails.append("nenhum evento JSON no stdout")
+        fails.append("no JSON event on stdout")
     for ev in events:
         if ev.get("type") == "error":
             err = ev.get("error") or {}
             msg = (err.get("data") or {}).get("message") if isinstance(err, dict) else None
-            fails.append(f"evento error: {(msg or json.dumps(err))[:300]}")
+            fails.append(f"error event: {(msg or json.dumps(err))[:300]}")
     finishes = [ev.get("part") or {} for ev in events if ev.get("type") == "step_finish"]
     # 1.x closed a good run with step_finish reason=stop; 2.x ends on the
     # final text event with no step_finish after it.
@@ -1817,8 +1817,8 @@ def evaluate_oc(rc, stdout: str, stderr: str):
     ended = last.get("type") == "text" or (last.get("type") == "step_finish"
                                             and (last.get("part") or {}).get("reason") == "stop")
     if events and not ended:
-        fails.append("o run nao terminou num evento de texto nem em step_finish reason=stop (ultimo step: "
-                     f"{finishes[-1].get('reason') if finishes else 'nenhum'})")
+        fails.append("the run did not end on a text event nor on step_finish reason=stop (last step: "
+                     f"{finishes[-1].get('reason') if finishes else 'none'})")
     texts = [(ev.get("part") or {}).get("text", "") for ev in events if ev.get("type") == "text"]
     tokens = {}
     for f in finishes:
@@ -1851,9 +1851,9 @@ def extract_report(text: str):
 
 def report_problems(report, schema: dict) -> list:
     if not isinstance(report, dict):
-        return ["relatorio ausente: a ultima mensagem nao traz um objeto JSON"]
+        return ["report missing: the last message has no JSON object"]
     missing = [k for k in schema.get("required", []) if k not in report]
-    return [f"relatorio sem campos obrigatorios: {missing}"] if missing else []
+    return [f"report missing required fields: {missing}"] if missing else []
 
 
 def oc_message(text: str) -> str:
@@ -1874,11 +1874,11 @@ def drive_opencode(oc: str, task: dict, repo: str, rundir: str, prompt: str, ctx
         for i in range(1, n + 1):
             left = int(deadline - time.time())
             if left < 30:
-                fails.append("timeout da task esgotado antes de o gate e o relatorio ficarem prontos")
+                fails.append("task timeout exhausted before the gate and the report were ready")
                 break
             cmd = [oc, "run", *OC_RUN_FLAGS, "--format", "json", "-m", task["model"],
                    *(["-s", sid] if sid else []), oc_message(msg)]
-            eprint(f"crew: opencode run {i}/{n} ({task['model']}{', sessao ' + sid if sid else ''})…")
+            eprint(f"crew: opencode run {i}/{n} ({task['model']}{', session ' + sid if sid else ''})…")
             rc, out, err = run_agy(cmd, repo, rundir, left, name=f"opencode-{i}", env=env, grace=0)
             restored |= restore_files(repo, saved)
             run_fails, info = evaluate_oc(rc, out, err)
@@ -1893,7 +1893,7 @@ def drive_opencode(oc: str, task: dict, repo: str, rundir: str, prompt: str, ctx
             if passed and not problems:
                 break
             if not sid:
-                fails.append("nenhum sessionID nos eventos: nao ha como retomar")
+                fails.append("no sessionID in the events: cannot resume")
                 break
             parts = []
             if not passed:
@@ -1907,11 +1907,11 @@ def drive_opencode(oc: str, task: dict, repo: str, rundir: str, prompt: str, ctx
     finally:
         restored |= restore_files(repo, saved)
     if restored:
-        warns.append(f"o opencode reescreveu {sorted(restored)} (o \"$schema\"); bytes originais restaurados")
+        warns.append(f"opencode rewrote {sorted(restored)} (the \"$schema\"); original bytes restored")
     if not fails:
         fails += report_problems(report, task["report_schema"])
     if isinstance(report, dict) and report.get("status") in ("partial", "blocked"):
-        fails.append(f"o worker se declarou {report['status']!r}")
+        fails.append(f"the worker declared itself {report['status']!r}")
     total = {}
     for r in runs:
         for k, v in r.get("tokens", {}).items():
@@ -1937,9 +1937,9 @@ def refuse_cp_leftovers(repo: str) -> list:
     ours = [n for n in names if n.startswith((COPILOT_HOOK_PREFIX, "agy-worker-")) and n.endswith(".json")]
     if ours:
         paths = " ".join(shlex.quote(os.path.join(d, n)) for n in ours)
-        raise Refusal(f"sobra de um run do crew em {COPILOT_HOOK_DIR}/ ({', '.join(ours)}), de um run "
-                      "que morreu sem limpar ou ainda em curso neste repo. Se nenhum `copilot` estiver "
-                      f"rodando aqui, remova so esses arquivos: rm {paths}")
+        raise Refusal(f"leftover from a crew run in {COPILOT_HOOK_DIR}/ ({', '.join(ours)}), from a run "
+                      "that died without cleaning up or is still in progress in this repo. If no `copilot` "
+                      f"is running here, remove only those files: rm {paths}")
     return [f"{COPILOT_HOOK_DIR}/{n}" for n in names if n.endswith(".json")]
 
 
@@ -1949,7 +1949,7 @@ def install_cp_hooks(repo: str, rundir: str, ctx: dict) -> tuple:
     rel = cp_hook_rel(ctx["run_id"])
     path = os.path.join(repo, rel)
     if os.path.lexists(path):
-        raise Refusal(f"{rel} ja existe; este script nao sobrescreve arquivo de hooks")
+        raise Refusal(f"{rel} already exists; this script does not overwrite hook files")
     created, d = [], os.path.dirname(path)
     while not os.path.isdir(d):
         created.append(d)
@@ -2000,7 +2000,7 @@ def preflight_copilot() -> tuple:
     model call, so the model rule lives in copilot_model_problem."""
     cp = shutil.which("copilot")
     if not cp:
-        raise Refusal("copilot nao esta no PATH")
+        raise Refusal("copilot is not on PATH")
     with tempfile.TemporaryDirectory(prefix="crew-cp-") as cwd:
         proc = subprocess.run([cp, "--version"], capture_output=True, text=True, timeout=60, cwd=cwd,
                               stdin=subprocess.DEVNULL)
@@ -2008,8 +2008,8 @@ def preflight_copilot() -> tuple:
     version = m.group(1) if m else "?"
     warns = []
     if version != TESTED_COPILOT_VERSION:
-        warns.append(f"copilot {version}; este script so foi exercitado no {TESTED_COPILOT_VERSION}. Carga "
-                     "dos hooks, nomes das ferramentas e formato dos eventos podem ter mudado")
+        warns.append(f"copilot {version}; this script was only exercised on {TESTED_COPILOT_VERSION}. "
+                     "Hook loading, tool names and event format may have changed")
     return cp, warns
 
 
@@ -2036,9 +2036,9 @@ def evaluate_cp(rc, stdout: str, stderr: str):
     `result` with exitCode 0, no shell or subagent call, no error event."""
     fails, events = [], []
     if rc == "wrapper-timeout":
-        fails.append("timeout: copilot nao terminou e foi encerrado")
+        fails.append("timeout: copilot did not finish and was stopped")
     elif rc != 0:
-        fails.append(f"copilot saiu com rc={rc}: {tail(stderr.strip(), 400)}")
+        fails.append(f"copilot exited with rc={rc}: {tail(stderr.strip(), 400)}")
     for line in stdout.splitlines():
         try:
             ev = json.loads(line)
@@ -2047,12 +2047,12 @@ def evaluate_cp(rc, stdout: str, stderr: str):
         if isinstance(ev, dict):
             events.append(ev)
     if not events:
-        fails.append("nenhum evento JSON no stdout")
+        fails.append("no JSON event on stdout")
     results = [ev for ev in events if ev.get("type") == "result"]
     if events and not results:
-        fails.append("nenhum evento result: o run foi cortado")
+        fails.append("no result event: the run was cut off")
     elif results and results[-1].get("exitCode") != 0:
-        fails.append(f"evento result com exitCode={results[-1].get('exitCode')!r}")
+        fails.append(f"result event with exitCode={results[-1].get('exitCode')!r}")
     tools, failed = {}, 0
     for ev in events:
         data = ev.get("data") or {}
@@ -2062,13 +2062,13 @@ def evaluate_cp(rc, stdout: str, stderr: str):
         elif ev.get("type") == "tool.execution_complete" and data.get("success") is False:
             failed += 1
         elif str(ev.get("type", "")).endswith("error"):
-            fails.append(f"evento {ev.get('type')}: {json.dumps(data)[:300]}")
+            fails.append(f"{ev.get('type')} event: {json.dumps(data)[:300]}")
     shell = sorted(t for t in tools if t in COPILOT_SHELL_TOOLS)
     if shell:
-        fails.append(f"chamada de shell observada ({shell}), apesar de --excluded-tools: o worker nao devia "
-                     "ter shell")
+        fails.append(f"shell call observed ({shell}) despite --excluded-tools: the worker should have "
+                     "no shell")
     if "task" in tools:
-        fails.append(f"subagente observado ({tools['task']} chamadas de task), apesar de --excluded-tools")
+        fails.append(f"subagent observed ({tools['task']} task calls) despite --excluded-tools")
     usage = (results[-1].get("usage") if results else None) or {}
     info = {"session": next((ev.get("sessionId") for ev in results if ev.get("sessionId")), None),
             "text": cp_final_text(stdout) or "", "tools": tools, "tool_failures": failed,
@@ -2103,7 +2103,7 @@ def run_copilot(cp: str, prompt: str, model: str, repo: str, rundir: str, ctx: d
                                      grace=30)
     finally:
         if file_sha(os.path.join(repo, rel)) != sha:
-            fails.append(f"o arquivo de hooks do run ({rel}) mudou durante o run: o guard pode ter sido trocado")
+            fails.append(f"the run's hooks file ({rel}) changed during the run: the guard may have been replaced")
         remove_cp_hooks(repo, rel, created)
     return rc, stdout, stderr, fails
 
@@ -2120,7 +2120,7 @@ def base_ctx(repo, task, mode):
         "gate_timeout": task["gate_timeout"], "max_gate_attempts": task["max_gate_attempts"],
         "gate_commands": task["gate"]["format"] + task["gate"]["checks"],
         "deny_patterns": DENY_COMMANDS + (OPENCODE_DENY_COMMANDS if task.get("backend") == "opencode" else [])
-        + [(p, "regra do projeto") for p in task["deny_commands"]],
+        + [(p, "project rule") for p in task["deny_commands"]],
     }
 
 
@@ -2134,7 +2134,7 @@ def cmd_delegate(a) -> int:
     other_cp_hooks = refuse_cp_leftovers(repo) if copilot else []
     dirty = changed_paths(repo)
     if dirty:
-        raise Refusal("arvore suja; commite ou guarde antes (o diff do worker tem que ser so dele): "
+        raise Refusal("dirty tree; commit or stash first (the worker's diff must be only its own): "
                       + ", ".join(dirty[:10]))
     if task["backend"] == "agy":
         refuse_existing_hooks(repo)
@@ -2146,12 +2146,12 @@ def cmd_delegate(a) -> int:
             oc, pre_warns = preflight_opencode(task["model"])
         finally:
             if restore_files(repo, saved):
-                eprint("crew: o preflight do opencode reescreveu opencode.json; restaurado")
+                eprint("crew: opencode preflight rewrote opencode.json; restored")
     elif copilot:
         cp, pre_warns = preflight_copilot()
         if other_cp_hooks:
-            pre_warns.append(f"hooks do proprio repo em {COPILOT_HOOK_DIR}/ carregam junto com os do run, com "
-                             f"a mesma confianca (COPILOT_ALLOW_ALL=true): {other_cp_hooks}")
+            pre_warns.append(f"the repo's own hooks in {COPILOT_HOOK_DIR}/ load together with the run's, "
+                             f"with the same trust (COPILOT_ALLOW_ALL=true): {other_cp_hooks}")
     else:
         pre_warns = preflight_agy(task["model"], task["min_quota"], not a.no_quota_probe, rundir)
     ctx = base_ctx(repo, task, "delegate")
@@ -2173,7 +2173,7 @@ def cmd_delegate(a) -> int:
         fails, warns, report, run_info = drive_opencode(oc, task, repo, rundir, prompt, ctx, saved)
         run_info["wall_seconds"] = round(time.time() - started)
     elif copilot:
-        eprint(f"crew: copilot rodando ({task['model']}, timeout {task['timeout']}s)…")
+        eprint(f"crew: copilot running ({task['model']}, timeout {task['timeout']}s)…")
         rc, stdout, stderr, fails = run_copilot(cp, prompt, task["model"], repo, rundir, ctx, task["timeout"],
                                                 COPILOT_EXCLUDED_TOOLS, task["max_ai_credits"])
         run_fails, info = evaluate_cp(rc, stdout, stderr)
@@ -2181,11 +2181,11 @@ def cmd_delegate(a) -> int:
         report = extract_report(info.pop("text"))
         fails += report_problems(report, task["report_schema"])
         if isinstance(report, dict) and report.get("status") in ("partial", "blocked"):
-            fails.append(f"o worker se declarou {report['status']!r}")
+            fails.append(f"the worker declared itself {report['status']!r}")
         warns = []
         usage = read_cp_usage(os.path.join(rundir, "usage.json"))
         if usage is None:
-            warns.append("usage.json do copilot ausente ou ilegivel: creditos gastos desconhecidos")
+            warns.append("copilot usage.json missing or unreadable: credits spent unknown")
         run_info = {"rc": rc, "wall_seconds": round(time.time() - started), **info, "usage": usage}
     else:
         cmd = ["agy", "-p", prompt, "--model", task["model"], "--output-format", "json",
@@ -2194,7 +2194,7 @@ def cmd_delegate(a) -> int:
         created = install_hooks(repo, rundir, ctx)
         watcher = BackgroundWatcher(rundir, ctx["run_id"])
         try:
-            eprint(f"crew: agy rodando ({task['model']}, timeout {task['timeout']}s)…")
+            eprint(f"crew: agy running ({task['model']}, timeout {task['timeout']}s)…")
             rc, stdout, stderr = run_agy(cmd, repo, rundir, task["timeout"],
                                          env={**os.environ, **WORKER_ENV, RUN_ENV: ctx["run_id"]},
                                          watch=watcher.poll)
@@ -2207,63 +2207,63 @@ def cmd_delegate(a) -> int:
             if isinstance(env, dict) else {})}
         run_info["background_killed"] = {str(p): c for p, c in watcher.killed.items()}
         if watcher.killed:
-            warns.append(f"{len(watcher.killed)} processo(s) em segundo plano do worker encerrado(s) "
-                         f"{BG_GRACE_S} s depois de ele terminar com gate verde, para o agy poder sair: "
+            warns.append(f"{len(watcher.killed)} background process(es) of the worker stopped "
+                         f"{BG_GRACE_S} s after it finished with a green gate, so agy could exit: "
                          + "; ".join(f"{p} {c}" for p, c in watcher.killed.items()))
         if watcher.errors:
-            warns.append(f"o vigia de processos em segundo plano falhou: {watcher.errors}")
+            warns.append(f"the background process watcher failed: {watcher.errors}")
     warns = pre_warns + warns
     tampered = diff_state(integ_before, integrity_state(repo, rundir))
     ignore = ctx.get("ignore_paths", [])
     if tampered:
-        fails.append("config, hooks ou flags de indice do git, ou o ctx.json do run, mudaram durante o "
-                     f"run; o veredito abaixo nao e confiavel: {tampered}")
+        fails.append("git config, hooks or index flags, or the run's ctx.json, changed during the "
+                     f"run; the verdict below is not trustworthy: {tampered}")
     events = guard_events(rundir)
     if copilot:
         # Any of our hooks answering proves the file loaded; sessionStart alone
         # was never observed firing in the lab.
         if not any(e.get("event") in ("session_start", "pre", "stop") for e in events):
-            fails.append("os hooks do crew nao carregaram no copilot (nenhum evento de hook "
-                         "registrado): o run nao teve guard rails; trate o diff como nao confiavel")
+            fails.append("the crew hooks did not load in copilot (no hook event logged): the run had "
+                         "no guard rails; treat the diff as untrusted")
     elif not any(e.get("event") == "session_start" for e in events):
-        fails.append(("o plugin de guard do opencode nao carregou" if opencode else
-                      "os hooks do crew nao carregaram") + " (nenhum SessionStart registrado): "
-                     "o run nao teve guard rails; trate o diff como nao confiavel")
+        fails.append(("the opencode guard plugin did not load" if opencode else
+                      "the crew hooks did not load") + " (no SessionStart logged): "
+                     "the run had no guard rails; treat the diff as untrusted")
     if git(repo, "rev-parse", "HEAD").strip() != head:
-        fails.append("HEAD mudou durante o run (commit ou checkout passou pelo guard)")
+        fails.append("HEAD changed during the run (a commit or checkout got past the guard)")
     # The gate verdict that counts is the one for the tree as it is now.
     st = read_json(os.path.join(rundir, "gate-state.json"), {"attempts": 0})
     fp = fingerprint(repo, task["side_effects"], ignore)
     if st.get("fingerprint") == fp and st.get("passed") is True:
-        passed, text, source = True, st["text"], "cached (estado identico ao ultimo gate verde do hook)"
+        passed, text, source = True, st["text"], "cached (state identical to the hook's last green gate)"
     else:
         passed, text, _ = run_gate(repo, ctx)
         with open(os.path.join(rundir, "gate-final.log"), "w", encoding="utf-8") as fh:
             fh.write(text + "\n")
-        source = f"final (rodado apos o {task['backend']})"
+        source = f"final (run after {task['backend']})"
     if not passed:
-        fails.append("gate falhou no estado final da arvore")
+        fails.append("gate failed on the final tree state")
     cls = classify(changed_paths(repo, ignore), task["scope"], task["side_effects"])
     if cls["out_of_scope"]:
-        fails.append(f"alteracoes fora do escopo: {cls['out_of_scope']}")
+        fails.append(f"changes outside the scope: {cls['out_of_scope']}")
     if cls["side_effects"]:
-        warns.append(f"efeitos colaterais tolerados (revise e reverta se for o caso): {cls['side_effects']}")
+        warns.append(f"tolerated side effects (review and revert if needed): {cls['side_effects']}")
     denials = [e for e in events if e.get("event") == "pre" and e.get("decision") != "allow"]
     if denials:
-        warns.append(f"{len(denials)} chamada(s) negada(s) pelos guards; veja guard_denials")
+        warns.append(f"{len(denials)} call(s) denied by the guards; see guard_denials")
     ignored = diff_state(ignored_before, ignored_state(repo))
     if ignored:
-        warns.append("arquivos ignorados pelo git criados ou alterados durante o run (o gate pode ter "
-                     f"escrito alguns; o resto e escrita fora do escopo que o git status nao mostra): {ignored}")
+        warns.append("git-ignored files created or changed during the run (the gate may have written "
+                     f"some; the rest is out-of-scope writing that git status does not show): {ignored}")
     stopped = stop_run_procs(ctx["run_id"])
     if stopped:
-        warns.append("processos deixados pelo run encerrados (traziam a marca do run): "
+        warns.append("processes left behind by the run were stopped (they carried the run marker): "
                      + "; ".join(f"{p} {c}" for p, c in stopped.items()))
     # By marker, not by cwd: a cwd scan also listed the orchestrating Claude
     # session's own `sleep 2` wait loop (false positive, 2026-10-13).
     leftover = marked_procs(ctx["run_id"])
     if leftover:
-        warns.append("processos com a marca do run ainda vivos depois de SIGTERM e SIGKILL: "
+        warns.append("processes with the run marker still alive after SIGTERM and SIGKILL: "
                      + "; ".join(f"{p} {c}" for p, c in leftover.items()))
     verdict = {
         "ok": not fails, "mode": "delegate", "backend": task["backend"], "run_dir": rundir,
@@ -2275,13 +2275,13 @@ def cmd_delegate(a) -> int:
         "stop_events": [e for e in events if e.get("event") == "stop"],
         "report": report,
         task["backend"]: run_info,
-        "next": "Nada foi commitado. Revise `git diff HEAD` contra a fonte da verdade antes de aceitar; "
-                "o gate e necessario, nao suficiente.",
+        "next": "Nothing was committed. Review `git diff HEAD` against the source of truth before "
+                "accepting; the gate is necessary, not sufficient.",
     }
     write_json(os.path.join(rundir, "verdict.json"), verdict)
     print(json.dumps(verdict, ensure_ascii=False, indent=2))
-    eprint(f"crew: {'OK' if verdict['ok'] else 'FALHOU'} — {len(fails)} falha(s), "
-           f"{len(warns)} aviso(s); verdict em {rundir}/verdict.json")
+    eprint(f"crew: {'OK' if verdict['ok'] else 'FAILED'} — {len(fails)} failure(s), "
+           f"{len(warns)} warning(s); verdict at {rundir}/verdict.json")
     return 0 if verdict["ok"] else 1
 
 
@@ -2293,12 +2293,12 @@ def cmd_review(a) -> int:
         with open(a.prompt_file, encoding="utf-8") as fh:
             question = (fh.read() + "\n" + question).strip()
     if not question:
-        raise Refusal("review sem pergunta: passe o texto ou --prompt-file")
+        raise Refusal("review without a question: pass the text or --prompt-file")
     schema = DEFAULT_REVIEW_SCHEMA
     if a.schema:
         schema = read_json(a.schema)
         if not (isinstance(schema, dict) and schema.get("type") == "object"):
-            raise Refusal(f"{a.schema}: schema precisa de raiz type=object")
+            raise Refusal(f"{a.schema}: schema needs a root of type=object")
     opencode, copilot = a.backend == "opencode", a.backend == "copilot"
     model = a.model or {"opencode": OPENCODE_DEFAULT_MODEL, "copilot": COPILOT_DEFAULT_MODEL}.get(
         a.backend, DEFAULT_MODEL)
@@ -2312,10 +2312,10 @@ def cmd_review(a) -> int:
     if a.diff:
         diff_txt = git(repo, "diff", "--no-ext-diff", a.diff)
         if not diff_txt.strip():
-            raise Refusal(f"git diff {a.diff} vazio")
+            raise Refusal(f"git diff {a.diff} is empty")
         if len(diff_txt.encode()) > MAX_DIFF_BYTES:
             diff_txt = diff_txt.encode()[:MAX_DIFF_BYTES].decode(errors="ignore") + \
-                "\n…(diff cortado; leia os arquivos para o resto)…"
+                "\n…(diff truncated; read the files for the rest)…"
     rundir = new_rundir(repo, "review")
     eprint(f"crew: run dir {rundir}")
     if opencode:
@@ -2324,11 +2324,11 @@ def cmd_review(a) -> int:
             oc, pre_warns = preflight_opencode(model)
         finally:
             if restore_files(repo, saved):
-                eprint("crew: o preflight do opencode reescreveu opencode.json; restaurado")
+                eprint("crew: opencode preflight rewrote opencode.json; restored")
     elif copilot:
         cp, pre_warns = preflight_copilot()
         if other_cp_hooks:
-            pre_warns.append(f"hooks do proprio repo em {COPILOT_HOOK_DIR}/ carregam junto: {other_cp_hooks}")
+            pre_warns.append(f"the repo's own hooks in {COPILOT_HOOK_DIR}/ load together: {other_cp_hooks}")
     else:
         pre_warns = preflight_agy(model, a.min_quota, not a.no_quota_probe, rundir)
     prompt = question
@@ -2360,7 +2360,7 @@ def cmd_review(a) -> int:
     if opencode:
         env_oc = opencode_env(write_oc_guard(rundir), False)
         try:
-            eprint(f"crew: review rodando (opencode, {model})…")
+            eprint(f"crew: review running (opencode, {model})…")
             rc, stdout, stderr = run_agy([oc, "run", *OC_RUN_FLAGS, "--format", "json", "-m", model,
                                           oc_message(prompt)], repo, rundir, timeout_s,
                                          name="opencode-1", env=env_oc, grace=0)
@@ -2369,10 +2369,10 @@ def cmd_review(a) -> int:
         fails, info = evaluate_oc(rc, stdout, stderr)
         report = extract_report(info.pop("text"))
         fails += report_problems(report, schema)
-        warns = pre_warns + ([f"o opencode reescreveu {sorted(restored)}; bytes restaurados"] if restored else [])
+        warns = pre_warns + ([f"opencode rewrote {sorted(restored)}; bytes restored"] if restored else [])
         run_info = {"rc": rc, **info}
     elif copilot:
-        eprint(f"crew: review rodando (copilot, {model}, sem shell nem apply_patch)…")
+        eprint(f"crew: review running (copilot, {model}, no shell or apply_patch)…")
         rc, stdout, stderr, fails = run_copilot(cp, prompt, model, repo, rundir, ctx, timeout_s,
                                                 COPILOT_REVIEW_EXCLUDED_TOOLS, COPILOT_MIN_AI_CREDITS)
         run_fails, info = evaluate_cp(rc, stdout, stderr)
@@ -2380,14 +2380,14 @@ def cmd_review(a) -> int:
         report = extract_report(info.pop("text"))
         fails += report_problems(report, schema)
         usage = read_cp_usage(os.path.join(rundir, "usage.json"))
-        warns = pre_warns + ([] if usage else ["usage.json do copilot ausente: creditos gastos desconhecidos"])
+        warns = pre_warns + ([] if usage else ["copilot usage.json missing: credits spent unknown"])
         run_info = {"rc": rc, **info, "usage": usage}
     else:
         cmd = ["agy", "-p", prompt, "--model", model, "--mode", "plan", "--output-format", "json",
                "--json-schema", schema_path, "--print-timeout", f"{timeout_s}s"]
         created = install_hooks(repo, rundir, ctx)
         try:
-            eprint(f"crew: review rodando ({model}, --mode plan)…")
+            eprint(f"crew: review running ({model}, --mode plan)…")
             rc, stdout, stderr = run_agy(cmd, repo, rundir, timeout_s)
         finally:
             remove_hooks(repo, created)
@@ -2398,21 +2398,21 @@ def cmd_review(a) -> int:
                                                           "usage")} if isinstance(env, dict) else {})}
     if (fingerprint(repo, []) != fp_before or ignored_state(repo) != ignored_before
             or integrity_state(repo, rundir) != integ_before):
-        fails.append("a arvore, um arquivo ignorado ou o .git mudou durante um review que devia ser "
-                     "somente leitura")
+        fails.append("the tree, an ignored file or .git changed during a review that should have been "
+                     "read-only")
     if copilot:
         if not any(e.get("event") in ("session_start", "pre", "stop") for e in guard_events(rundir)):
-            fails.append("os hooks do crew nao carregaram no copilot (nenhum evento de hook): o "
-                         "review rodou sem nada que negasse escrita")
+            fails.append("the crew hooks did not load in copilot (no hook event): the review ran "
+                         "with nothing to deny writes")
     elif not any(e.get("event") == "session_start" for e in guard_events(rundir)):
         if opencode:
-            fails.append("o plugin de guard do opencode nao carregou (nenhum SessionStart): o review "
-                         "rodou sem nada que o mantivesse somente leitura")
+            fails.append("the opencode guard plugin did not load (no SessionStart): the review ran "
+                         "with nothing keeping it read-only")
         else:
-            warns.append("hooks nao carregaram (nenhum SessionStart): o review rodou so com --mode plan")
+            warns.append("hooks did not load (no SessionStart): the review ran with --mode plan only")
     verdict = {"ok": not fails, "mode": "review", "backend": a.backend, "run_dir": rundir, "model": model,
                "failures": fails, "warnings": warns, "report": report, a.backend: run_info,
-               "next": "Segunda opiniao de um modelo mais barato: confira cada evidence no codigo antes de agir."}
+               "next": "Second opinion from a cheaper model: check each evidence against the code before acting."}
     write_json(os.path.join(rundir, "verdict.json"), verdict)
     print(json.dumps(verdict, ensure_ascii=False, indent=2))
     return 0 if verdict["ok"] else 1
@@ -2454,30 +2454,30 @@ def self_test() -> int:
         subprocess.run(g + ["commit", "-q", "-m", "init"], check=True)
 
         # example task shipped with the skill must validate
-        example = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "shared",
+        example = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "references",
                                "task.example.json")
         t = load_task(example)
-        check(t["scope"] and t["gate"]["checks"], "task.example.json carrega")
-        check("Operating rules" in compose_prompt(t, repo), "prompt composto tem as regras")
+        check(t["scope"] and t["gate"]["checks"], "task.example.json loads")
+        check("Operating rules" in compose_prompt(t, repo), "composed prompt has the rules")
 
         task = normalize_task({"prompt": "x", "scope": ["src/*"], "side_effects": ["side.json"],
                                "gate": {"format": ["ls -- {files} >/dev/null"], "checks": ["true"],
                                         "forbid": [r"@ts-ignore"]}})
-        for bad, why in ((dict(prompt="", scope=["a"], gate={"checks": ["true"]}), "prompt vazio"),
-                         (dict(prompt="x", scope=[], gate={"checks": ["true"]}), "scope vazio"),
-                         (dict(prompt="x", scope=["../a"], gate={"checks": ["true"]}), "scope com .."),
-                         (dict(prompt="x", scope=["a"], gate={}), "gate sem comandos"),
+        for bad, why in ((dict(prompt="", scope=["a"], gate={"checks": ["true"]}), "empty prompt"),
+                         (dict(prompt="x", scope=[], gate={"checks": ["true"]}), "empty scope"),
+                         (dict(prompt="x", scope=["../a"], gate={"checks": ["true"]}), "scope with .."),
+                         (dict(prompt="x", scope=["a"], gate={}), "gate without commands"),
                          (dict(prompt="x", scope=["a"], gate={"checks": ["t"]},
-                               report_schema={"type": "string"}), "schema sem raiz object")):
+                               report_schema={"type": "string"}), "schema without object root")):
             try:
                 normalize_task(bad)
-                check(False, f"task invalida aceita: {why}")
+                check(False, f"invalid task accepted: {why}")
             except Refusal:
                 check(True, why)
 
         ctx = base_ctx(repo, task, "delegate")
         pre = lambda name, **args: decide_pre({"toolCall": {"name": name, "args": args}}, ctx)  # noqa: E731
-        check(pre("view_file", AbsolutePath=f"{repo}/src/a.txt")["decision"] == "allow", "leitura no repo")
+        check(pre("view_file", AbsolutePath=f"{repo}/src/a.txt")["decision"] == "allow", "read inside the repo")
         check(pre("read_file", Path=f"{repo}/src/a.txt")["decision"] == "allow", "agy 1.4.4 read_file in repo")
         check(pre("read_file", Path="/etc/passwd")["decision"] == "deny", "agy 1.4.4 read_file outside")
         check(pre("read_file", Path=f"{repo}/.env")["decision"] == "deny", "agy 1.4.4 read_file secret")
@@ -2485,53 +2485,53 @@ def self_test() -> int:
               "agy 1.4.4 write_file out of scope")
         check(pre("edit_file", Path="src/../.git/config", Target="a", Replacement="b")["decision"] == "deny",
               "agy 1.4.4 edit_file into .git")
-        check(pre("view_file", AbsolutePath="/etc/passwd")["decision"] == "deny", "leitura fora do repo")
-        check(pre("list_dir", DirectoryPath="~/.claude")["decision"] == "deny", "home negado")
-        check(pre("run_command", CommandLine="cat /tmp/x")["decision"] == "deny", "/tmp negado")
-        check(pre("run_command", CommandLine="ls ..")["decision"] == "deny", ".. negado")
-        check(pre("run_command", CommandLine="ps aux")["decision"] == "deny", "ps negado")
-        check(pre("run_command", CommandLine="git commit -m x")["decision"] == "deny", "commit negado")
-        check(pre("run_command", CommandLine="npm install left-pad")["decision"] == "deny", "install negado")
-        check(pre("run_command", CommandLine="sed -i s/a/b/ src/a.txt")["decision"] == "deny", "sed -i negado")
-        check(pre("run_command", CommandLine="echo $HOME")["decision"] == "deny", "$HOME negado")
+        check(pre("view_file", AbsolutePath="/etc/passwd")["decision"] == "deny", "read outside the repo")
+        check(pre("list_dir", DirectoryPath="~/.claude")["decision"] == "deny", "home denied")
+        check(pre("run_command", CommandLine="cat /tmp/x")["decision"] == "deny", "/tmp denied")
+        check(pre("run_command", CommandLine="ls ..")["decision"] == "deny", ".. denied")
+        check(pre("run_command", CommandLine="ps aux")["decision"] == "deny", "ps denied")
+        check(pre("run_command", CommandLine="git commit -m x")["decision"] == "deny", "commit denied")
+        check(pre("run_command", CommandLine="npm install left-pad")["decision"] == "deny", "install denied")
+        check(pre("run_command", CommandLine="sed -i s/a/b/ src/a.txt")["decision"] == "deny", "sed -i denied")
+        check(pre("run_command", CommandLine="echo $HOME")["decision"] == "deny", "$HOME denied")
         check(pre("run_command", CommandLine="npm test 2>&1 > /dev/null")["decision"] == "allow", "npm test")
-        check(pre("run_command", CommandLine="git diff HEAD")["decision"] == "allow", "git diff permitido")
-        check(pre("run_command", CommandLine="echo $((4 / 2))")["decision"] == "allow", "divisao nao e path")
+        check(pre("run_command", CommandLine="git diff HEAD")["decision"] == "allow", "git diff allowed")
+        check(pre("run_command", CommandLine="echo $((4 / 2))")["decision"] == "allow", "division is not a path")
         check(pre("run_command", CommandLine="sed -n 1,5p src/a.txt")["decision"] == "allow", "sed -n")
         # secrets: by tool and by shell, .env.example still readable, [] turns it off
-        check(pre("view_file", AbsolutePath=f"{repo}/.env")["decision"] == "deny", "segredo: view .env")
+        check(pre("view_file", AbsolutePath=f"{repo}/.env")["decision"] == "deny", "secret: view .env")
         check(pre("view_file", AbsolutePath=f"{repo}/apps/web/.dev.vars")["decision"] == "deny",
-              "segredo: .dev.vars")
+              "secret: .dev.vars")
         check(pre("view_file", AbsolutePath=f"{repo}/.env.example")["decision"] == "allow",
-              "segredo: .env.example liberado")
-        check(pre("run_command", CommandLine="cat .env")["decision"] == "deny", "segredo: cat .env")
+              "secret: .env.example allowed")
+        check(pre("run_command", CommandLine="cat .env")["decision"] == "deny", "secret: cat .env")
         check(pre("run_command", CommandLine="grep DATABASE apps/api/.env.production")["decision"]
-              == "deny", "segredo: grep em .env.production")
-        check(pre("run_command", CommandLine="cat certs/server.pem")["decision"] == "deny", "segredo: pem")
+              == "deny", "secret: grep in .env.production")
+        check(pre("run_command", CommandLine="cat certs/server.pem")["decision"] == "deny", "secret: pem")
         check(pre("run_command", CommandLine="node scripts/env-check.js")["decision"] == "allow",
-              "segredo: nome parecido nao e segredo")
+              "secret: similar name is not a secret")
         nosec = dict(ctx, secret_globs=[])
         check(decide_pre({"toolCall": {"name": "view_file", "args": {"AbsolutePath": f"{repo}/.env"}}},
-                         nosec)["decision"] == "allow", "segredo: lista vazia desliga")
+                         nosec)["decision"] == "allow", "secret: empty list turns it off")
         # WaitMsBeforeAsync is no longer overwritten: it did not keep the command in the foreground
-        check(pre("run_command", CommandLine="npm test") == {"decision": "allow"}, "run_command sem overwrite")
-        check("overwrite" not in pre("view_file", AbsolutePath=f"{repo}/src/a.txt"), "sem overwrite fora do shell")
+        check(pre("run_command", CommandLine="npm test") == {"decision": "allow"}, "run_command without overwrite")
+        check("overwrite" not in pre("view_file", AbsolutePath=f"{repo}/src/a.txt"), "no overwrite outside the shell")
         check(pre("write_to_file", TargetFile=f"{repo}/src/b.txt", CodeContent="/etc/x")["decision"]
-              == "allow", "escrita no escopo; conteudo nao e escaneado")
-        check(pre("write_to_file", TargetFile=f"{repo}/side.json")["decision"] == "deny", "fora do escopo")
+              == "allow", "write in scope; content is not scanned")
+        check(pre("write_to_file", TargetFile=f"{repo}/side.json")["decision"] == "deny", "out of scope")
         check(pre("write_file", Path=f"{repo}/src/b.txt", Content="/etc/x", Overwrite=True)["decision"]
               == "allow", "agy 1.4.4 write_file in scope, path-like content ignored")
         check(pre("edit_file", Path=f"{repo}/src/b.txt", Target="/etc/a", Replacement="/etc/b")["decision"]
               == "allow", "agy 1.4.4 edit_file in scope")
         check(pre("replace_file_content", TargetFile="src/../.git/config")["decision"] == "deny", ".git")
-        check(pre("write_to_file", TargetFile="/tmp/out.txt")["decision"] == "deny", "escrita fora do repo")
-        check(pre("invoke_subagent", Task="x")["decision"] == "deny", "subagente negado")
-        check(pre("finish", files_changed=["/etc/passwd"])["decision"] == "allow", "finish nao e escaneado")
-        check(pre("grep_search", SearchPath=repo, Query="/api/v1")["decision"] == "allow", "Query ignorada")
+        check(pre("write_to_file", TargetFile="/tmp/out.txt")["decision"] == "deny", "write outside the repo")
+        check(pre("invoke_subagent", Task="x")["decision"] == "deny", "subagent denied")
+        check(pre("finish", files_changed=["/etc/passwd"])["decision"] == "allow", "finish is not scanned")
+        check(pre("grep_search", SearchPath=repo, Query="/api/v1")["decision"] == "allow", "Query ignored")
         # tool allowlist: network, workflows, MCP and unknown tools are denied
         for tool in ("read_url_content", "search_web", "run_workflow", "manage_task", "mcp_foo_bar",
                      "ask_permission", "send_message"):
-            check(pre(tool, Url="https://example.com/a")["decision"] == "deny", f"{tool} negado")
+            check(pre(tool, Url="https://example.com/a")["decision"] == "deny", f"{tool} denied")
         # relative escapes in non-shell tools, Cwd, cd, and literal forms
         for args, why in ((("list_dir", {"DirectoryPath": "../.."}), "list_dir .."),
                           (("view_file", {"AbsolutePath": "../../etc/passwd"}), "view_file .."),
@@ -2542,13 +2542,13 @@ def self_test() -> int:
                           (("run_command", {"CommandLine": "ls", "Cwd": "../../../etc"}), "Cwd .."),
                           (("run_command", {"CommandLine": "cd ..&&ls"}), "cd ..&&"),
                           (("run_command", {"CommandLine": "cd / && cat etc/passwd"}), "cd /"),
-                          (("run_command", {"CommandLine": "cd && ls"}), "cd sozinho"),
+                          (("run_command", {"CommandLine": "cd && ls"}), "bare cd"),
                           (("run_command", {"CommandLine": "cat //etc/passwd"}), "//etc"),
-                          (("run_command", {"CommandLine": "cat /*/passwd"}), "glob na raiz"),
-                          (("run_command", {"CommandLine": "cat </etc/passwd"}), "redirect de /etc"),
-                          (("run_command", {"CommandLine": "echo x>/home/x"}), "redirect para /home")):
-            check(pre(args[0], **args[1])["decision"] == "deny", f"escape negado: {why}")
-        check(pre("run_command", CommandLine="cd src && ls")["decision"] == "allow", "cd dentro do repo")
+                          (("run_command", {"CommandLine": "cat /*/passwd"}), "glob at root"),
+                          (("run_command", {"CommandLine": "cat </etc/passwd"}), "redirect from /etc"),
+                          (("run_command", {"CommandLine": "echo x>/home/x"}), "redirect to /home")):
+            check(pre(args[0], **args[1])["decision"] == "deny", f"escape denied: {why}")
+        check(pre("run_command", CommandLine="cd src && ls")["decision"] == "allow", "cd inside the repo")
         # .git / .agents through the shell, and git global options
         for c in ("printf '[core]\\n\\tfsmonitor = touch X\\n' >> .git/config",
                   "echo x > .git/hooks/pre-commit", "cat src/../.git/config", "ls .agents",
@@ -2561,162 +2561,162 @@ def self_test() -> int:
                   "ln -s / src/lnk", "nohup sh -c 'sleep 600' >/dev/null 2>&1 &", "setsid sleep 600 &",
                   "sleep 60 &", "crontab -", "chmod u+s src/a.txt", "echo X=1 > .env",
                   "cat a >> src/a.txt", "npm run deploy", "pnpm nx run web:publish"):
-            check(pre("run_command", CommandLine=c)["decision"] == "deny", f"shell negado: {c}")
+            check(pre("run_command", CommandLine=c)["decision"] == "deny", f"shell denied: {c}")
         # read-only commands that used to be false positives
         for c in ("grep -rn '/api/v1' src", "sed -n '/foo/,/bar/p' src/a.txt", "git grep -n 'deploy' -- src",
                   "git log --grep=publish", "npx vitest run -t 'GET /orders'", "git -C . diff",
                   "git --no-pager log -n 3", "git diff HEAD -- src 2>&1", "grep -n '->' src/a.txt",
                   "npm test >/dev/null 2>&1", "ls .github .gitignore", "python3 -m unittest -v 2>&1 | tail -5",
                   "cat src/a.txt && echo ok"):
-            check(pre("run_command", CommandLine=c)["decision"] == "allow", f"leitura permitida: {c}")
+            check(pre("run_command", CommandLine=c)["decision"] == "allow", f"read allowed: {c}")
         # symlink inside the scope that points out of the repo
         os.symlink("/", os.path.join(repo, "src", "lnk"))
         check(pre("write_to_file", TargetFile=f"{repo}/src/lnk/home/x")["decision"] == "deny", "symlink")
-        check(pre("write_to_file", TargetFile="src/lnk/home/x")["decision"] == "deny", "symlink relativo")
+        check(pre("write_to_file", TargetFile="src/lnk/home/x")["decision"] == "deny", "relative symlink")
         os.remove(os.path.join(repo, "src", "lnk"))
         dctx = dict(ctx, gate_commands=["docker compose run test", "{files}"])
         dpre = lambda c: decide_pre({"toolCall": {"name": "run_command", "args": {"CommandLine": c}}}, dctx)  # noqa: E731
-        check(dpre("docker compose run test")["decision"] == "allow", "comando do gate isento")
-        check(dpre("docker compose run test && git push")["decision"] == "deny", "encadeado nao e isento")
-        check(dpre("docker ps")["decision"] == "deny", "prefixo vazio nao isenta tudo")
-        check(dpre("docker compose run test 2>&1 >/dev/null")["decision"] == "allow", "gate com redirect inocuo")
+        check(dpre("docker compose run test")["decision"] == "allow", "gate command exempt")
+        check(dpre("docker compose run test && git push")["decision"] == "deny", "chained command is not exempt")
+        check(dpre("docker ps")["decision"] == "deny", "empty prefix does not exempt everything")
+        check(dpre("docker compose run test 2>&1 >/dev/null")["decision"] == "allow", "gate with harmless redirect")
         for c in ("docker compose run test\ngit push origin main", "docker compose run test\rgit push",
                   "docker compose run test <(git push origin HEAD)", "docker compose run test --x $HOME",
                   "docker compose run test > src/../x", "docker compose run testX"):
-            check(dpre(c)["decision"] == "deny", f"gate nao isenta: {c!r}")
+            check(dpre(c)["decision"] == "deny", f"gate does not exempt: {c!r}")
 
         # opencode backend: task fields, and its tool calls judged by the same decide_pre
-        check(task["backend"] == "agy" and task["model"] == DEFAULT_MODEL, "backend padrao e agy")
+        check(task["backend"] == "agy" and task["model"] == DEFAULT_MODEL, "default backend is agy")
         otask = normalize_task({"prompt": "x", "scope": ["src/*"], "backend": "opencode",
                                 "gate": {"checks": ["true"]}})
         check(otask["model"] == OPENCODE_DEFAULT_MODEL and not otask["disable_claude_code"],
-              "opencode: modelo padrao e CLAUDE.md carregado")
+              "opencode: default model and CLAUDE.md loaded")
         for bad, why in ((dict(prompt="x", scope=["a"], gate={"checks": ["t"]}, backend="codex"), "backend"),
                          (dict(prompt="x", scope=["*"], gate={"checks": ["t"]}, backend="opencode"),
-                          "scope cobre opencode.json"),
+                          "scope covers opencode.json"),
                          (dict(prompt="x", scope=["a"], gate={"checks": ["t"]}, disable_claude_code="1"),
-                          "disable_claude_code nao booleano")):
+                          "disable_claude_code not boolean")):
             try:
                 normalize_task(bad)
-                check(False, f"task invalida aceita: {why}")
+                check(False, f"invalid task accepted: {why}")
             except Refusal:
                 check(True, why)
         check("ONE JSON object" in compose_prompt(otask, repo) and "ONE JSON object" not in
-              compose_prompt(task, repo), "regra do relatorio so no prompt do opencode")
+              compose_prompt(task, repo), "report rule only in the opencode prompt")
         octx = base_ctx(repo, otask, "delegate")
         oc = lambda tool, **args: decide_oc({"tool": tool, "args": args}, octx)["decision"]  # noqa: E731
         for tool, args, want, why in (
-                ("read", {"filePath": f"{repo}/src/a.txt"}, "allow", "read no repo"),
-                ("read", {"filePath": "/etc/passwd"}, "deny", "read fora do repo"),
+                ("read", {"filePath": f"{repo}/src/a.txt"}, "allow", "read inside the repo"),
+                ("read", {"filePath": "/etc/passwd"}, "deny", "read outside the repo"),
                 ("list", {"path": "../.."}, "deny", "list .."),
-                ("glob", {"pattern": "/etc/*"}, "deny", "glob absoluto"),
-                ("glob", {"pattern": "src/**/*.ts"}, "allow", "glob no repo"),
-                ("grep", {"pattern": "/api/v1", "path": "src"}, "allow", "regex do grep nao e caminho"),
-                ("write", {"filePath": f"{repo}/src/b.txt", "content": "/etc/x"}, "allow", "write no escopo"),
-                ("write", {"filePath": f"{repo}/top.txt", "content": "x"}, "deny", "write fora do escopo"),
-                ("edit", {"filePath": "side.json", "oldString": "a", "newString": "b"}, "deny", "edit fora"),
+                ("glob", {"pattern": "/etc/*"}, "deny", "absolute glob"),
+                ("glob", {"pattern": "src/**/*.ts"}, "allow", "glob inside the repo"),
+                ("grep", {"pattern": "/api/v1", "path": "src"}, "allow", "grep regex is not a path"),
+                ("write", {"filePath": f"{repo}/src/b.txt", "content": "/etc/x"}, "allow", "write in scope"),
+                ("write", {"filePath": f"{repo}/top.txt", "content": "x"}, "deny", "write out of scope"),
+                ("edit", {"filePath": "side.json", "oldString": "a", "newString": "b"}, "deny", "edit outside scope"),
                 ("bash", {"command": "echo x > top.txt", "description": "w"}, "deny", "redirect"),
-                ("bash", {"command": "printf x >> src/a.txt"}, "deny", "redirect mesmo no escopo"),
-                ("bash", {"command": "cp src/a.txt top.txt"}, "deny", "cp no opencode"),
-                ("bash", {"command": "cd src && touch x"}, "deny", "touch no opencode"),
-                ("bash", {"command": "ls", "workdir": "/"}, "deny", "workdir fora"),
+                ("bash", {"command": "printf x >> src/a.txt"}, "deny", "redirect even in scope"),
+                ("bash", {"command": "cp src/a.txt top.txt"}, "deny", "cp in opencode"),
+                ("bash", {"command": "cd src && touch x"}, "deny", "touch in opencode"),
+                ("bash", {"command": "ls", "workdir": "/"}, "deny", "workdir outside"),
                 ("bash", {"command": "python3 -m unittest 2>&1", "description": "Run /etc tests"},
-                 "allow", "description nao e caminho"),
+                 "allow", "description is not a path"),
                 ("bash", {"command": "git commit -m x"}, "deny", "commit"),
                 ("apply_patch", {"patchText": "*** Begin Patch\n*** Update File: src/a.txt\n@@\n-a\n+b\n"
-                                 "*** End Patch"}, "allow", "patch no escopo"),
-                ("apply_patch", {"patchText": "*** Add File: top.txt\n+x\n"}, "deny", "patch fora"),
+                                 "*** End Patch"}, "allow", "patch in scope"),
+                ("apply_patch", {"patchText": "*** Add File: top.txt\n+x\n"}, "deny", "patch outside scope"),
                 ("apply_patch", {"patchText": "*** Update File: src/a.txt\n*** Move to: ../x\n"}, "deny",
-                 "patch move para fora"),
-                ("apply_patch", {"patchText": "garbage"}, "deny", "patch sem alvo"),
-                ("todowrite", {"todos": []}, "allow", "todowrite inerte"),
+                 "patch moves outside"),
+                ("apply_patch", {"patchText": "garbage"}, "deny", "patch without target"),
+                ("todowrite", {"todos": []}, "allow", "todowrite inert"),
                 ("webfetch", {"url": "https://example.com"}, "deny", "webfetch"),
-                ("task", {"prompt": "x", "subagent_type": "general"}, "deny", "subagente"),
+                ("task", {"prompt": "x", "subagent_type": "general"}, "deny", "subagent"),
                 ("batch", {"tool_calls": []}, "deny", "batch"),
-                ("brand_new_tool", {}, "deny", "ferramenta desconhecida")):
+                ("brand_new_tool", {}, "deny", "unknown tool")):
             check(oc(tool, **args) == want, f"opencode {why}: {tool} {args}")
         check(decide_oc({"tool": "bash", "args": {"command": "cp a b"}}, ctx)["decision"] == "allow",
-              "cp continua permitido no agy (politica do agy inalterada)")
+              "cp is still allowed in agy (agy policy unchanged)")
         rctx = dict(octx, scope=[], deny_patterns=REVIEW_DENY_ALL)
         check(decide_oc({"tool": "bash", "args": {"command": "ls"}}, rctx)["decision"] == "deny",
-              "review opencode nega todo shell")
+              "opencode review denies all shell")
         check(decide_oc({"tool": "write", "args": {"filePath": "src/a.txt"}}, rctx)["decision"] == "deny",
-              "review opencode nega escrita")
+              "opencode review denies writes")
 
         # copilot backend: model rule, task fields, tool translation to the same decide_pre
         ctask = normalize_task({"prompt": "x", "scope": ["src/*"], "backend": "copilot",
                                 "gate": {"checks": ["true"]}})
         check(ctask["model"] == "auto" and ctask["max_ai_credits"] == COPILOT_MIN_AI_CREDITS,
-              "copilot: modelo auto e backstop de 30 creditos")
-        for bad, why in ((dict(model="gpt-5.6-luna"), "modelo fixo sem override"),
-                         (dict(model="claude-sonnet-5.5", copilot_model_override="yes"), "override nao booleano"),
-                         (dict(max_ai_credits=10), "max_ai_credits abaixo de 30"),
-                         (dict(max_gate_attempts=9), "mais tentativas que o limite de bloqueios"),
-                         (dict(scope=["*"]), "scope cobre .github/hooks"),
-                         (dict(scope=[".claude/*"]), "scope cobre .claude/settings.json")):
+              "copilot: auto model and 30-credit backstop")
+        for bad, why in ((dict(model="gpt-5.6-luna"), "fixed model without override"),
+                         (dict(model="claude-sonnet-5.5", copilot_model_override="yes"), "override not boolean"),
+                         (dict(max_ai_credits=10), "max_ai_credits below 30"),
+                         (dict(max_gate_attempts=9), "more attempts than the block limit"),
+                         (dict(scope=["*"]), "scope covers .github/hooks"),
+                         (dict(scope=[".claude/*"]), "scope covers .claude/settings.json")):
             try:
                 normalize_task({"prompt": "x", "scope": ["src/*"], "backend": "copilot",
                                 "gate": {"checks": ["true"]}, **bad})
-                check(False, f"task copilot invalida aceita: {why}")
+                check(False, f"invalid copilot task accepted: {why}")
             except Refusal as exc:
-                check(why != "modelo fixo sem override" or "Free" in str(exc), f"{why}: {exc}")
+                check(why != "fixed model without override" or "Free" in str(exc), f"{why}: {exc}")
         check(normalize_task({"prompt": "x", "scope": ["src/*"], "backend": "copilot", "gate": {"checks": ["t"]},
                               "model": "claude-sonnet-5.5", "copilot_model_override": True})["model"]
-              == "claude-sonnet-5.5", "override libera outro modelo")
+              == "claude-sonnet-5.5", "override allows another model")
         check(copilot_model_problem("auto", False) is None and copilot_model_problem("x", False),
-              "regra do modelo")
+              "model rule")
         cprompt = compose_prompt(ctask, repo)
         check("NO shell" in cprompt and "Run the format and check commands yourself" not in cprompt
               and "ONE JSON object" in cprompt and "after gate feedback" in cprompt,
-              "prompt do copilot: sem shell, gate automatico, relatorio em toda mensagem final")
-        check("Run the format and check commands yourself" in compose_prompt(task, repo), "prompt do agy intacto")
+              "copilot prompt: no shell, automatic gate, report in every final message")
+        check("Run the format and check commands yourself" in compose_prompt(task, repo), "agy prompt untouched")
         cctx = base_ctx(repo, ctask, "delegate")
         cp = lambda tool, args: decide_cp({"toolName": tool, "toolArgs": args}, cctx)["decision"]  # noqa: E731
         for tool, args, want, why in (
-                ("view", {"path": f"{repo}/src/a.txt"}, "allow", "view no repo"),
-                ("view", {"path": "src/a.txt", "view_range": [1, 5]}, "allow", "view relativo"),
-                ("view", {"path": "/etc/passwd"}, "deny", "view fora do repo"),
-                ("view", {"path": f"{repo}/.env"}, "deny", "view de segredo"),
-                ("view", json.dumps({"path": "/etc/passwd"}), "deny", "args como string JSON"),
-                ("glob", {"pattern": "src/**/*.ts"}, "allow", "glob no repo"),
-                ("glob", {"pattern": "/etc/*"}, "deny", "glob absoluto"),
-                ("grep", {"pattern": "/api/v1", "path": "src", "glob": "*.ts"}, "allow", "regex nao e caminho"),
-                ("grep", {"pattern": "x", "path": "../.."}, "deny", "grep fora"),
+                ("view", {"path": f"{repo}/src/a.txt"}, "allow", "view inside the repo"),
+                ("view", {"path": "src/a.txt", "view_range": [1, 5]}, "allow", "relative view"),
+                ("view", {"path": "/etc/passwd"}, "deny", "view outside the repo"),
+                ("view", {"path": f"{repo}/.env"}, "deny", "view of a secret"),
+                ("view", json.dumps({"path": "/etc/passwd"}), "deny", "args as a JSON string"),
+                ("glob", {"pattern": "src/**/*.ts"}, "allow", "glob inside the repo"),
+                ("glob", {"pattern": "/etc/*"}, "deny", "absolute glob"),
+                ("grep", {"pattern": "/api/v1", "path": "src", "glob": "*.ts"}, "allow", "regex is not a path"),
+                ("grep", {"pattern": "x", "path": "../.."}, "deny", "grep outside"),
                 ("apply_patch", "*** Begin Patch\n*** Add File: src/b.txt\n+x\n*** End Patch\n", "allow",
-                 "patch no escopo (string crua, como no lab)"),
+                 "patch in scope (raw string)"),
                 ("apply_patch", "*** Begin Patch\n*** Add File: NOTES.txt\n+x\n*** End Patch\n", "deny",
-                 "patch fora do escopo"),
-                ("apply_patch", "*** Add File: ../NOTES.txt\n+x\n", "deny", "patch com .."),
+                 "patch out of scope"),
+                ("apply_patch", "*** Add File: ../NOTES.txt\n+x\n", "deny", "patch with .."),
                 ("apply_patch", "*** Add File: src/../NOTES.txt\n+x\n", "deny", "patch src/.."),
-                ("apply_patch", "*** Update File: src/a.txt\n*** Move to: /tmp/x\n", "deny", "patch move para fora"),
+                ("apply_patch", "*** Update File: src/a.txt\n*** Move to: /tmp/x\n", "deny", "patch moves outside"),
                 ("apply_patch", "*** Add File: src/a.txt\n+x\n*** Add File: side.json\n+y\n", "deny",
-                 "patch com um alvo fora"),
-                ("apply_patch", "garbage", "deny", "patch sem alvo"),
+                 "patch with one target outside"),
+                ("apply_patch", "garbage", "deny", "patch without target"),
                 ("apply_patch", "*** Add File: .github/hooks/crew-x.json\n+{}\n", "deny",
-                 "patch no arquivo de hooks"),
-                ("create", {"path": "src/c.txt", "file_text": "see /etc/passwd"}, "allow", "create no escopo"),
-                ("create", {"path": "top.txt", "file_text": "x"}, "deny", "create fora do escopo"),
-                ("edit", {"path": "src/a.txt", "old_str": "/a/", "new_str": "/b/"}, "allow", "edit no escopo"),
-                ("edit", {"path": "side.json", "old_str": "a", "new_str": "b"}, "deny", "edit fora"),
-                ("bash", {"command": "ls"}, "deny", "bash sempre negado"),
-                ("read_bash", {"shellId": "1"}, "deny", "read_bash negado"),
-                ("task", {"prompt": "x"}, "deny", "subagente"),
-                ("web_fetch", {"url": "https://example.com"}, "deny", "rede"),
-                ("github-mcp-server-list_issues", {"owner": "x"}, "deny", "MCP do GitHub"),
+                 "patch on the hooks file"),
+                ("create", {"path": "src/c.txt", "file_text": "see /etc/passwd"}, "allow", "create in scope"),
+                ("create", {"path": "top.txt", "file_text": "x"}, "deny", "create out of scope"),
+                ("edit", {"path": "src/a.txt", "old_str": "/a/", "new_str": "/b/"}, "allow", "edit in scope"),
+                ("edit", {"path": "side.json", "old_str": "a", "new_str": "b"}, "deny", "edit outside scope"),
+                ("bash", {"command": "ls"}, "deny", "bash always denied"),
+                ("read_bash", {"shellId": "1"}, "deny", "read_bash denied"),
+                ("task", {"prompt": "x"}, "deny", "subagent"),
+                ("web_fetch", {"url": "https://example.com"}, "deny", "network"),
+                ("github-mcp-server-list_issues", {"owner": "x"}, "deny", "GitHub MCP"),
                 ("skill", {"skill": "x"}, "deny", "skill"),
-                ("report_intent", {"intent": "Editing /etc"}, "allow", "report_intent inerte"),
-                ("brand_new_tool", {}, "deny", "ferramenta desconhecida")):
+                ("report_intent", {"intent": "Editing /etc"}, "allow", "report_intent inert"),
+                ("brand_new_tool", {}, "deny", "unknown tool")):
             check(cp(tool, args) == want, f"copilot {why}: {tool} {args}")
         crctx = dict(cctx, scope=[], deny_patterns=REVIEW_DENY_ALL, mode="review")
         check(decide_cp({"toolName": "create", "toolArgs": {"path": "src/a.txt"}}, crctx)["decision"] == "deny",
-              "review copilot nega escrita")
+              "copilot review denies writes")
         check(decide_cp({"toolName": "view", "toolArgs": {"path": "src/a.txt"}}, crctx)["decision"] == "allow",
-              "review copilot le")
-        check(cp_hook_output("cp-pre", {"decision": "allow"}) == "", "allow do copilot nao imprime nada")
+              "copilot review reads")
+        check(cp_hook_output("cp-pre", {"decision": "allow"}) == "", "copilot allow prints nothing")
         dj = json.loads(cp_hook_output("cp-pre", {"decision": "deny", "reason": "r"}))
-        check(dj == {"permissionDecision": "deny", "permissionDecisionReason": "r"}, "deny no formato do copilot")
+        check(dj == {"permissionDecision": "deny", "permissionDecisionReason": "r"}, "deny in copilot format")
         check(json.loads(cp_hook_output("cp-stop", {"decision": "stop"})) == {"decision": "allow"},
-              "stop vira allow no copilot")
+              "stop becomes allow in copilot")
 
         # copilot events: exit 0 with failed work, shell, subagent, missing result
         def cpev(*evs):
@@ -2728,34 +2728,34 @@ def self_test() -> int:
             "success": False}}, msg('ok {"status": "done"}'), msg(""), res()), "")
         check(f == [] and info["session"] == "s1" and info["tools"] == {"view": 1} and info["tool_failures"] == 1
               and info["premium_requests"] == 2 and extract_report(info["text"]) == {"status": "done"},
-              f"stream bom do copilot: {f} {info}")
+              f"good copilot stream: {f} {info}")
         f, _ = evaluate_cp(0, cpev(tstart("bash"), res()), "")
-        check(any("shell" in x for x in f), "chamada de bash reprova")
+        check(any("shell" in x for x in f), "bash call fails the run")
         f, _ = evaluate_cp(0, cpev(tstart("task"), res()), "")
-        check(any("subagente" in x for x in f), "chamada de task reprova")
+        check(any("subagent" in x for x in f), "task call fails the run")
         f, _ = evaluate_cp(0, cpev(msg("x")), "")
-        check(any("result" in x for x in f), "sem result reprova")
+        check(any("result" in x for x in f), "missing result fails the run")
         f, _ = evaluate_cp(0, cpev(res(1)), "")
-        check(any("exitCode" in x for x in f), "result com exitCode != 0 reprova")
+        check(any("exitCode" in x for x in f), "result with exitCode != 0 fails the run")
         f, _ = evaluate_cp(1, cpev(res()), "boom")
-        check(any("rc=1" in x for x in f), "rc != 0 reprova")
+        check(any("rc=1" in x for x in f), "rc != 0 fails the run")
         f, _ = evaluate_cp(0, "", "")
-        check(any("nenhum evento" in x for x in f), "stdout vazio reprova")
+        check(any("no JSON event" in x for x in f), "empty stdout fails the run")
         f, _ = evaluate_cp(0, cpev({"type": "session.error", "data": {"message": "quota"}}, res()), "")
-        check(any("session.error" in x for x in f), "evento de erro reprova")
+        check(any("session.error" in x for x in f), "error event fails the run")
         upath = os.path.join(tmp, "usage.json")
         write_json(upath, {"totalPremiumRequestCost": 2, "totalNanoAiu": 939943800, "aiCreditsStatus": "complete",
                            "modelMetrics": {"gpt-5.6-luna": {}}, "currentModel": "gpt-5.6-luna"})
         u = read_cp_usage(upath)
         check(u["ai_credits"] == 0.9399 and u["served_models"] == ["gpt-5.6-luna"] and u["premium_requests"] == 2,
-              f"usage do copilot: {u}")
-        check(read_cp_usage(os.path.join(tmp, "nope.json")) is None, "usage ausente")
+              f"copilot usage: {u}")
+        check(read_cp_usage(os.path.join(tmp, "nope.json")) is None, "usage missing")
         cmdl = copilot_cmd("copilot", "-x", "auto", "/r", COPILOT_EXCLUDED_TOOLS, 30)
         i = cmdl.index("--excluded-tools")
         check(cmdl[i + 1:i + 3] == ["bash", "task"] and "--disallow-temp-dir" in cmdl and cmdl[2] == "Task:\n-x"
-              and "--allow-all-paths" not in cmdl and "--allow-all" not in cmdl, "linha do copilot")
+              and "--allow-all-paths" not in cmdl and "--allow-all" not in cmdl, "copilot command line")
         check(copilot_env("rid")["COPILOT_ALLOW_ALL"] == "true" and copilot_env("rid")[RUN_ENV] == "rid"
-              and copilot_env("rid")["NX_DAEMON"] == "false", "ambiente do copilot")
+              and copilot_env("rid")["NX_DAEMON"] == "false", "copilot environment")
 
         # opencode events: exit 0 is never success
         sid = "ses_x"
@@ -2764,25 +2764,25 @@ def self_test() -> int:
                                                          "cost": 0}}
         txt = {"type": "text", "part": {"text": 'Done.\n```json\n{"status": "done", "x": {"y": 1}}\n```'}}
         f, info = evaluate_oc(0, evs(fin("tool-calls"), txt, fin("stop")), "")
-        check(f == [] and info["session"] == sid and info["tokens"]["input"] == 10, f"stream bom: {f}")
-        check(extract_report(info["text"]) == {"status": "done", "x": {"y": 1}}, "relatorio de bloco json")
+        check(f == [] and info["session"] == sid and info["tokens"]["input"] == 10, f"good stream: {f}")
+        check(extract_report(info["text"]) == {"status": "done", "x": {"y": 1}}, "report from a json block")
         f, _ = evaluate_oc(0, evs(fin("tool-calls")), "")
-        check(any("reason=stop" in x for x in f), "sem stop final reprova")
+        check(any("reason=stop" in x for x in f), "no final stop fails the run")
         f, info = evaluate_oc(0, evs(fin("tool-calls"), txt), "")
         check(f == [] and extract_report(info["text"]) == {"status": "done", "x": {"y": 1}},
               f"opencode 2.x: ending on the text event is success: {f}")
         f, _ = evaluate_oc(0, evs({"type": "error", "error": {"name": "APIError", "data": {
             "message": "free tier"}}}), "")
-        check(any("free tier" in x for x in f), "evento error reprova com exit 0")
+        check(any("free tier" in x for x in f), "error event fails the run with exit 0")
         f, _ = evaluate_oc(0, "", "")
-        check(any("nenhum evento" in x for x in f), "stdout vazio reprova")
+        check(any("no JSON event" in x for x in f), "empty stdout fails the run")
         f, _ = evaluate_oc(1, evs(fin("stop")), "boom")
-        check(any("rc=1" in x for x in f), "rc != 0 reprova")
-        check(extract_report('{"a": 1} then {"b": {"c": 2}}') == {"b": {"c": 2}}, "ultimo objeto de topo")
-        check(extract_report("no json {here") is None, "sem relatorio")
+        check(any("rc=1" in x for x in f), "rc != 0 fails the run")
+        check(extract_report('{"a": 1} then {"b": {"c": 2}}') == {"b": {"c": 2}}, "last top-level object")
+        check(extract_report("no json {here") is None, "no report")
         check(report_problems(None, DEFAULT_REPORT_SCHEMA) and report_problems({"status": "done"},
-              DEFAULT_REPORT_SCHEMA), "relatorio ausente ou incompleto")
-        check(oc_message("-rf") == "Task:\n-rf" and oc_message("x") == "x", "mensagem nunca vira flag")
+              DEFAULT_REPORT_SCHEMA), "report missing or incomplete")
+        check(oc_message("-rf") == "Task:\n-rf" and oc_message("x") == "x", "message never becomes a flag")
 
         # opencode.json: exact bytes restored, a created one removed
         with open(os.path.join(repo, "opencode.json"), "wb") as fh:
@@ -2792,11 +2792,11 @@ def self_test() -> int:
             fh.write(b'{\n  "$schema": "https://opencode.ai/config.json",\n  "share": "disabled"\n}\n')
         with open(os.path.join(repo, "opencode.jsonc"), "w") as fh:
             fh.write("{}")
-        check(restore_files(repo, snap) == {"opencode.json", "opencode.jsonc"}, "restaura os dois")
+        check(restore_files(repo, snap) == {"opencode.json", "opencode.jsonc"}, "restores both")
         with open(os.path.join(repo, "opencode.json"), "rb") as fh:
-            check(fh.read() == b'{\n  "share": "disabled"\n}\n', "bytes originais")
-        check(not os.path.exists(os.path.join(repo, "opencode.jsonc")), "criado pelo run e removido")
-        check(restore_files(repo, snap) == set(), "restaurar de novo nao muda nada")
+            check(fh.read() == b'{\n  "share": "disabled"\n}\n', "original bytes")
+        check(not os.path.exists(os.path.join(repo, "opencode.jsonc")), "created by the run and removed")
+        check(restore_files(repo, snap) == set(), "restoring again changes nothing")
         os.remove(os.path.join(repo, "opencode.json"))
 
         # the generated guard forwards to this script and holds no policy of its own
@@ -2818,11 +2818,11 @@ def self_test() -> int:
         time.sleep(0.3)
         hit = stop_run_procs(rid)
         child.wait(timeout=10)
-        check(child.pid in hit and child.returncode is not None, "processo marcado encerrado")
-        check(other.poll() is None, "processo sem a marca intocado")
+        check(child.pid in hit and child.returncode is not None, "marked process stopped")
+        check(other.poll() is None, "unmarked process untouched")
         other.kill()
         other.wait()
-        check(stop_run_procs("") == {}, "sem run_id nao encerra nada")
+        check(stop_run_procs("") == {}, "no run_id stops nothing")
 
         # BackgroundWatcher: who may be killed, from a synthetic tree (agy = 1)
         bw = BackgroundWatcher(tmp, "rid")
@@ -2833,10 +2833,10 @@ def self_test() -> int:
                 14: ("bash -c nx run web:typecheck", True, False), 15: ("sleep 9", False, False),
                 16: ("uv tool uvx --from x kino --mcp", True, False), 17: ("node tsc", True, False)}
         check(set(bw.candidates(1, tree, info)) == {14, 17},
-              "vigia: so comando marcado do worker; hook, gate, baseline, MCP e sem marca ficam")
+              "watcher: only the worker's marked command; hook, gate, baseline, MCP and unmarked stay")
         tree[1] = 0
         info[1] = ("agy -p", True, False)
-        check(1 not in bw.candidates(1, tree, info), "vigia: nunca o proprio agy")
+        check(1 not in bw.candidates(1, tree, info), "watcher: never agy itself")
 
         # BackgroundWatcher: done only after a green gate
         def bw_events(*evs):
@@ -2849,15 +2849,15 @@ def self_test() -> int:
         green, red = {"event": "gate", "passed": True}, {"event": "gate", "passed": False}
         cmd_ev = {"event": "pre", "tool": "run_command", "decision": "allow"}
         check(bw_events(cmd_ev, green, {"event": "stop", "decision": "stop"}).finished_at,
-              "vigia: Stop com gate verde = terminou")
+              "watcher: Stop with green gate = finished")
         check(bw_events(green, {"event": "pre", "tool": "finish", "decision": "allow"}).finished_at,
-              "vigia: finish permitido com gate verde = terminou")
+              "watcher: finish allowed with green gate = finished")
         check(bw_events(red, {"event": "pre", "tool": "finish", "decision": "allow"}).finished_at is None,
-              "vigia: finish com gate vermelho nao conta")
+              "watcher: finish with red gate does not count")
         check(bw_events(green, red, {"event": "stop", "decision": "stop"}).finished_at is None,
-              "vigia: so o ultimo gate conta")
+              "watcher: only the last gate counts")
         check(bw_events(cmd_ev, {"event": "stop", "decision": "continue"}).finished_at is None,
-              "vigia: Stop com continue nao conta")
+              "watcher: Stop with continue does not count")
 
         # BackgroundWatcher against real processes: a fake agy with a helper
         # started before the first command and a worker command after it
@@ -2890,40 +2890,40 @@ def self_test() -> int:
                     except OSError:
                         pass
             w.poll(fake.pid)
-            check(w.finished_at is None and not w.killed, "vigia: nada antes de o worker terminar")
+            check(w.finished_at is None and not w.killed, "watcher: nothing before the worker finishes")
             append_jsonl(os.path.join(wd, "guard.jsonl"), green)
             append_jsonl(os.path.join(wd, "guard.jsonl"), {"event": "stop", "decision": "stop"})
             w.poll(fake.pid)
-            check(not w.killed, "vigia: espera a carencia")
+            check(not w.killed, "watcher: waits for the grace period")
             time.sleep(0.4)
             w.poll(fake.pid)
             alive = {c: os.path.exists(f"/proc/{p}") for c, p in kids.items()}
             check(set(w.killed.values()) == {"sleep 61"} and not alive.get("sleep 61")
                   and alive.get("sleep 60") and alive.get("sleep 62") and fake.poll() is None,
-                  f"vigia: so o comando do worker encerrado; helper, sem marca e o agy vivos ({w.killed}, {alive})")
-            check(os.path.isfile(os.path.join(wd, "procs.jsonl")), "vigia: arvore registrada em procs.jsonl")
+                  f"watcher: only the worker's command stopped; helper, unmarked and agy alive ({w.killed}, {alive})")
+            check(os.path.isfile(os.path.join(wd, "procs.jsonl")), "watcher: tree recorded in procs.jsonl")
         finally:
             os.killpg(fake.pid, signal.SIGKILL)     # our own fake agy's group
             fake.wait()
         check("OPENCODE_DISABLE_CLAUDE_CODE" in opencode_env("/x.js", True)
-              and "OPENCODE_DISABLE_CLAUDE_CODE" not in opencode_env("/x.js", False), "flag do CLAUDE.md")
+              and "OPENCODE_DISABLE_CLAUDE_CODE" not in opencode_env("/x.js", False), "CLAUDE.md flag")
 
         # gate: nothing changed -> fail; in-scope change -> pass; forbid; out of scope
         ok, text, _ = run_gate(repo, ctx)
-        check(not ok and "nenhum arquivo do escopo" in text, "gate falha sem mudanca")
+        check(not ok and "no file in the scope was changed" in text, "gate fails without a change")
         ok, text, _ = run_gate(repo, ctx, baseline=True)
-        check(ok and "pulado" in text, "baseline roda so comandos")
+        check(ok and "skipped" in text, "baseline runs only commands")
         with open(os.path.join(repo, "src", "a.txt"), "a") as fh:
             fh.write("two\n")
         with open(os.path.join(repo, "src", "new file.txt"), "w") as fh:
             fh.write("ok\n")
         ok, text, cls = run_gate(repo, ctx)
-        check(ok, f"gate passa com mudanca no escopo: {text}")
-        check(sorted(cls["in_scope"]) == ["src/a.txt", "src/new file.txt"], "classifica escopo")
+        check(ok, f"gate passes with an in-scope change: {text}")
+        check(sorted(cls["in_scope"]) == ["src/a.txt", "src/new file.txt"], "classifies scope")
         with open(os.path.join(repo, "src", "a.txt"), "a") as fh:
             fh.write("x // @ts-ignore\n")
         ok, text, _ = run_gate(repo, ctx)
-        check(not ok and "src/a.txt:3" in text, f"forbid com numero de linha: {text}")
+        check(not ok and "src/a.txt:3" in text, f"forbid with line number: {text}")
         subprocess.run(g + ["checkout", "-q", "--", "src/a.txt"], check=True)
         with open(os.path.join(repo, "side.json"), "w") as fh:
             fh.write('{"analytics": false}\n')
@@ -2931,22 +2931,22 @@ def self_test() -> int:
             fh.write("x\n")
         ok, text, cls = run_gate(repo, ctx)
         check(not ok and "other.txt" in text and cls["side_effects"] == ["side.json"],
-              "fora do escopo falha; efeito colateral tolerado")
+              "out of scope fails; side effect tolerated")
         os.remove(os.path.join(repo, "other.txt"))
         ok, text, _ = run_gate(repo, dict(ctx, gate=dict(ctx["gate"], checks=['test "$CREW_GATE" = 1'])))
-        check(ok, "gate exporta CREW_GATE")
+        check(ok, "gate exports CREW_GATE")
         ctx2 = dict(ctx, gate=dict(ctx["gate"], checks=["false"]))
         ok, text, _ = run_gate(repo, ctx2)
-        check(not ok and "FALHOU (rc=1)" in text, "check falhando reprova")
+        check(not ok and "FAILED (rc=1)" in text, "failing check fails the gate")
 
         # fingerprint ignores side effects and changes with in-scope edits
         fp1 = fingerprint(repo, ["side.json"])
         with open(os.path.join(repo, "side.json"), "w") as fh:
             fh.write('{"analytics": true}\n')
-        check(fingerprint(repo, ["side.json"]) == fp1, "fingerprint ignora efeito colateral")
+        check(fingerprint(repo, ["side.json"]) == fp1, "fingerprint ignores side effects")
         with open(os.path.join(repo, "src", "new file.txt"), "a") as fh:
             fh.write("more\n")
-        check(fingerprint(repo, ["side.json"]) != fp1, "fingerprint muda com o escopo")
+        check(fingerprint(repo, ["side.json"]) != fp1, "fingerprint changes with the scope")
 
         # hooks end to end through a subprocess: never `{}` for pre, gate cache
         rundir = os.path.join(tmp, "run")
@@ -2957,15 +2957,15 @@ def self_test() -> int:
             p = subprocess.run([sys.executable, os.path.abspath(__file__), "hook", event, "--state", rundir],
                                input=json.dumps(payload), capture_output=True, text=True, timeout=60)
             return json.loads(p.stdout)
-        check(hook("start", {"modelName": "m"}) == {}, "start devolve {}")
+        check(hook("start", {"modelName": "m"}) == {}, "start returns {}")
         check(hook("pre", {"toolCall": {"name": "view_file", "args": {"AbsolutePath": "/etc/x"}}})
-              ["decision"] == "deny", "hook pre nega")
+              ["decision"] == "deny", "hook pre denies")
         check(hook("pre", {"toolCall": {"name": "list_dir", "args": {"DirectoryPath": repo}}})
-              == {"decision": "allow"}, "hook pre permite explicitamente")
+              == {"decision": "allow"}, "hook pre allows explicitly")
         check(hook("oc-pre", {"tool": "write", "args": {"filePath": "/tmp/x", "content": "x"}})["decision"]
-              == "deny", "hook oc-pre nega")
+              == "deny", "hook oc-pre denies")
         check(hook("oc-pre", {"tool": "read", "args": {"filePath": f"{repo}/src/a.txt"}})
-              == {"decision": "allow"}, "hook oc-pre permite explicitamente")
+              == {"decision": "allow"}, "hook oc-pre allows explicitly")
         check(hook("oc-pre", {"tool": "read", "args": {"path": f"{repo}/src/a.txt"}})
               == {"decision": "allow"}, "opencode 2.x read {path} in repo")
         check(hook("oc-pre", {"tool": "read", "args": {"path": "/etc/passwd"}})["decision"] == "deny",
@@ -2978,21 +2978,21 @@ def self_test() -> int:
               == "deny", "opencode 2.x execute (JS sandbox) denied")
         r = hook("stop", {"terminationReason": "NO_TOOL_CALL"})
         check(r["decision"] == "continue" and "finish" in r["reason"],
-              f"stop com gate verde e sem finish pede o relatorio: {r}")
+              f"stop with green gate and no finish asks for the report: {r}")
         r = hook("pre", {"toolCall": {"name": "finish", "args": {}}})
-        check(r["decision"] == "allow", "finish com gate verde")
+        check(r["decision"] == "allow", "finish with green gate")
         st = read_json(os.path.join(rundir, "gate-state.json"))
-        check(st["attempts"] == 2 and st["runs"] == 1, f"cache do gate: {st}")
+        check(st["attempts"] == 2 and st["runs"] == 1, f"gate cache: {st}")
         with open(os.path.join(repo, "outside.txt"), "w") as fh:
             fh.write("x\n")
         r = hook("stop", {"terminationReason": "TERMINAL_STEP_TYPE"})
-        check(r["decision"] == "continue" and "outside.txt" in r["reason"], "stop com gate vermelho continua")
+        check(r["decision"] == "continue" and "outside.txt" in r["reason"], "stop with red gate continues")
         r = hook("stop", {"terminationReason": "MAX_INVOCATIONS"})
-        check(r["decision"] == "stop", "outros motivos param sem gate")
+        check(r["decision"] == "stop", "other reasons stop without the gate")
         r = hook("pre", {"toolCall": {"name": "finish", "args": {}}})
-        check(r["decision"] == "allow", "limite de tentativas libera o finish")
+        check(r["decision"] == "allow", "attempt limit releases finish")
         st = read_json(os.path.join(rundir, "gate-state.json"))
-        check(st["runs"] == 3, f"falha nunca vem do cache: {st}")
+        check(st["runs"] == 3, f"a failure never comes from the cache: {st}")
         with open(os.path.join(repo, "src", "nf.txt"), "w") as fh:
             fh.write("x\n")
         rd_save = rundir
@@ -3003,20 +3003,20 @@ def self_test() -> int:
                 ctx, max_gate_attempts=9, gate=dict(ctx["gate"], format=[], checks=["true"]), scope=["*"]))
         rundir = os.path.join(tmp, "nofinish")
         got = [hook("stop", {"terminationReason": "NO_TOOL_CALL"})["decision"] for _ in range(AGY_REPORT_ASKS + 1)]
-        check(got == ["continue"] * AGY_REPORT_ASKS + ["stop"], f"pede o finish no maximo {AGY_REPORT_ASKS} vezes: {got}")
+        check(got == ["continue"] * AGY_REPORT_ASKS + ["stop"], f"asks for finish at most {AGY_REPORT_ASKS} times: {got}")
         rundir = os.path.join(tmp, "finished")
         hook("pre", {"toolCall": {"name": "finish", "args": {}}})
         r = hook("stop", {"terminationReason": "TERMINAL_STEP_TYPE"})
-        check(r["decision"] == "stop", f"stop com gate verde depois do finish para: {r}")
+        check(r["decision"] == "stop", f"stop with green gate after finish stops: {r}")
         rundir = rd_save
         os.remove(os.path.join(repo, "src", "nf.txt"))
         os.remove(os.path.join(rundir, "ctx.json"))
         check(hook("pre", {"toolCall": {"name": "view_file", "args": {}}})["decision"] == "deny",
-              "guard quebrado nega em vez de devolver {}")
-        check(hook("stop", {})["decision"] == "stop", "stop quebrado deixa parar")
-        check(hook("oc-pre", {"tool": "read", "args": {}})["decision"] == "deny", "oc-pre quebrado nega")
+              "broken guard denies instead of returning {}")
+        check(hook("stop", {})["decision"] == "stop", "broken stop lets it stop")
+        check(hook("oc-pre", {"tool": "read", "args": {}})["decision"] == "deny", "broken oc-pre denies")
         events = guard_events(rundir)
-        check(any(e.get("event") == "session_start" for e in events), "marcador de SessionStart")
+        check(any(e.get("event") == "session_start" for e in events), "SessionStart marker")
 
         # copilot hooks end to end: cp-pre output contract, gate and report on agentStop
         os.remove(os.path.join(repo, "outside.txt"))
@@ -3035,38 +3035,38 @@ def self_test() -> int:
                                input=json.dumps(payload), capture_output=True, text=True, timeout=60)
             return p.returncode, p.stdout.strip()
         rc, out = cphook("cp-pre", {"toolName": "view", "toolArgs": {"path": f"{repo}/src/a.txt"}})
-        check(rc == 0 and out == "", f"cp-pre allow: saida vazia ({out!r})")
+        check(rc == 0 and out == "", f"cp-pre allow: empty output ({out!r})")
         rc, out = cphook("cp-pre", {"toolName": "apply_patch", "toolArgs": "*** Add File: ../x\n+x\n"})
-        check(rc == 0 and json.loads(out)["permissionDecision"] == "deny", "cp-pre deny com motivo")
+        check(rc == 0 and json.loads(out)["permissionDecision"] == "deny", "cp-pre deny with a reason")
         with open(evfile, "w") as fh:
             fh.write(json.dumps(msg("done, no report")) + "\n")
         rc, out = cphook("cp-stop", {"stop_hook_active": False})
         check(json.loads(out)["decision"] == "block" and "gate FAILED" in json.loads(out)["reason"],
-              f"agentStop com gate vermelho bloqueia: {out}")
+              f"agentStop with red gate blocks: {out}")
         rc, out = cphook("cp-stop", {"stop_hook_active": True})
         check(json.loads(out)["decision"] == "block" and "report" in json.loads(out)["reason"],
-              f"gate verde sem relatorio pede o relatorio: {out}")
+              f"green gate without report asks for the report: {out}")
         with open(evfile, "a") as fh:
             fh.write(json.dumps(msg('ok {"status": "done"}')) + "\n")
         rc, out = cphook("cp-stop", {"stop_hook_active": True})
-        check(json.loads(out) == {"decision": "allow"}, f"gate verde com relatorio libera: {out}")
+        check(json.loads(out) == {"decision": "allow"}, f"green gate with report allows: {out}")
         cst = read_json(os.path.join(cprun, "gate-state.json"))
-        check(cst["runs"] == 2 and cst["attempts"] == 3, f"gate do copilot: verde em cache depois: {cst}")
+        check(cst["runs"] == 2 and cst["attempts"] == 3, f"copilot gate: green cached afterwards: {cst}")
         with open(evfile, "a") as fh:
             fh.write(json.dumps(msg("again no report")) + "\n")
         outs = [json.loads(cphook("cp-stop", {})[1])["decision"] for _ in range(3)]
-        check(outs == ["block", "allow", "allow"], f"pedidos de relatorio limitados: {outs}")
+        check(outs == ["block", "allow", "allow"], f"report requests are limited: {outs}")
         os.remove(evfile)
         os.remove(os.path.join(cprun, "report-asks.json"))
         check(json.loads(cphook("cp-stop", {})[1]) == {"decision": "allow"},
-              "sem stream legivel nao pede relatorio (nao prende o worker)")
+              "no readable stream: no report request (does not trap the worker)")
         os.remove(os.path.join(cprun, "ctx.json"))
         rc, out = cphook("cp-pre", {"toolName": "view", "toolArgs": {"path": "src/a.txt"}})
-        check(json.loads(out)["permissionDecision"] == "deny", "cp-pre quebrado nega")
-        check(json.loads(cphook("cp-stop", {})[1]) == {"decision": "allow"}, "cp-stop quebrado deixa parar")
+        check(json.loads(out)["permissionDecision"] == "deny", "broken cp-pre denies")
+        check(json.loads(cphook("cp-stop", {})[1]) == {"decision": "allow"}, "broken cp-stop lets it stop")
         cpev_log = guard_events(cprun)
         check(any(e.get("event") == "pre" and e.get("decision") == "deny" for e in cpev_log),
-              "negacao do copilot registrada")
+              "copilot denial logged")
 
         # copilot hooks file: written for the run, ignored by the scope check, removed, never clobbered
         cpctx = dict(ctx, run_id="cprun")
@@ -3074,29 +3074,29 @@ def self_test() -> int:
         spec = read_json(os.path.join(repo, rel))
         check(rel == ".github/hooks/crew-cprun.json" and set(spec["hooks"]) ==
               {"sessionStart", "preToolUse", "agentStop"} and "cp-pre" in spec["hooks"]["preToolUse"][0]["bash"]
-              and os.path.abspath(__file__) in spec["hooks"]["agentStop"][0]["bash"], "hooks do copilot gerados")
-        check(rel in changed_paths(repo) and rel not in changed_paths(repo, [rel]), "escopo ignora so esse arquivo")
-        check(fingerprint(repo, [], [rel]) != fingerprint(repo, []), "fingerprint ignora o arquivo de hooks")
+              and os.path.abspath(__file__) in spec["hooks"]["agentStop"][0]["bash"], "copilot hooks generated")
+        check(rel in changed_paths(repo) and rel not in changed_paths(repo, [rel]), "scope ignores only that file")
+        check(fingerprint(repo, [], [rel]) != fingerprint(repo, []), "fingerprint ignores the hooks file")
         try:
             install_cp_hooks(repo, cprun, cpctx)
-            check(False, "sobrescreveu o hooks do copilot")
+            check(False, "overwrote the copilot hooks file")
         except Refusal:
-            check(True, "recusa sobrescrever")
+            check(True, "refuses to overwrite")
         try:
             refuse_cp_leftovers(repo)
-            check(False, "sobra do copilot aceita")
+            check(False, "copilot leftover accepted")
         except Refusal as exc:
-            check("rm " in str(exc), "sobra do copilot recusada com o rm")
+            check("rm " in str(exc), "copilot leftover refused with the rm")
         remove_cp_hooks(repo, rel, made)
-        check(not os.path.exists(os.path.join(repo, ".github")), ".github criado pelo run removido")
+        check(not os.path.exists(os.path.join(repo, ".github")), ".github created by the run removed")
         os.makedirs(os.path.join(repo, ".github", "hooks"))
         with open(os.path.join(repo, ".github", "hooks", "mine.json"), "w") as fh:
             fh.write("{}")
-        check(refuse_cp_leftovers(repo) == [".github/hooks/mine.json"], "hooks do repo listados")
+        check(refuse_cp_leftovers(repo) == [".github/hooks/mine.json"], "repo hooks listed")
         rel, made = install_cp_hooks(repo, cprun, cpctx)
         remove_cp_hooks(repo, rel, made)
         check(made == [] and os.path.exists(os.path.join(repo, ".github", "hooks", "mine.json")),
-              "diretorio existente e arquivo do usuario intocados")
+              "existing directory and user file untouched")
         shutil.rmtree(os.path.join(repo, ".github"))
 
         # result evaluation: the exit-0 failure modes
@@ -3104,30 +3104,30 @@ def self_test() -> int:
         good = {"status": "SUCCESS", "structured_output": {"status": "done", "files_changed": [],
                 "checks_run": [], "divergences": [], "out_of_scope_needs": []}}
         f, w, _ = evaluate_run(0, json.dumps(good), "", "delegate", sch)
-        check(f == [] and w == [], f"run bom: {f}")
+        check(f == [] and w == [], f"good run: {f}")
         f, _, _ = evaluate_run(0, "", "", "delegate", sch)
-        check(any("stdout vazio" in x for x in f), "stdout vazio")
+        check(any("empty stdout" in x for x in f), "empty stdout")
         f, _, _ = evaluate_run(0, json.dumps(dict(good, structured_output=None)), "", "delegate", sch)
-        check(any("structured_output nulo" in x for x in f), "schema nao satisfeito")
+        check(any("structured_output is null" in x for x in f), "schema not satisfied")
         f, _, _ = evaluate_run(0, json.dumps(good), "[agy] print timeout after 5s with turn", "delegate", sch)
-        check(any("timeout" in x for x in f), "marcador de timeout")
+        check(any("timeout" in x for x in f), "timeout marker")
         den = dict(good, denied_actions=[{"action": "command"}])
         f, _, _ = evaluate_run(0, json.dumps(den), "", "delegate", sch)
-        check(any("denied_actions" in x for x in f), "denied_actions reprova delegate")
+        check(any("denied_actions" in x for x in f), "denied_actions fails delegate")
         f, w, _ = evaluate_run(0, json.dumps(dict(den, structured_output={"verdict": "approve",
                                "findings": [], "summary": ""})), "", "review", DEFAULT_REVIEW_SCHEMA)
-        check(f == [] and w, "denied_actions so avisa no review")
+        check(f == [] and w, "denied_actions only warns in review")
         f, _, _ = evaluate_run(1, "", "error: invalid model selection", "delegate", sch)
         check(any("rc=1" in x for x in f), "rc != 0")
         part = dict(good, structured_output=dict(good["structured_output"], status="partial"))
         f, _, _ = evaluate_run(0, json.dumps(part), "", "delegate", sch)
-        check(any("partial" in x for x in f), "worker parcial reprova")
+        check(any("partial" in x for x in f), "partial worker fails the run")
         f, _, _ = evaluate_run(0, json.dumps(dict(good, structured_output={"status": "done"})), "",
                                "delegate", sch)
-        check(any("obrigatorios" in x for x in f), "campos obrigatorios")
+        check(any("required fields" in x for x in f), "required fields")
         for bad in ("null", "[]", "3"):
             f, _, _ = evaluate_run(0, bad, "", "delegate", sch)
-            check(any("nao um objeto" in x for x in f), f"envelope {bad} reprova")
+            check(any("not an object" in x for x in f), f"envelope {bad} fails the run")
 
         # quota and models, against the shapes agy 1.3.4 printed on 2026-10-13
         usage = {"command": {"data": {"groups": [
@@ -3137,11 +3137,11 @@ def self_test() -> int:
             {"name": "Claude and GPT models", "description": "Claude Opus, Claude Sonnet, GPT-OSS",
              "buckets": [{"name": "Weekly", "remaining_fraction": 0, "reset_time": "2026-10-15T18:34:47Z"},
                          {"name": "Five Hour", "disabled": True, "remaining_fraction": 1}]}]}}}
-        check(evaluate_quota(usage, "gemini-3.8-flash-low", 0.05) is None, "quota gemini ok")
+        check(evaluate_quota(usage, "gemini-3.8-flash-low", 0.05) is None, "gemini quota ok")
         msg = evaluate_quota(usage, "claude-opus-5-5-high", 0.05)
-        check(msg and "esgotada" in msg and "2026-10-15" in msg, "quota claude esgotada")
-        check(evaluate_quota(usage, "gpt-oss-120b-medium", 0.05), "gpt no mesmo grupo esgotado")
-        check(evaluate_quota({}, "gemini-x", 0.05), "usage ilegivel recusa")
+        check(msg and "exhausted" in msg and "2026-10-15" in msg, "claude quota exhausted")
+        check(evaluate_quota(usage, "gpt-oss-120b-medium", 0.05), "gpt in the same exhausted group")
+        check(evaluate_quota({}, "gemini-x", 0.05), "unreadable usage refuses")
         # agy 1.4.2 (2026-10-18) adds Argon as its own group; on a Pro plan it is a separate quota
         argon = {"name": "Gemini 4 Argon", "description": "For paid Pro plans, Argon quota is separate. Higher "
                  "Argon quota (included as part of the larger Gemini quota bucket) is available on Ultra plans.",
@@ -3149,15 +3149,15 @@ def self_test() -> int:
                               "reset_time": "2026-10-25T01:46:00Z"}]}
         groups = usage["command"]["data"]["groups"]
         groups.append(argon)
-        check(evaluate_quota(usage, "gemini-3.8-flash-high", 0.05) is None, "argon esgotado nao barra o flash")
+        check(evaluate_quota(usage, "gemini-3.8-flash-high", 0.05) is None, "exhausted argon does not block flash")
         msg = evaluate_quota(usage, "gemini-4-argon-medium", 0.05)
-        check(msg and "Gemini 4 Argon" in msg, "argon esgotado barra o argon")
+        check(msg and "Gemini 4 Argon" in msg, "exhausted argon blocks argon")
         argon["buckets"][0]["remaining_fraction"] = 0.9
         groups[0]["buckets"][0]["remaining_fraction"] = 0
-        check(evaluate_quota(usage, "gemini-4-argon-high", 0.05) is None, "flash esgotado nao barra o argon")
-        check(evaluate_quota(usage, "gemini-3.8-flash-low", 0.05), "flash esgotado barra o flash")
+        check(evaluate_quota(usage, "gemini-4-argon-high", 0.05) is None, "exhausted flash does not block argon")
+        check(evaluate_quota(usage, "gemini-3.8-flash-low", 0.05), "exhausted flash blocks flash")
         models = parse_models("gemini-3.8-flash-low\tGemini 3.8 Flash (Low)\nFetching available models...\n")
-        check(models == ["gemini-3.8-flash-low"], "parse de agy models")
+        check(models == ["gemini-3.8-flash-low"], "agy models parsing")
 
         # install/remove hooks leaves nothing behind and refuses to clobber
         subprocess.run(g + ["checkout", "-q", "--", "."], check=True)
@@ -3172,19 +3172,19 @@ def self_test() -> int:
         os.makedirs(os.path.join(repo, "build"))
         with open(os.path.join(repo, "build", "out.js"), "w") as fh:
             fh.write("x\n")
-        check(diff_state(ig0, ignored_state(repo)) == [], "diretorio ignorado novo nao e ruido")
+        check(diff_state(ig0, ignored_state(repo)) == [], "new ignored directory is not noise")
         with open(os.path.join(repo, ".env"), "w") as fh:
             fh.write("X=1\n")
-        check(diff_state(ig0, ignored_state(repo)) == [".env"], ".env ignorado detectado")
-        check(changed_paths(repo) == [], "e o git status de fato nao o ve")
+        check(diff_state(ig0, ignored_state(repo)) == [".env"], "ignored .env detected")
+        check(changed_paths(repo) == [], "and git status really does not see it")
         subprocess.run(g + ["update-index", "--assume-unchanged", "side.json"], check=True)
         with open(os.path.join(repo, ".git", "config"), "a") as fh:
             fh.write("[core]\n\tfsmonitor = touch FSMON_RAN\n")
         bad = diff_state(i0, integrity_state(repo, rundir))
         changed_paths(repo)
         check(any(b.endswith("config") for b in bad) and "<assume-unchanged/skip-worktree>" in bad,
-              f"config e flag de indice detectados: {bad}")
-        check(not os.path.exists(os.path.join(repo, "FSMON_RAN")), "fsmonitor plantado nao roda no git do script")
+              f"config and index flag detected: {bad}")
+        check(not os.path.exists(os.path.join(repo, "FSMON_RAN")), "planted fsmonitor does not run in the script's git")
         subprocess.run(["git", "-C", repo, "config", "--unset", "core.fsmonitor"], check=True)
         subprocess.run(g + ["update-index", "--no-assume-unchanged", "side.json"], check=True)
         os.remove(os.path.join(repo, ".env"))
@@ -3194,18 +3194,18 @@ def self_test() -> int:
         t0 = time.time()
         ok, text, _ = run_gate(repo, dict(ctx, gate_timeout=1, gate=dict(ctx["gate"], format=[],
                                           checks=["sleep 30 & sleep 30; wait"])), baseline=True)
-        check(not ok and "rc=timeout" in text and time.time() - t0 < 15, "timeout do gate")
+        check(not ok and "rc=timeout" in text and time.time() - t0 < 15, "gate timeout")
         created = install_hooks(repo, rundir, ctx)
         spec = read_json(os.path.join(repo, HOOK_FILE))
-        check(set(spec["crew"]) == {"SessionStart", "PreToolUse", "Stop"}, "hooks.json gerado")
-        check(changed_paths(repo) == [], "hooks.json nao conta como mudanca")
+        check(set(spec["crew"]) == {"SessionStart", "PreToolUse", "Stop"}, "hooks.json generated")
+        check(changed_paths(repo) == [], "hooks.json does not count as a change")
         try:
             install_hooks(repo, rundir, ctx)
-            check(False, "sobrescreveu hooks.json existente")
+            check(False, "overwrote existing hooks.json")
         except Refusal as exc:
-            check("sobra de um run" in str(exc) and "rm " in str(exc), "reconhece a propria sobra")
+            check("left over from a crew run" in str(exc) and "rm " in str(exc), "recognizes its own leftover")
         remove_hooks(repo, created)
-        check(not os.path.exists(os.path.join(repo, ".agents")), ".agents removido")
+        check(not os.path.exists(os.path.join(repo, ".agents")), ".agents removed")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print(f"self-test: {n} checks ok")
@@ -3221,16 +3221,16 @@ def main(argv=None) -> int:
         return self_test()
     p = argparse.ArgumentParser(prog="crew.py", description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
-    d = sub.add_parser("delegate", help="roda uma task sob guard rails e gate")
+    d = sub.add_parser("delegate", help="run a task under guard rails and a gate")
     d.add_argument("task")
     d.add_argument("--model")
-    d.add_argument("--backend", choices=BACKENDS, help="sobrepoe o campo backend da task")
+    d.add_argument("--backend", choices=BACKENDS, help="overrides the task's backend field")
     d.add_argument("--repo")
-    d.add_argument("--no-quota-probe", action="store_true", help="so agy")
-    r = sub.add_parser("review", help="segunda opiniao somente leitura (--mode plan)")
+    d.add_argument("--no-quota-probe", action="store_true", help="agy only")
+    r = sub.add_parser("review", help="read-only second opinion (--mode plan)")
     r.add_argument("prompt", nargs="*")
     r.add_argument("--prompt-file")
-    r.add_argument("--diff", help="intervalo para `git diff`, ex.: HEAD~1 ou main...HEAD")
+    r.add_argument("--diff", help="range for `git diff`, e.g. HEAD~1 or main...HEAD")
     r.add_argument("--schema")
     r.add_argument("--model")
     r.add_argument("--backend", choices=BACKENDS, default="agy")
@@ -3239,13 +3239,13 @@ def main(argv=None) -> int:
     r.add_argument("--min-quota", type=float, default=DEFAULT_MIN_QUOTA)
     r.add_argument("--no-quota-probe", action="store_true")
     r.add_argument("--copilot-model-override", action="store_true",
-                   help="so copilot: aceita modelo diferente de auto (plano pago; nao testado)")
-    gt = sub.add_parser("gate", help="roda o gate de uma task na arvore atual")
+                   help="copilot only: accept a model other than auto (paid plan; untested)")
+    gt = sub.add_parser("gate", help="run a task's gate on the current tree")
     gt.add_argument("task")
     gt.add_argument("--repo")
     gt.add_argument("--baseline", action="store_true",
-                    help="so os comandos de format/checks, sem escopo nem forbid")
-    h = sub.add_parser("hook", help="handler de hook do agy (instalado por run)")
+                    help="only the format/checks commands, no scope or forbid")
+    h = sub.add_parser("hook", help="agy hook handler (installed per run)")
     h.add_argument("event", choices=["pre", "stop", "start", "oc-pre", "cp-pre", "cp-stop"])
     h.add_argument("--state", required=True)
     a = p.parse_args(argv)
@@ -3254,11 +3254,11 @@ def main(argv=None) -> int:
     try:
         return {"delegate": cmd_delegate, "review": cmd_review, "gate": cmd_gate}[a.cmd](a)
     except Refusal as exc:
-        eprint(f"crew: recusado: {exc}")
+        eprint(f"crew: refused: {exc}")
         print(json.dumps({"ok": False, "refused": True, "failures": [str(exc)]}, ensure_ascii=False))
         return 2
     except KeyboardInterrupt:
-        eprint("crew: interrompido; hooks removidos")
+        eprint("crew: interrupted; hooks removed")
         return 130
 
 

@@ -1,11 +1,11 @@
 {
   "name": "crew",
   "displayName": "Crew",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "author": {
     "name": "4nrry",
     "url": "https://github.com/4nrry"
   },
   "license": "MIT",
-  "description": "Tres CLIs de agente como workers baratos e headless, sem brigar com o harness do Claude: o Claude escreve a task, define escopo e gate e revisa o diff; o worker executa uma fatia por vez sob hooks do proprio CLI instalados so durante o run. Backends: agy (Antigravity CLI, Gemini; padrao), opencode (modelos gratis do Zen, guard do shell mais fraco) e GitHub Copilot CLI (plano Free, so --model auto, pago em AI credits, sem shell). O veredito nunca le exit 0 como sucesso. Uma skill por backend (crew:agy, crew:opencode, crew:copilot) com o que e do CLI, um documento comum de delegacao, um script Python stdlib, dois comandos e um hook UserPromptSubmit que injeta a skill do backend nomeado no prompt (taxa de acerto do hook nao medida). Um vigia encerra os comandos que o agy deixa em segundo plano depois de o worker terminar com gate verde. Sem alegacao de melhoria: nao ha run records (bench/PROTOCOL.md)."
+  "description": "Cheap headless workers through three agent CLIs without fighting Claude's harness: Claude writes the task, sets scope and gate and reviews the diff; the worker runs one slice under its own CLI's hooks, installed for the run only. Backends: agy (Antigravity, Gemini; default), opencode 2.x (free Zen models, weaker shell guard) and GitHub Copilot CLI (no shell, paid in AI credits). The verdict never reads the CLI's exit 0 as success."
 }
