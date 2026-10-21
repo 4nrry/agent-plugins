@@ -12,7 +12,8 @@ bundled citation checker (`scripts/verify_citations.py`).
 
 | Component | Path | What it does |
 |---|---|---|
-| Skill | `SKILL.md` | The rules themselves — read before a fan-out, and again when results come back |
+| Skill | `SKILL.md` | The rules themselves, in tiers rather than model names — read before a fan-out, and again when results come back |
+| Harness map | `references/harnesses.md` | The tiers per harness — Claude Code, Antigravity, opencode, Grok Build, Hermes: models, where they are set, read-only children, concurrency, built-in deep research |
 | Injection hook | `hooks/inject.sh` | `UserPromptSubmit`: puts the skill in context on a matching prompt |
 | Routing hook | `hooks/check-routing.sh` | `PreToolUse` on `Workflow`: denies once per unrouted script |
 | Workflow | `workflows/deep-research.js` | Deep research with per-phase model overrides |

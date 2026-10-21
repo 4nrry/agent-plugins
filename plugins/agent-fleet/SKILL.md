@@ -8,27 +8,30 @@ description: Rules for multi-agent work — routing each phase to the right mode
 Agents are cheap to launch and expensive to trust. These rules cover both
 halves: what to send them, and what to believe when they come back.
 
-`/deep-research` is the usual consumer, and its four stages map onto the
-sections below — the fan-out is sized here, the model for each stage is chosen
+A deep-research pipeline is the usual consumer, and its stages map onto the
+sections below: the fan-out is sized here, the model for each stage is chosen
 here, and "adversarially verify claims" is the section on what comes back. The
 synthesis stage is the one the rules hand to you rather than to an agent.
 
-A predefined workflow is a fleet someone else designed, and these rules do not
-reach inside its script on their own. Before dispatching one — `/deep-research`
-included — open the script and look for `model:` on its `agent()` calls: no
-override means every agent inherits the session's model, and a top-tier
-session pays top tier once per agent. In the one measured failure, a ~97-agent
-run reached its verification fan-out with everything inheriting the top model
-while these rules sat loaded in context — nobody had read the script. Caught
-late, the fix is cheap: stop the run and resume it with edited overrides; the
-unchanged prefix replays from cache, so the phases already paid for are kept,
-not repaid.
+The rules name tiers, not models — cheap, mid, and you, the orchestrator.
+`references/harnesses.md` maps them onto each harness (Claude Code,
+Antigravity, opencode, Grok Build, Hermes): which model each tier is, where
+it is set, how to make a child read-only, and how many children can run.
 
-Under `ultracode` the fan-out stops being a decision and becomes the session
-default, because Claude orchestrates dynamic workflows for substantive tasks on
-its own. A dynamic workflow also changes what you get to see: the script holds
-the loop and the intermediate results, and only the final answer reaches the
-context — so the schema has to be right *before* the run, not after.
+A predefined workflow — a deep-research command, a saved script, a set of
+agent definitions — is a fleet someone else designed, and these rules do not
+reach inside it on their own. Before dispatching one, find where each agent's
+model is set: where nothing overrides it, every agent inherits the
+orchestrator's model, and a top-tier session pays top tier once per agent. In
+the one measured failure, a ~97-agent run reached its verification fan-out
+with everything inheriting the top model while these rules sat loaded in
+context — nobody had read the script. Caught late, the fix is usually cheap:
+stop the run and resume it with edited overrides where the harness can resume
+without repaying the finished phases.
+
+A scripted fan-out also changes what you get to see: the script holds the loop
+and the intermediate results, and only the final answer reaches your context
+— so the schema has to be right *before* the run, not after.
 
 ## Model choice
 
@@ -98,8 +101,8 @@ context — so the schema has to be right *before* the run, not after.
   user before the first run (it spends their quota or sends the question to
   that provider), and string-check its quotes like any other agent's: a free
   model is exactly the small writer that fuses sentences.
-- Prefer several small runs to one large one; resume by run id rather than
-  relaunching.
+- Prefer several small runs to one large one; resume a stopped run rather
+  than relaunching it, where the harness can.
 - Try small and solo first — one fetch, one quote check, a ten-line throwaway
   script.
 - Triage rather than staging waves. One agent per item for breadth, then a
