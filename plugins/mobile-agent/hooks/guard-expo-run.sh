@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# PreToolUse / Bash — avisa que `expo run:<plataforma>` nao prebuilda quando o
-# diretorio nativo ja existe.
+# PreToolUse / Bash — warns that `expo run:<platform>` does not prebuild when the
+# native directory already exists.
 #
-# Por que: a condicao e literal em @expo/cli — se o diretorio da plataforma
-# existe, a funcao retorna sem prebuildar, sem aviso. Mudanca em app.json, em
-# config plugin ou em icone e ignorada em silencio, e o build responde
-# BUILD SUCCESSFUL em segundos. Voce conclui que a mudanca nao fez efeito e vai
-# depurar o lugar errado.
+# Why: the check is literal in @expo/cli — if the platform directory exists, it
+# returns without prebuilding, silently. Changes to app.json, a config plugin or
+# an icon are ignored and the build says BUILD SUCCESSFUL in seconds, so you
+# conclude the change had no effect and debug the wrong place.
 #
-# So dispara quando o diretorio nativo REALMENTE existe no projeto: sem ele o
-# prebuild roda sozinho e nao ha o que avisar.
+# Fires only when the native directory REALLY exists: without it the prebuild
+# runs by itself and there is nothing to warn about.
 set -uo pipefail
 
 input=$(cat) || exit 0
@@ -17,17 +16,16 @@ cmd=$(jq -r '.tool_input.command // empty' <<<"$input" 2>/dev/null) || exit 0
 [[ -n "$cmd" ]] || exit 0
 
 grep -qE 'expo[[:space:]]+run:(android|ios)' <<<"$cmd" || exit 0
-# Ja veio com prebuild explicito na mesma linha: nada a dizer.
+# An explicit prebuild on the same line: nothing to say.
 grep -q 'prebuild' <<<"$cmd" && exit 0
 
 cwd=$(jq -r '.cwd // empty' <<<"$input" 2>/dev/null) || cwd=""
 plat="android"
 grep -q 'run:ios' <<<"$cmd" && plat="ios"
 
-# O `cwd` do payload e o da sessao, e num monorepo o comando troca de diretorio
-# antes: `cd apps/mobile && npx expo run:android`. Sem seguir esse `cd`, a
-# checagem procuraria `android/` na raiz, nao acharia, e sairia calada — logo no
-# arranjo com mais de um checkout, que e o caso dificil.
+# The payload `cwd` is the session's, and in a monorepo the command changes
+# directory first (`cd apps/mobile && npx expo run:android`). Without following
+# that `cd`, the check would look for `android/` at the root and stay silent.
 sub=$(sed -n 's/^[[:space:]]*cd[[:space:]]\+\([^;&|]*\).*/\1/p' <<<"$cmd" | head -1)
 sub=${sub%"${sub##*[![:space:]]}"}
 sub=${sub#\'}; sub=${sub%\'}
@@ -39,35 +37,34 @@ case "$sub" in
 esac
 [[ -n "$base" && -d "$base/$plat" ]] || exit 0
 
-# Segundo aviso, so no Android: o Gradle precisa achar o SDK, e num shell NAO
-# interativo o `~/.bashrc` costuma retornar cedo — ANDROID_HOME chega vazio. O
-# build cai em "SDK location not found", depois do prebuild, depois de minutos.
-# Observado em 2026-10-08. O `android/local.properties` com `sdk.dir` cobre o
-# caso; sem ele e sem a variavel, avisa.
-sdk_nota=""
+# Second warning, Android only: Gradle must find the SDK, and a NON-interactive
+# shell often returns early from `~/.bashrc`, so ANDROID_HOME arrives empty and
+# the build fails with "SDK location not found" minutes in. An
+# `android/local.properties` with `sdk.dir` covers it; without it and without
+# the variable, warn.
+sdk_note=""
 if [[ "$plat" == "android" && -z "${ANDROID_HOME:-}" ]]; then
   if ! grep -qs '^sdk\.dir=' "$base/android/local.properties"; then
-    printf -v sdk_nota '%s' \
-      $'\n\nE ANDROID_HOME esta VAZIO neste ambiente (shell nao interativo nao le o ' \
-      $'~/.bashrc inteiro) e nao ha sdk.dir em android/local.properties: o Gradle ' \
-      $'vai parar em \'SDK location not found\'. Exporte antes, na mesma linha:\n' \
+    printf -v sdk_note '%s' \
+      $'\n\nAlso, ANDROID_HOME is EMPTY in this environment (a non-interactive shell does not read all of ~/.bashrc) and there is no sdk.dir in android/local.properties: Gradle ' \
+      $'will stop at \'SDK location not found\'. Export it first, on the same line:\n' \
       $'  export ANDROID_HOME=$HOME/Android/Sdk JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64'
   fi
 fi
 
-jq -n --arg p "$plat" --arg sdk "$sdk_nota" '{
+jq -n --arg p "$plat" --arg sdk "$sdk_note" '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
     additionalContext: (
-      "O diretorio `" + $p + "/` ja existe neste projeto, e nesse caso " +
-      "`expo run:" + $p + "` NAO roda o prebuild — a condicao e literal no " +
-      "@expo/cli e nao emite aviso. Mudanca em app.json, em config plugin ou em " +
-      "icone sera ignorada em silencio, e o build vai responder BUILD SUCCESSFUL " +
-      "em segundos.\n" +
-      "Se voce mexeu em alguma dessas coisas, rode antes:\n" +
+      "The `" + $p + "/` directory already exists in this project, and in that " +
+      "case `expo run:" + $p + "` does NOT run the prebuild — the check is literal " +
+      "in @expo/cli and emits no warning. Changes to app.json, a config plugin or " +
+      "an icon will be ignored silently, and the build will say BUILD SUCCESSFUL " +
+      "in seconds.\n" +
+      "If you changed any of those, run first:\n" +
       "  npx expo prebuild --platform " + $p + " --clean\n" +
-      "Se mexeu so em JS/TS, pode seguir: o Fast Refresh cobre e nao ha o que " +
-      "regenerar." + $sdk
+      "If you only changed JS/TS, go ahead: Fast Refresh covers it and there is " +
+      "nothing to regenerate." + $sdk
     )
   }
 }' 2>/dev/null || exit 0
