@@ -31,6 +31,10 @@ bench plugin="agent-fleet":
     printf '%s\n' "$out"
     grep -q 'invocation fired' <<<"$out"
 
+# Link skills into other agent tools: global | project <repo> <plugin>... | status [repo...]
+link-skills +args:
+    python3 scripts/link_skills.py {{args}}
+
 # Hashes for a claims file: what a record's provenance line should quote.
 sha +files:
     @sha256sum {{files}}
