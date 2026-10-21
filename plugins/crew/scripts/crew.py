@@ -85,13 +85,18 @@ SECRET_EXCEPTIONS = ("*.example", "*.sample", "*.template")
 RUN_ENV = "CREW_RUN"
 WORKER_ENV = {"NX_DAEMON": "false"}
 BACKENDS = ("agy", "opencode", "copilot")
-OPENCODE_DEFAULT_MODEL = "opencode/longcat-2.5-preview-free"
+OPENCODE_DEFAULT_MODEL = "opencode/minimax-m3.1-flash-free"
+# The only opencode models a run may use (the user's choice, 2026-10-21); the
+# Zen data terms of each are in the opencode skill.
+OPENCODE_MODELS = ("opencode/minimax-m3.1-flash-free", "opencode/deepseek-v4.1-flash-free",
+                   "opencode/glm-5.3-flash-free", "opencode/nemotron-3.5-super-vl-free",
+                   "opencode/nemotron-3.5-lightning-free", "opencode/mimo-v2.6-flash-free")
 # opencode 2.x dropped `--dir` (the run uses cwd = repo) and by default attaches
 # to a shared background service, which would not see this process's
 # OPENCODE_CONFIG_CONTENT and so would run without the guard plugin.
 # `--standalone` starts a private server that ends with the run.
 OC_RUN_FLAGS = ["--standalone"]
-TESTED_OPENCODE_VERSION = "1.19.0"
+TESTED_OPENCODE_VERSION = "2.1.2"
 # opencode writes "$schema" into these, in the process cwd, on every run (seen
 # on 1.19.0 even with --dir); the driver restores their bytes after each run.
 OPENCODE_CONFIG_FILES = ("opencode.json", "opencode.jsonc")
@@ -207,16 +212,21 @@ REVIEW_DENY_ALL = [(r"[\s\S]", "review somente leitura: sem shell")]
 
 # opencode tool -> (the agy tool decide_pre knows, {opencode arg: agy arg}).
 # The guard plugin forwards every call here, so one policy covers both.
+# opencode 2.x uses `path` where 1.x used `filePath`, and `shell` for `bash`
+# (smoke 2026-10-21); both spellings map. `execute` (a JS sandbox with
+# fetch) is deliberately absent, so the allowlist denies it.
 OC_TOOLS = {
-    "read": ("view_file", {"filePath": "AbsolutePath"}),
+    "read": ("view_file", {"filePath": "AbsolutePath", "path": "AbsolutePath"}),
     "list": ("list_dir", {"path": "DirectoryPath"}),
     "glob": ("find_by_name", {"path": "SearchDirectory", "pattern": "Pattern"}),
     "grep": ("grep_search", {"path": "SearchPath", "pattern": "Query", "include": "Includes"}),
-    "write": ("write_to_file", {"filePath": "TargetFile", "content": "CodeContent"}),
-    "edit": ("replace_file_content", {"filePath": "TargetFile", "oldString": "TargetContent",
-                                      "newString": "ReplacementContent"}),
-    "multiedit": ("multi_replace_file_content", {"filePath": "TargetFile", "edits": "ReplacementChunks"}),
+    "write": ("write_to_file", {"filePath": "TargetFile", "path": "TargetFile", "content": "CodeContent"}),
+    "edit": ("replace_file_content", {"filePath": "TargetFile", "path": "TargetFile",
+                                      "oldString": "TargetContent", "newString": "ReplacementContent"}),
+    "multiedit": ("multi_replace_file_content", {"filePath": "TargetFile", "path": "TargetFile",
+                                                 "edits": "ReplacementChunks"}),
     "bash": ("run_command", {"command": "CommandLine", "workdir": "Cwd"}),
+    "shell": ("run_command", {"command": "CommandLine", "workdir": "Cwd"}),
 }
 OC_INERT_TOOLS = {"todowrite", "todoread", "skill", "invalid"}   # no file or process effect
 # Copilot CLI tool -> (agy tool, {copilot arg: agy arg}). `view`, `glob` and
@@ -1656,50 +1666,57 @@ def trap_signals() -> None:
 
 # No policy in here: every tool call is forwarded to `crew.py hook
 # oc-pre`, and anything but an explicit allow (a crash, no answer) denies.
-# A throw in tool.execute.before blocks the call and the model sees the text
-# (lab E4, opencode 1.19.0).
-OC_GUARD_JS = """// crew guard for opencode, generated for one run; loaded only through
-// OPENCODE_CONFIG_CONTENT of that run. The policy is crew.py's.
+# opencode 2.x plugin shape: a default export with setup(ctx), and
+# ctx.tool.hook("execute.before"); a throw there blocks the call and the model
+# sees the text. The shell tool passes through the same hook (smoke
+# 2026-10-21, opencode 2.1.2). A v1-style named export is ignored silently.
+OC_GUARD_JS = """// crew guard for opencode 2.x, generated for one run and loaded only from
+// that run's OPENCODE_CONFIG_DIR. The policy is crew.py's.
 import { spawnSync } from "node:child_process";
 const PY = __PY__, SCRIPT = __SCRIPT__, STATE = __STATE__;
 function ask(event, payload) {
   const p = spawnSync(PY, [SCRIPT, "hook", event, "--state", STATE],
                       { input: JSON.stringify(payload), encoding: "utf8", timeout: 120000 });
   try { return JSON.parse(p.stdout); }
-  catch { return { decision: "deny", reason: `guard sem resposta (rc=${p.status}) ${String(p.stderr || p.error || "").slice(0, 300)}` }; }
+  catch { return { decision: "deny", reason: `guard did not answer (rc=${p.status}) ${String(p.stderr || p.error || "").slice(0, 300)}` }; }
 }
-export const AgyWorkerGuard = async () => {
-  ask("start", {});
-  return {
-    "tool.execute.before": async (input, output) => {
-      const d = ask("oc-pre", { tool: String(input.tool), args: output.args ?? {} });
-      if (!d || d.decision !== "allow") throw new Error(`GUARD: ${(d && d.reason) || "negado"}`);
-    },
-  };
+export default {
+  id: "crew-guard",
+  async setup(ctx) {
+    ask("start", {});
+    await ctx.tool.hook("execute.before", (event) => {
+      const d = ask("oc-pre", { tool: String(event.tool), args: event.input ?? {} });
+      if (!d || d.decision !== "allow") throw new Error(`GUARD: ${(d && d.reason) || "denied"}`);
+    });
+  },
 };
 """
 
 
 def write_oc_guard(rundir: str) -> str:
-    path = os.path.join(rundir, "opencode-guard.js")
+    """Write the guard into <rundir>/oc-config/plugins/ and return that config
+    dir. opencode 2.x loads plugins from $OPENCODE_CONFIG_DIR/plugins/; a plugin
+    listed in OPENCODE_CONFIG_CONTENT or an OPENCODE_CONFIG file did not load."""
+    cfg = os.path.join(rundir, "oc-config")
+    os.makedirs(os.path.join(cfg, "plugins"), exist_ok=True)
+    path = os.path.join(cfg, "plugins", "crew-guard.js")
     js = (OC_GUARD_JS.replace("__PY__", json.dumps(sys.executable))
           .replace("__SCRIPT__", json.dumps(os.path.abspath(__file__)))
           .replace("__STATE__", json.dumps(rundir)))
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(js)
-    return path
+    return cfg
 
 
-def opencode_env(guard: str, disable_claude_code: bool) -> dict:
+def opencode_env(config_dir: str, disable_claude_code: bool) -> dict:
     """The guard plugin and external_directory=deny come in through the
     environment, so nothing is written into the tree or into ~/.config.
     Shell denial lives in the plugin: `permission.bash: deny` makes the free
     models fail at startup (403, lab). ~/.claude/CLAUDE.md is loaded unless
     the task disables it, as for a native subagent."""
     env = {**os.environ, **WORKER_ENV, "OPENCODE_DISABLE_AUTOUPDATE": "1", "OPENCODE_DISABLE_SHARE": "1",
-           "OPENCODE_CONFIG_CONTENT": json.dumps({
-               "plugin": [pathlib.Path(guard).as_uri()],
-               "permission": {"external_directory": "deny"}})}
+           "OPENCODE_CONFIG_DIR": config_dir,
+           "OPENCODE_CONFIG_CONTENT": json.dumps({"permission": {"external_directory": "deny"}})}
     if disable_claude_code:
         env["OPENCODE_DISABLE_CLAUDE_CODE"] = "1"
     return env
@@ -1717,7 +1734,12 @@ def preflight_opencode(model: str):
                                         cwd=cwd, stdin=subprocess.DEVNULL)
         lines = run("--version").stdout.strip().splitlines()
         proc = run("models", "--standalone")
-    version = lines[-1].strip() if lines else "?"
+    raw = lines[-1].strip() if lines else "?"
+    found = re.search(r"\d+\.\d+\.\d+", raw)
+    version = found.group(0) if found else raw          # 2.x prints "opencode v2.1.2"
+    major = re.search(r"(\d+)\.\d+", version)
+    if major and int(major.group(1)) < 2:
+        raise Refusal(f"opencode {version}: the guard needs the 2.x plugin API; update opencode")
     warns = []
     if version != TESTED_OPENCODE_VERSION:
         warns.append(f"opencode {version}; este script so foi exercitado no {TESTED_OPENCODE_VERSION}. "
@@ -1725,6 +1747,8 @@ def preflight_opencode(model: str):
     models = [ln.strip() for ln in proc.stdout.splitlines() if re.fullmatch(r"\S+/\S+", ln.strip())]
     if proc.returncode != 0 or not models:
         raise Refusal(f"`opencode models` falhou (rc={proc.returncode}): {tail(proc.stderr.strip(), 300)}")
+    if model not in OPENCODE_MODELS:
+        raise Refusal(f"modelo {model!r} fora da lista permitida: {', '.join(OPENCODE_MODELS)}")
     if model not in models:
         same = [m for m in models if m.split("/")[0] == model.split("/")[0]]
         raise Refusal(f"modelo {model!r} nao existe para o opencode. Do mesmo provider: {', '.join(same) or '-'}")
@@ -1787,8 +1811,13 @@ def evaluate_oc(rc, stdout: str, stderr: str):
             msg = (err.get("data") or {}).get("message") if isinstance(err, dict) else None
             fails.append(f"evento error: {(msg or json.dumps(err))[:300]}")
     finishes = [ev.get("part") or {} for ev in events if ev.get("type") == "step_finish"]
-    if events and (not finishes or finishes[-1].get("reason") != "stop"):
-        fails.append("o run nao terminou com reason=stop (ultimo step: "
+    # 1.x closed a good run with step_finish reason=stop; 2.x ends on the
+    # final text event with no step_finish after it.
+    last = events[-1] if events else {}
+    ended = last.get("type") == "text" or (last.get("type") == "step_finish"
+                                            and (last.get("part") or {}).get("reason") == "stop")
+    if events and not ended:
+        fails.append("o run nao terminou num evento de texto nem em step_finish reason=stop (ultimo step: "
                      f"{finishes[-1].get('reason') if finishes else 'nenhum'})")
     texts = [(ev.get("part") or {}).get("text", "") for ev in events if ev.get("type") == "text"]
     tokens = {}
@@ -2739,6 +2768,9 @@ def self_test() -> int:
         check(extract_report(info["text"]) == {"status": "done", "x": {"y": 1}}, "relatorio de bloco json")
         f, _ = evaluate_oc(0, evs(fin("tool-calls")), "")
         check(any("reason=stop" in x for x in f), "sem stop final reprova")
+        f, info = evaluate_oc(0, evs(fin("tool-calls"), txt), "")
+        check(f == [] and extract_report(info["text"]) == {"status": "done", "x": {"y": 1}},
+              f"opencode 2.x: ending on the text event is success: {f}")
         f, _ = evaluate_oc(0, evs({"type": "error", "error": {"name": "APIError", "data": {
             "message": "free tier"}}}), "")
         check(any("free tier" in x for x in f), "evento error reprova com exit 0")
@@ -2770,12 +2802,15 @@ def self_test() -> int:
         # the generated guard forwards to this script and holds no policy of its own
         grd = os.path.join(tmp, "g")
         os.makedirs(grd)
-        js = open(write_oc_guard(grd), encoding="utf-8").read()
-        check(json.dumps(os.path.abspath(__file__)) in js and '"oc-pre"' in js and "__" not in js,
-              "guard gerado aponta para este script")
-        envc = json.loads(opencode_env(os.path.join(grd, "opencode-guard.js"), False)["OPENCODE_CONFIG_CONTENT"])
-        check(envc["permission"] == {"external_directory": "deny"} and envc["plugin"][0].startswith("file:///"),
-              "config do run: plugin por file:// e external_directory deny")
+        cfg = write_oc_guard(grd)
+        js = open(os.path.join(cfg, "plugins", "crew-guard.js"), encoding="utf-8").read()
+        check(json.dumps(os.path.abspath(__file__)) in js and '"oc-pre"' in js and "__" not in js
+              and "export default" in js and '"execute.before"' in js,
+              "generated guard: v2 shape, points at this script")
+        env_oc = opencode_env(cfg, False)
+        check(env_oc["OPENCODE_CONFIG_DIR"] == cfg
+              and json.loads(env_oc["OPENCODE_CONFIG_CONTENT"]) == {"permission": {"external_directory": "deny"}},
+              "run config: guard through OPENCODE_CONFIG_DIR, external_directory deny")
         rid = f"selftest-{os.getpid()}"
         child = subprocess.Popen(["sleep", "60"], env={**os.environ, RUN_ENV: rid},
                                  start_new_session=True)
@@ -2931,6 +2966,16 @@ def self_test() -> int:
               == "deny", "hook oc-pre nega")
         check(hook("oc-pre", {"tool": "read", "args": {"filePath": f"{repo}/src/a.txt"}})
               == {"decision": "allow"}, "hook oc-pre permite explicitamente")
+        check(hook("oc-pre", {"tool": "read", "args": {"path": f"{repo}/src/a.txt"}})
+              == {"decision": "allow"}, "opencode 2.x read {path} in repo")
+        check(hook("oc-pre", {"tool": "read", "args": {"path": "/etc/passwd"}})["decision"] == "deny",
+              "opencode 2.x read {path} outside")
+        check(hook("oc-pre", {"tool": "write", "args": {"path": f"{repo}/side.json", "content": "x"}})
+              ["decision"] == "deny", "opencode 2.x write {path} out of scope")
+        check(hook("oc-pre", {"tool": "shell", "args": {"command": "cat /etc/passwd", "workdir": repo}})
+              ["decision"] == "deny", "opencode 2.x shell outside the repo")
+        check(hook("oc-pre", {"tool": "execute", "args": {"code": "fetch('https://x')"}})["decision"]
+              == "deny", "opencode 2.x execute (JS sandbox) denied")
         r = hook("stop", {"terminationReason": "NO_TOOL_CALL"})
         check(r["decision"] == "continue" and "finish" in r["reason"],
               f"stop com gate verde e sem finish pede o relatorio: {r}")
