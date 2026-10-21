@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""ElevenLabs pela API REST, com arquivo local na entrada e na saida. So stdlib.
+"""ElevenLabs through the REST API: local file in, local file out. Stdlib only.
 
-  eleven.py sfx "whoosh suave de transicao" -o whoosh.mp3 [--seconds 1.5] [--loop] [--influence 0.3]
-  eleven.py music "ambient calmo, piano e pads, sem bateria" -o trilha.mp3 --seconds 40 [--vocals]
-  eleven.py isolate gravacao.wav -o voz-limpa.mp3
-  eleven.py stt audio.mp3 -o transcricao.json [--lang por]
+  eleven.py sfx "soft transition whoosh" -o whoosh.mp3 [--seconds 1.5] [--loop] [--influence 0.3]
+  eleven.py music "calm ambient, piano and pads, no drums" -o music.mp3 --seconds 40 [--vocals]
+  eleven.py isolate recording.wav -o clean-voice.mp3
+  eleven.py stt audio.mp3 -o transcript.json [--lang por]
   eleven.py credits
 
-ELEVENLABS_API_KEY vem do ambiente; injete com o `run` do gerenciador de segredos.
-`stt` grava o JSON da API e imprime as frases com inicio e fim, prontas para legenda.
+ELEVENLABS_API_KEY comes from the environment; inject it with your secrets manager's `run`.
+`stt` saves the API JSON and prints sentences with start and end times, ready for captions.
 """
 import argparse, json, mimetypes, os, sys, urllib.error, urllib.request, uuid
 
@@ -16,7 +16,7 @@ API = "https://api.elevenlabs.io/v1"
 
 
 def key():
-    return os.environ.get("ELEVENLABS_API_KEY") or sys.exit("ELEVENLABS_API_KEY ausente no ambiente")
+    return os.environ.get("ELEVENLABS_API_KEY") or sys.exit("ELEVENLABS_API_KEY is not set")
 
 
 def request(path, *, body=None, files=None, fields=None, method="POST", timeout=600):
@@ -51,13 +51,13 @@ def save(out, data):
     print(f"{out}  {len(data)/1e3:.0f} KB")
 
 
-def frases(words, pausa=0.6):
-    """Agrupa palavras em frases por pontuacao final ou pausa longa."""
+def sentences(words, gap=0.6):
+    """Group words into sentences by final punctuation or a long pause."""
     out, cur = [], []
     for w in words:
         if w.get("type") != "word":
             continue
-        if cur and (w["start"] - cur[-1]["end"] > pausa):
+        if cur and (w["start"] - cur[-1]["end"] > gap):
             out.append(cur); cur = []
         cur.append(w)
         if w["text"].rstrip().endswith((".", "!", "?")):
@@ -96,11 +96,11 @@ def main():
         res = json.loads(request("/speech-to-text", files={"file": a.audio}, fields=fields))
         with open(a.out, "w") as f:
             json.dump(res, f, ensure_ascii=False, indent=1)
-        for fr in frases(res.get("words", [])):
+        for fr in sentences(res.get("words", [])):
             print(f'{fr["start"]:7.2f} {fr["end"]:7.2f}  {fr["text"]}')
     elif a.cmd == "credits":
         sub_ = json.loads(request("/user/subscription", method="GET"))
-        print(f'{sub_["tier"]}: {sub_["character_limit"] - sub_["character_count"]} de {sub_["character_limit"]} creditos restantes')
+        print(f'{sub_["tier"]}: {sub_["character_limit"] - sub_["character_count"]} of {sub_["character_limit"]} credits left')
 
 
 if __name__ == "__main__":

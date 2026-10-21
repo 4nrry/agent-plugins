@@ -1,59 +1,42 @@
 ---
 name: turntable-blender
-description: Renderizar um turntable (giro de 360 graus) de um modelo .glb no Blender sem abrir a interface, em Cycles com GPU, frames PNG com fundo transparente para compor num video. Use quando a tarefa pedir render de produto, giro do dispositivo, animacao 3D de um glb ou gltf, Blender headless, `blender -b -P`, Cycles, CUDA ou OptiX, ou quando o Blender segfaultar ao enumerar dispositivos ou reclamar de `action.fcurves`.
+description: Renders a 360-degree turntable of a .glb model in headless Blender with Cycles on the GPU, as transparent PNG frames to composite into video. Use when a task asks for a product render, a device spin, a 3D animation of a glb or gltf, headless Blender, `blender -b -P`, Cycles, CUDA or OptiX, or when Blender segfaults enumerating devices or complains about `action.fcurves`.
 ---
 
-# Turntable de um .glb no Blender headless
+# Turntable of a .glb in headless Blender
 
-Um giro de produto em PNG RGBA e o que deixa a peca de video usar o modelo
-real em vez de foto de banco. O script empacotado importa o glb, centra pelo
-bounding box, poe camera a 3/4, tres area lights e renderiza uma volta.
+The bundled script imports the glb, centers it on its bounding box, places a
+3/4 camera and three area lights, and renders one full turn. From this skill's
+directory:
 
 ```bash
-blender -b -P "${CLAUDE_PLUGIN_ROOT}/skills/turntable-blender/scripts/turntable.py" -- \
-  --glb modelo.glb --out /caminho/frames --frames 120 --samples 128 --res 1080
+blender -b -P scripts/turntable.py -- --glb model.glb --out /path/frames --frames 120 --samples 128 --res 1080
 ```
 
-`--preview` renderiza 3 frames a 16 amostras para conferir enquadramento e luz
-antes de gastar minutos. `--frames 120` a 30 fps e uma volta em 4 s; no video
-use so o trecho que a cena pede.
+`--preview` renders 3 frames at 16 samples to check framing and light first.
+120 frames at 30 fps is a 4 s turn; use only the stretch the scene needs.
 
-Se o plano pede a camera se movendo em vez de o modelo girar, ou o mesmo
-movimento em varios formatos, veja a secao de Three.js na skill
-`video-remotion`: ~7 s contra ~6 min para os mesmos 120 frames, com
-iluminacao visivelmente mais pobre.
+For a moving camera instead of a spinning model, or the same move in several
+formats, use Three.js inside Remotion (`video-remotion` skill): seconds instead
+of minutes, with visibly poorer lighting.
 
-## O que quebra sem erro util
+## What breaks without a useful error
 
-- **`prefs.get_devices()` segfaulta** em maquina com GPU Intel Arc integrada
-  ao lado da NVIDIA: a enumeracao passa por oneAPI/Level Zero e cai. Nao ha
-  traceback, so "Segmentation fault". `get_devices_for_type("CUDA")` (ou
-  `"OPTIX"`) enumera so aquele backend e nao toca no oneAPI. O script faz isso;
-  `CYCLES_BACKEND=OPTIX` forca o backend.
-- **Blender 5 nao tem `action.fcurves`**: actions viraram em camadas. Para
-  interpolacao linear no giro, defina
-  `preferences.edit.keyframe_new_interpolation_type = "LINEAR"` antes de
-  inserir os keyframes, em vez de editar as curvas depois.
-- **Superexposicao**: area light com energia em watts escala com a area. Com
-  luz "razoavel" a 400 W num objeto de 30 cm o render sai branco. O script usa
-  60/22/55 x size² para key/fill/rim, com `size` sendo a maior dimensao do
-  modelo, e AgX Base Contrast, que segura o laranja sem estourar.
-- **PNG RGBA e o formato**: `film_transparent = True` mais `color_mode = "RGBA"`.
-  Sem os dois, o fundo vem cinza e a composicao no video mostra uma caixa.
-- **Compondo sobre fundo claro**: o PNG com alpha premultiplicado aparece com
-  halo branco em alguns compositores; no HTML/Remotion, `mix-blend-mode` no
-  container transformado precisa de `isolation: isolate` no pai.
+- **`prefs.get_devices()` segfaults** on machines with an integrated Intel Arc
+  beside an NVIDIA GPU (oneAPI enumeration). `get_devices_for_type("CUDA")` or
+  `"OPTIX"` enumerates only that backend; the script does this, and
+  `CYCLES_BACKEND=OPTIX` forces OptiX. If OptiX returns no device (driver and
+  Blender version must match), it falls back to CUDA.
+- **Blender 5 has no `action.fcurves`** (layered actions). For a linear spin,
+  set `preferences.edit.keyframe_new_interpolation_type = "LINEAR"` before
+  inserting keyframes.
+- **Overexposure:** area-light watts scale with area; "reasonable" values blow
+  out a 30 cm object. The script uses 60/22/55 × size² for key/fill/rim, with
+  size the model's largest dimension, and AgX Base Contrast.
+- **Transparent PNG** needs both `film_transparent = True` and
+  `color_mode = "RGBA"`, or the background comes out grey.
+- **Light backgrounds:** premultiplied alpha shows a white halo in some
+  compositors; in HTML/Remotion, `mix-blend-mode` on a transformed container
+  needs `isolation: isolate` on its parent.
 
-## Tempo
-
-Numa RTX 4070 Laptop, 120 frames a 900 px e 128 amostras com denoise: cerca de
-6 minutos em CUDA. OptiX e mais rapido quando disponivel, mas o driver precisa
-casar com a versao do Blender; se `get_devices_for_type("OPTIX")` vier vazio,
-o script cai para CUDA sozinho.
-
-## O que nao foi verificado
-
-- Modelos com varios materiais transmissivos (vidro) sob AgX: o teste foi um
-  gabinete plastico com painel solar.
-- Blender abaixo de 4.x: `keyframe_new_interpolation_type` existe, mas o
-  restante nao foi testado.
+Untested: several transmissive (glass) materials under AgX; Blender below 4.x.
