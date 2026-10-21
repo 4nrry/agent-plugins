@@ -18,6 +18,32 @@ Add the marketplace, then install a plugin:
 
 Or paste `4nrry/agent-plugins` into the Claude Desktop **Add marketplace** dialog.
 
+## Other agent tools
+
+Codex (and the ChatGPT app), GitHub Copilot, Grok Build, Cursor, Kimi Code,
+ZCode, opencode, Muse Code, Hermes and Antigravity read plain skill folders.
+`scripts/link_skills.py` symlinks each skill into them, pointing at Claude
+Code's marketplace clone, so updating the marketplace updates every tool:
+
+```
+just link-skills global                          # agent-fleet, agents-md, extension-audit, game-facts, homelab
+just link-skills project ~/code/app mobile-agent  # into the repo's .agents/skills, git-excluded
+just link-skills status ~/code/app
+```
+
+| Tool | Global folder | Project folder |
+|---|---|---|
+| Codex and the ChatGPT app, Copilot CLI, Cursor, Kimi Code, ZCode, opencode | `~/.agents/skills` | `.agents/skills` |
+| Grok Build, Muse Code | `~/.agents/skills` | `.agents/skills`, once the folder is trusted |
+| Hermes | `~/.agents/skills` once listed in `skills.external_dirs` | `.agents/skills`, after `hermes skills trust` |
+| Antigravity | `~/.gemini/config/skills` | `.agents/skills` |
+| Claude Code | the plugins | the plugins, per project in `.claude/settings.local.json` |
+
+Hooks and MCP servers do not travel with a linked skill. Grok and Cursor also
+load the Claude Code plugins themselves, hooks included. Codex can install this
+marketplace too; do not, or each skill loads twice. crew stays out of the
+links: inside its own workers it would offer to delegate again.
+
 ## Plugins
 
 | Plugin | What it is |
