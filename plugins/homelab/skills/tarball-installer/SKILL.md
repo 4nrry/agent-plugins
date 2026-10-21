@@ -1,6 +1,6 @@
 ---
 name: tarball-installer
-description: Install an application tarball (.tar.gz/.tar.xz/.tar.bz2/.tar.zst) on Ubuntu/Kubuntu/Debian the standardized way — versioned directory plus a `current` symlink, a wrapper on PATH, a validated .desktop entry, and the icon in hicolor — using the bundled `tarball-install` script. Use this whenever the user has a downloaded app tarball to install, asks where to extract it or whether it belongs in /opt vs /usr/local vs the home directory, wants a menu entry or launcher for a manually installed app, or wants to update, roll back, list, or uninstall one. Trigger it even when the user just says "install this tar.xz" or names a specific app (Zen, VS Code, Obsidian, JetBrains, Node) without mentioning any convention, and whenever a manual install is about to be improvised with raw tar/mv/ln commands.
+description: Installs an application tarball (.tar.gz/.tar.xz/.tar.bz2/.tar.zst) on Ubuntu/Kubuntu/Debian the standardized way — versioned directory plus a `current` symlink, a wrapper on PATH, a validated .desktop entry, and the icon in hicolor — using the bundled `tarball-install` script. Use this whenever the user has a downloaded app tarball to install, asks where to extract it or whether it belongs in /opt vs /usr/local vs the home directory, wants a menu entry or launcher for a manually installed app, or wants to update, roll back, list, or uninstall one. Trigger it even when the user just says "install this tar.xz" or names a specific app (Zen, VS Code, Obsidian, JetBrains, Node) without mentioning any convention, and whenever a manual install is about to be improvised with raw tar/mv/ln commands.
 ---
 
 # Standardized tarball installs on Ubuntu/Kubuntu
@@ -29,13 +29,12 @@ Spend ten seconds checking `apt-cache policy <app>`, and mention it if a Flatpak
 
 ## Step 1 — make sure the tool is present
 
-The script lives at `scripts/tarball-install` inside this skill. Install or refresh it before use:
+The script lives at `scripts/tarball-install` inside this skill. From the skill folder, install or refresh it before use:
 
 ```bash
 mkdir -p ~/.local/bin
-SKILL_DIR="${CLAUDE_PLUGIN_ROOT}/skills/tarball-installer"
-cmp -s "$SKILL_DIR"/scripts/tarball-install ~/.local/bin/tarball-install \
-  || cp "$SKILL_DIR"/scripts/tarball-install ~/.local/bin/tarball-install
+cmp -s scripts/tarball-install ~/.local/bin/tarball-install \
+  || cp scripts/tarball-install ~/.local/bin/tarball-install
 chmod +x ~/.local/bin/tarball-install
 ```
 
