@@ -135,12 +135,15 @@ def check_schema(value, schema: dict, path: str, errs: list[str]) -> None:
 # --------------------------------------------------------------------------
 
 def check_marketplace(plugin_dirs: dict) -> None:
-    """1. Entries carry only name+source, and source resolves to a real plugin.
+    """1. Entries carry only name+source (plus category and tags), and source
+    resolves to a real plugin.
 
     The docs make version/description/author optional in a marketplace entry,
     and in strict mode (the default) plugin.json is the authority and the two
     are merged. Duplicating them here buys nothing and drifts silently — this
     repo shipped a version bump that had to be applied by hand in two files.
+    `category` and `tags` are the exception: plugin.json has no such fields, so
+    the marketplace entry is their only home.
     """
     global checks_run
     mp = REPO / ".claude-plugin" / "marketplace.json"
@@ -152,7 +155,7 @@ def check_marketplace(plugin_dirs: dict) -> None:
     for entry in d.get("plugins", []):
         checks_run += 1
         name = entry.get("name", "<unnamed>")
-        extra = sorted(set(entry) - {"name", "source"})
+        extra = sorted(set(entry) - {"name", "source", "category", "tags"})
         if extra:
             fail(f"marketplace.json[{name}]",
                  f"carries {extra}, which plugin.json already owns — the entry "

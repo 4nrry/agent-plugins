@@ -40,8 +40,8 @@ maps them per harness.
 
 ## Fan-out
 
-Sizes and coding rules below come from the repo's research record,
-`bench/shared/2026-10-21-subagents-for-coding-research/CLAIMS.md`.
+Sizes and coding rules below come from the subagents-for-coding research
+record in `bench/shared/`.
 
 - For coding, default to one agent. On SWE-bench Verified every multi-agent
   setup scored below a single agent; task structure, not agent count, decides.
