@@ -16,7 +16,11 @@ Add the marketplace, then install a plugin:
 /plugin install agent-fleet@4nrry
 ```
 
-Or paste `4nrry/agent-plugins` into the Claude Desktop **Add marketplace** dialog.
+In Claude Desktop, paste `https://github.com/4nrry/agent-plugins.git` into the
+**Add marketplace** dialog. The git URL registers the marketplace as `4nrry`
+on this computer, and plugins show "by 4nrry". `4nrry/agent-plugins` instead
+registers it on your claude.ai account as `agent-plugins`: plugins sync to
+your other devices and show a category icon, credited to the marketplace.
 
 ## Other agent tools
 
