@@ -56,8 +56,13 @@ it never trusts the CLI's exit code alone. Pass `session` back to continue.
 ## review: a second opinion on a change
 
 ```bash
-python3 scripts/crew.py review [--backend agy|opencode|copilot] [--diff HEAD~1] [--model slug] --prompt-file q.md
+python3 scripts/crew.py review [--backend <backend>] [--diff HEAD~1] [--tier cheap|mid|top] [--model m] --prompt-file q.md
 ```
+
+Any backend `ask` runs. agy, opencode and Copilot stay read-only through crew's
+guard hooks; the others through their own read-only mode, with one more turn in
+the same session when the reply lacks the JSON report. Hermes sees only the
+question and the diff.
 
 It returns schema'd findings. Check each finding's evidence in the code before
 repeating it, and say which ones you confirmed.
