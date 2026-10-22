@@ -1,16 +1,20 @@
----
-name: delegate
-description: Delegates one well-bounded slice of coding work to a cheap headless worker — agy (Gemini), opencode (a free Zen model) or GitHub Copilot CLI (no shell) — under guard hooks and a mechanical gate, and returns a JSON verdict. Covers when to delegate and when not, how to write the task and the gate, reading the verdict, and the mandatory diff review. Use when a task has a concrete source of truth and a fast gate (port a module, add tests to a spec, repeat a pattern across files), or when the user asks to delegate, offload or farm out work to agy, opencode or Copilot.
-argument-hint: <task.json> [--backend agy|opencode|copilot] [--model slug] [--no-quota-probe]
----
-
 # Delegating a slice to a worker
+
+## Contents
+
+- Ask first
+- When to delegate
+- Before the first run in a project
+- The task
+- Run
+- The verdict
+- Review the diff
 
 You plan, write the task, set scope and gate, read the verdict and review the
 diff. The worker executes one slice, headless. It never decides design,
-commits, or declares anything done. `scripts/crew.py` (in this skill's
-directory) is the guard rail; backend specifics are in the `agy`, `opencode`
-and `copilot` skills.
+commits, or declares anything done. `scripts/crew.py` is the guard rail.
+`delegate` drives three backends, each with its own guard: [agy.md](agy.md),
+[opencode.md](opencode.md), [copilot.md](copilot.md).
 
 ## Ask first
 
@@ -42,7 +46,7 @@ review.
 ## The task
 
 A JSON **outside the tree** (scratchpad, or `$(git rev-parse --git-path crew)/tasks/`).
-Example: [references/task.example.json](references/task.example.json).
+Example: [task.example.json](task.example.json).
 
 | Field | Meaning |
 |---|---|
@@ -52,7 +56,7 @@ Example: [references/task.example.json](references/task.example.json).
 | `gate.format` | the formatter; `{files}` becomes the changed in-scope files |
 | `gate.checks` | lint, typecheck, narrow tests; all must exit 0 |
 | `side_effects` | globs tools rewrite on their own (`nx.json`); tolerated, listed |
-| `backend`, `model` | `agy` (default), `opencode`, `copilot`; models in each backend skill |
+| `backend`, `model` | `agy` (default), `opencode`, `copilot`; models in each backend's file |
 | `timeout`, `gate_timeout`, `max_gate_attempts` | defaults `30m`, 900 s per command, 5 |
 | `allow_paths`, `deny_commands`, `secret_globs` | extra readable paths, extra denied command regexes, secret file names (default covers `.env*`, `.dev.vars`, `*.pem`, `*.key`, `id_rsa*`; `[]` disables) |
 

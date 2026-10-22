@@ -1,11 +1,11 @@
 {
   "name": "crew",
   "displayName": "Crew",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "author": {
     "name": "4nrry",
     "url": "https://github.com/4nrry"
   },
   "license": "MIT",
-  "description": "Cheap headless workers through three agent CLIs without fighting Claude's harness: Claude writes the task, sets scope and gate and reviews the diff; the worker runs one slice under its own CLI's hooks, installed for the run only. Backends: agy (Antigravity, Gemini; default), opencode 2.x (free Zen models, weaker shell guard) and GitHub Copilot CLI (no shell, paid in AI credits). The verdict never reads the CLI's exit 0 as success."
+  "description": "Another vendor's agent CLI as an isolated subagent, from any host: ask a read-only question or hold a multi-turn conversation (agy, opencode, Codex, Grok, Hermes, Copilot, Cursor, Muse, Kimi, or Claude Code from another host), get a second opinion on a diff, or delegate one coding slice to agy, opencode or Copilot under the worker CLI's own hooks and a mechanical gate. Tiers (cheap, mid, top) map to a model and effort per backend. The verdict never reads the CLI's exit 0 as success."
 }
