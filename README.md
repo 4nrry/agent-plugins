@@ -26,7 +26,7 @@ ZCode, opencode, Muse Code, Hermes and Antigravity read plain skill folders.
 Code's marketplace clone, so updating the marketplace updates every tool:
 
 ```
-just link-skills global                          # agent-fleet, agents-md, extension-audit, game-facts, homelab
+just link-skills global                          # agent-fleet, agents-md, crew, extension-audit, game-facts, homelab
 just link-skills project ~/code/app mobile-agent  # into the repo's .agents/skills, git-excluded
 just link-skills status ~/code/app
 ```
@@ -41,8 +41,8 @@ just link-skills status ~/code/app
 
 Hooks and MCP servers do not travel with a linked skill. Grok and Cursor also
 load the Claude Code plugins themselves, hooks included. Codex can install this
-marketplace too; do not, or each skill loads twice. crew stays out of the
-links: inside its own workers it would offer to delegate again.
+marketplace too; do not, or each skill loads twice. crew is linked too: a
+crew run sets `CREW_RUN`, and crew refuses to start a worker inside one.
 
 ## Plugins
 
@@ -50,7 +50,7 @@ links: inside its own workers it would offer to delegate again.
 |---|---|
 | [agent-fleet](plugins/agent-fleet/) | Rules for multi-agent work — model routing per phase, fan-out sizing, output schemas, and citation verification. Two hooks, because the prose alone measurably did not fire. |
 | [agents-md](plugins/agents-md/) | Write, slim and audit a repo's AGENTS.md: what goes in, what comes out, per-tool limits (Claude Code, Antigravity, Codex), and a stdlib checker for missing scripts, dead paths, oversize files and the CLAUDE.md that hides AGENTS.md from Claude Code. |
-| [crew](plugins/crew/) | Cheap headless workers through three agent CLIs without fighting Claude's harness: Claude writes the task, sets scope and gate and reviews the diff; the worker runs one slice under its own CLI's hooks, installed for the run only. Backends: agy (Antigravity, Gemini; default), opencode 2.x (free Zen models, weaker shell guard) and GitHub Copilot CLI (no shell, paid in AI credits). The verdict never reads the CLI's exit 0 as success. |
+| [crew](plugins/crew/) | Another vendor's agent CLI as an isolated subagent, from any host: ask a read-only question or hold a multi-turn conversation (agy, opencode, Codex, Grok, Hermes, Copilot, Cursor, Muse, Kimi, or Claude Code from another host), get a second opinion on a diff, or delegate one coding slice to agy, opencode or Copilot under the worker CLI's own hooks and a mechanical gate. Tiers (cheap, mid, top) map to a model and effort per backend. The verdict never reads the CLI's exit 0 as success. |
 | [extension-audit](plugins/extension-audit/) | Audit skills, plugins and hooks against Anthropic's authoring guidance and current prompting research: a sourced checklist for judgment calls and a stdlib linter for the mechanical ones, which `just check` runs over this repo. |
 | [game-facts](plugins/game-facts/) | Pins the installed game's version before the agent answers from training memory. A UserPromptSubmit hook reads Steam appmanifests and injects appid, buildid and update date — so the version never has to be typed into the prompt. |
 | [homelab](plugins/homelab/) | Software you maintain yourself on a Linux box, where the official docs stop: a Palworld dedicated server (the config it erases on shutdown), WireGuard through NetworkManager (the IPv6 leak that passes the IP test), and tarball installs (one versioned layout, and why a self-updating app must not live in /opt). Machine state stays out of the repo. |

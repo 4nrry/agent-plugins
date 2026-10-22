@@ -1,12 +1,7 @@
----
-name: copilot
-description: Specifics of crew's GitHub Copilot CLI backend — Free plan with --model auto only, every run paid in AI credits, a worker with no shell whose whole gate runs at agentStop, COPILOT_ALLOW_ALL set only for the run's process, and a worker that claims checks it could not have run. Use when delegating a slice or asking for a review through Copilot CLI.
----
-
 # crew through Copilot CLI
 
-Read the `delegate` skill first. Commands below run from the `delegate`
-skill's directory. Requires `copilot` on PATH and logged in; a version other
+Read [delegate.md](delegate.md) first. Commands run from the crew skill's
+directory (the one holding `SKILL.md`). Requires `copilot` on PATH and logged in; a version other
 than the tested one is a warning.
 
 ```bash

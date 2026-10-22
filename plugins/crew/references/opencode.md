@@ -1,12 +1,7 @@
----
-name: opencode
-description: Specifics of crew's opencode backend — free Zen models and each one's data terms, a shell guard weaker than agy's, the gate as an outer loop that resumes the session, and opencode 2.x's plugin and run changes. Use when delegating a slice or asking for a review through opencode, or when agy's quota is gone.
----
-
 # crew through opencode
 
-Read the `delegate` skill first. Commands below run from the `delegate`
-skill's directory. Requires opencode 2.x on PATH or in `~/.opencode/bin`; 1.x
+Read [delegate.md](delegate.md) first. Commands run from the crew skill's
+directory (the one holding `SKILL.md`). Requires opencode 2.x on PATH or in `~/.opencode/bin`; 1.x
 is refused.
 
 ```bash

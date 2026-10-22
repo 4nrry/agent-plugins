@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""crew: run an agent CLI (agy, opencode or copilot) headless as a guarded worker.
+"""crew: run another vendor's agent CLI headless as an isolated worker.
 
-Claude plans and reviews; agy executes one well-scoped slice. This script is
-the guard rail between them. Subcommands:
+The host agent (in any tool) plans and reviews; the worker answers (`ask`,
+`review`) or executes one well-scoped slice (`delegate`, on agy, opencode or
+copilot). This script is the guard rail between them. Subcommands:
 
   delegate TASK.json   run the task under agy with guard hooks and a gate
   review [PROMPT...]   read-only second opinion (agy: --mode plan + --json-schema)
+  ask BACKEND PROMPT   one read-only turn with any agent CLI, or the next turn of
+                       a session (--session); backends and tiers in backends.py
+  backends             list backends, tiers, binaries and test status
   gate TASK.json       run the task's gate by hand (--baseline: commands only)
   hook pre|stop|start  agy workspace hook handlers (installed per run)
   hook oc-pre          the opencode guard plugin's handler (same policy)
@@ -2418,6 +2422,105 @@ def cmd_review(a) -> int:
     return 0 if verdict["ok"] else 1
 
 
+def read_prompt(a) -> str:
+    if a.prompt_file:
+        with open(a.prompt_file, encoding="utf-8") as fh:
+            return fh.read()
+    if a.prompt and a.prompt != ["-"]:
+        return " ".join(a.prompt)
+    return sys.stdin.read()
+
+
+def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None, session=None,
+            cwd=None, timeout_s=600, allow_same_vendor=False, env=None) -> dict:
+    """One turn with a worker CLI. Returns the verdict; never trusts the exit code alone."""
+    import backends
+    env = dict(os.environ if env is None else env)
+    cwd = os.path.realpath(cwd or os.getcwd())
+    if len(prompt.encode()) > MAX_PROMPT_BYTES:
+        raise Refusal(f"prompt over {MAX_PROMPT_BYTES} bytes; put long material in a file the worker reads")
+    try:
+        r = backends.resolve(backend, tier, model, effort,
+                             env={} if allow_same_vendor else env)
+    except ValueError as exc:
+        raise Refusal(str(exc))
+    spec, warnings = r["spec"], list(r["warnings"])
+    try:
+        repo = repo_root(cwd)
+    except Exception:
+        repo = None
+    rundir = new_rundir(repo, "ask") if repo else tempfile.mkdtemp(prefix="crew-ask-")
+    run_id = os.path.basename(rundir)
+    argv, extra_env, preset = spec["build"](spec, prompt, r["model"], r["effort"], session, cwd)
+    env.update(extra_env)
+    env.update(WORKER_ENV)
+    env[RUN_ENV] = run_id
+    version = None
+    try:
+        version = subprocess.run([spec["bin"], "--version"], capture_output=True, text=True,
+                                 timeout=30, stdin=subprocess.DEVNULL).stdout.strip().splitlines()[0]
+    except (OSError, subprocess.TimeoutExpired, IndexError):
+        pass
+    live = backends.LIVE.get(backend)
+    if not live:
+        warnings.append(f"{backend}: argv built from --help; never run end to end by crew")
+    elif not (version and live in version):
+        warnings.append(f"{backend}: tested on {live}, found {version!r}")
+    before = fingerprint(repo, []) if repo else None
+    saved = snapshot_files(cwd, OPENCODE_CONFIG_FILES) if backend == "opencode" else {}
+    t0, rc, out, err, failures = time.time(), None, "", "", []
+    try:
+        proc = subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True,
+                              timeout=timeout_s, stdin=subprocess.DEVNULL)
+        rc, out, err = proc.returncode, proc.stdout, proc.stderr
+    except subprocess.TimeoutExpired as exc:
+        out = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        failures.append(f"timed out after {timeout_s}s")
+    finally:
+        left = stop_run_procs(run_id)
+        restore_files(cwd, saved)
+    for name, text in (("stdout", out), ("stderr", err)):
+        with open(os.path.join(rundir, f"{name}.log"), "w", encoding="utf-8") as fh:
+            fh.write(text)
+    parsed = spec["parse"](out)
+    if rc not in (0, None):
+        failures.append(f"exit {rc}: {tail(err, 400).strip()}")
+    if parsed.get("error"):
+        failures.append(str(parsed["error"]))
+    if not parsed.get("text"):
+        failures.append("no reply in the output")
+    if repo and fingerprint(repo, []) != before:
+        failures.append("the work tree changed during a read-only ask")
+    return {"ok": not failures, "backend": backend, "tier": tier, "model": r["model"],
+            "effort": r["effort"], "session": parsed.get("session") or preset or session,
+            "text": parsed.get("text"), "usage": parsed.get("usage"), "read_only": spec["read_only"],
+            "version": version, "failures": failures, "warnings": warnings,
+            "left_processes_stopped": sorted(left), "duration_s": round(time.time() - t0, 1),
+            "rundir": rundir}
+
+
+def cmd_ask(a) -> int:
+    verdict = run_ask(a.backend, read_prompt(a), tier=a.tier, model=a.model, effort=a.effort,
+                      session=a.session, cwd=a.cwd, timeout_s=parse_duration(a.timeout),
+                      allow_same_vendor=a.allow_same_vendor)
+    print(json.dumps(verdict, ensure_ascii=False, indent=2))
+    return 0 if verdict["ok"] else 1
+
+
+def cmd_backends(a) -> int:
+    """Each backend's binary, vendor, tiers, efforts, read-only mechanism and test status."""
+    import backends
+    rows = []
+    for name, s in backends.SPECS.items():
+        rows.append({"backend": name, "bin": backends._bin(*s["bins"]), "vendor": s["vendor"],
+                     "tiers": {t: {"model": m, "effort": e} for t, (m, e) in s["tiers"].items()},
+                     "efforts": list(s["efforts"]), "read_only": s["read_only"],
+                     "live_tested_on": backends.LIVE.get(name),
+                     "same_vendor_as_host": s["vendor"] in backends.host_vendors()})
+    print(json.dumps(rows, ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_gate(a) -> int:
     task = load_task(a.task)
     repo = repo_root(a.repo or os.getcwd())
@@ -3206,6 +3309,46 @@ def self_test() -> int:
             check("left over from a crew run" in str(exc) and "rm " in str(exc), "recognizes its own leftover")
         remove_hooks(repo, created)
         check(not os.path.exists(os.path.join(repo, ".agents")), ".agents removed")
+
+        # ask: a fake CLI that answers like `agy -p --output-format json`
+        import backends
+        fakebin = os.path.join(tmp, "fakebin")
+        os.makedirs(fakebin)
+        fake = os.path.join(fakebin, "agy")
+        with open(fake, "w") as fh:
+            fh.write("#!/bin/sh\n[ \"$1\" = --version ] && { echo 1.4.4; exit 0; }\n"
+                     "case \"$*\" in *--conversation*) id=c1;; *) id=new;; esac\n"
+                     "printf '{\"conversation_id\":\"%s\",\"status\":\"SUCCESS\",\"response\":\"pong\"}' $id\n")
+        os.chmod(fake, 0o755)
+        fenv = dict(os.environ, PATH=fakebin + os.pathsep + os.environ.get("PATH", ""))
+        fenv.pop("CLAUDECODE", None)
+        old_path = os.environ["PATH"]
+        os.environ["PATH"] = fenv["PATH"]
+        try:
+            v = run_ask("agy", "ping", cwd=repo, env=fenv)
+            check(v["ok"] and v["text"] == "pong" and v["session"] == "new"
+                  and v["model"] == "gemini-3.8-flash", "ask: first turn")
+            v = run_ask("agy", "again", session="c1", cwd=repo, env=fenv)
+            check(v["ok"] and v["session"] == "c1", "ask: resumed turn keeps the session")
+            with open(fake, "a") as fh:
+                fh.write("echo x > touched.txt\n")
+            v = run_ask("agy", "ping", cwd=repo, env=fenv)
+            check(not v["ok"] and any("work tree changed" in f for f in v["failures"]),
+                  "ask: a write during ask fails the verdict")
+            os.remove(os.path.join(repo, "touched.txt"))
+            try:
+                run_ask("claude", "ping", cwd=repo, env=dict(fenv, CLAUDECODE="1"))
+                check(False, "ask: claude from claude refused")
+            except Refusal:
+                check(True, "")
+            os.environ[RUN_ENV] = "outer"
+            try:
+                check(main(["ask", "agy", "ping"]) == 2, "ask: refused inside a crew worker")
+            finally:
+                del os.environ[RUN_ENV]
+        finally:
+            os.environ["PATH"] = old_path
+        check(backends.self_test() == 0, "backends self-test")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print(f"self-test: {n} checks ok")
@@ -3245,6 +3388,19 @@ def main(argv=None) -> int:
     gt.add_argument("--repo")
     gt.add_argument("--baseline", action="store_true",
                     help="only the format/checks commands, no scope or forbid")
+    k = sub.add_parser("ask", help="one read-only turn with any agent CLI (see backends.py)")
+    k.add_argument("backend")
+    k.add_argument("prompt", nargs="*", help="the prompt; '-' or nothing reads stdin")
+    k.add_argument("--prompt-file")
+    k.add_argument("--tier", default="cheap", choices=("cheap", "mid", "top"))
+    k.add_argument("--model", help="overrides the tier's model")
+    k.add_argument("--effort", help="overrides the tier's effort")
+    k.add_argument("--session", help="continue this session (the id a previous ask printed)")
+    k.add_argument("--cwd", help="where the worker runs (default: here)")
+    k.add_argument("--timeout", default="10m")
+    k.add_argument("--allow-same-vendor", action="store_true",
+                   help="allow a backend from the host's own vendor")
+    sub.add_parser("backends", help="list backends, tiers, binaries and test status")
     h = sub.add_parser("hook", help="agy hook handler (installed per run)")
     h.add_argument("event", choices=["pre", "stop", "start", "oc-pre", "cp-pre", "cp-stop"])
     h.add_argument("--state", required=True)
@@ -3252,7 +3408,11 @@ def main(argv=None) -> int:
     if a.cmd == "hook":
         return hook_main(a.event, a.state)
     try:
-        return {"delegate": cmd_delegate, "review": cmd_review, "gate": cmd_gate}[a.cmd](a)
+        if a.cmd in ("ask", "delegate", "review") and os.environ.get(RUN_ENV):
+            raise Refusal(f"called from inside crew run {os.environ[RUN_ENV]}: a worker does not "
+                          "start workers")
+        return {"delegate": cmd_delegate, "review": cmd_review, "gate": cmd_gate,
+                "ask": cmd_ask, "backends": cmd_backends}[a.cmd](a)
     except Refusal as exc:
         eprint(f"crew: refused: {exc}")
         print(json.dumps({"ok": False, "refused": True, "failures": [str(exc)]}, ensure_ascii=False))

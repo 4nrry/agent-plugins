@@ -1,29 +1,38 @@
 # crew
 
-Cheap headless workers through other agent CLIs, without fighting Claude's
-harness: Claude plans, writes the task, sets scope and gate and reviews the
-diff; the worker runs one slice under guard rails that exist only for the run.
+Another vendor's agent CLI as an isolated subagent, from whatever tool you work
+in. The host agent writes the question or the task and checks the result; the
+worker answers, reviews, or runs one slice under guard rails that exist only for
+the run. Use it to spend spare quota on another vendor, never for the host's
+own models: its native subagents serve those.
 
 ```
 /plugin install crew@4nrry
 ```
 
-| Backend | CLI | When |
-|---|---|---|
-| `agy` (default) | Antigravity CLI, Gemini | primary |
-| `opencode` | opencode 2.x, free Zen models | agy's quota is gone, or extra capacity; weaker shell guard |
-| `copilot` | GitHub Copilot CLI, Free plan | another model family; no shell, paid in AI credits |
+Other tools get the skill through `just link-skills global` at the repo root.
 
-Requires `git`, `python3` (stdlib only), Linux (`/proc`) and the backend's CLI
-logged in. Delegating sends the prompt, the files the worker reads and the diff
-to the backend's provider; the skills make Claude ask before the first run.
+| Command | Backends | What it does |
+|---|---|---|
+| `ask` | agy, opencode, Codex, Grok, Hermes, Claude Code; Copilot, Cursor, Muse, Kimi built from `--help`, untested | one read-only turn, or the next turn of a session (`--session`) |
+| `review` | agy, opencode, Copilot | schema'd findings on a diff or files |
+| `delegate` | agy, opencode, Copilot | one coding slice under the worker CLI's own hooks and a gate |
+| `backends` | all | binary, tiers, effort values, read-only mechanism, last version tested |
+
+Tiers `cheap`, `mid` and `top` map to a model and an effort per backend in
+`scripts/backends.py`. Requires `git`, `python3` (stdlib only), Linux (`/proc`)
+and the backend's CLI logged in. A run sends the prompt and what the worker
+reads to that vendor; the skill makes the host ask first.
 
 | Component | Path |
 |---|---|
-| `/crew:delegate` | `skills/delegate/` — when to delegate, the task, the verdict, the diff review; `scripts/crew.py` and `references/task.example.json` |
-| `/crew:review` | `skills/review/` — read-only second opinion |
-| Backend skills | `skills/agy/`, `skills/opencode/`, `skills/copilot/` — flags, models, what each guard does and does not |
-| Hook | `hooks/inject.sh` — `UserPromptSubmit`: injects the backend skill when the prompt names `agy`, `opencode` or `copilot` as a whole word |
+| Skill | `SKILL.md`: picking a backend and tier, `ask`, `review`, `delegate` |
+| Scripts | `scripts/crew.py`, and `scripts/backends.py` with each CLI's argv, parser and tiers |
+| References | `references/delegate.md`; per backend `agy.md`, `opencode.md`, `copilot.md`; `clis.md` for every agent CLI's flags and folders |
+| Hook | `hooks/inject.sh`: `UserPromptSubmit`, one line pointing at the skill when the prompt names a backend |
+
+Every worker carries `CREW_RUN`, and crew refuses to start a worker inside one.
+`ask` also fails when the work tree changes, and stops what the run left behind.
 
 ## What a delegate does
 
@@ -45,7 +54,7 @@ to the backend's provider; the skills make Claude ask before the first run.
 Run state lives in `$(git rev-parse --git-path crew)/runs/`, outside the tree.
 Nothing is committed; on failure nothing is reverted.
 
-A hook triggers the skills because, in this repo's agent-fleet eval, a skill
+A hook points at the skill because, in this repo's agent-fleet eval, a skill
 description fired on 2 of 30 should-trigger runs. This hook's own hit rate is
 not measured.
 
@@ -55,9 +64,12 @@ built at runtime (`python3 -c`) passes them.
 ## Evidence and checks
 
 `just check` runs `crew.py --self-test` (no CLI is called). Lab and smoke
-notes, including today's agy 1.4.4 and opencode 2.1.2 runs:
-[`bench/plugins/crew/results/`](../../bench/plugins/crew/results/). No
-comparison with Claude doing the same slice exists, so no saving is claimed.
+notes: [`bench/plugins/crew/results/`](../../bench/plugins/crew/results/).
+No comparison with the host doing the same work exists, so no saving is claimed.
+
+Upgrading from 0.5.x: the skills `delegate`, `review`, `agy`, `opencode` and
+`copilot` became one skill, `crew`, with the backend notes under `references/`;
+`crew.py` moved to `scripts/` at the plugin root.
 
 Upgrading from `agy-worker` (≤ 0.3.x): run state moved from
 `$(git rev-parse --git-path agy-worker)` to `--git-path crew`, and
