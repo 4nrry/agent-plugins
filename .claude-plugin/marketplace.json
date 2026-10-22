@@ -8,35 +8,97 @@
   "plugins": [
     {
       "name": "agent-fleet",
-      "source": "./plugins/agent-fleet"
+      "source": "./plugins/agent-fleet",
+      "category": "automation",
+      "tags": [
+        "multi-agent",
+        "subagents",
+        "deep-research",
+        "model-routing",
+        "citations"
+      ]
     },
     {
       "name": "agents-md",
-      "source": "./plugins/agents-md"
+      "source": "./plugins/agents-md",
+      "category": "development",
+      "tags": [
+        "agents-md",
+        "claude-md",
+        "instructions",
+        "documentation"
+      ]
     },
     {
       "name": "crew",
-      "source": "./plugins/crew"
+      "source": "./plugins/crew",
+      "category": "automation",
+      "tags": [
+        "subagents",
+        "delegation",
+        "code-review",
+        "multi-vendor",
+        "cli"
+      ]
     },
     {
       "name": "extension-audit",
-      "source": "./plugins/extension-audit"
+      "source": "./plugins/extension-audit",
+      "category": "development",
+      "tags": [
+        "skills",
+        "plugins",
+        "hooks",
+        "lint",
+        "audit"
+      ]
     },
     {
       "name": "game-facts",
-      "source": "./plugins/game-facts"
+      "source": "./plugins/game-facts",
+      "category": "productivity",
+      "tags": [
+        "games",
+        "steam",
+        "versions"
+      ]
     },
     {
       "name": "homelab",
-      "source": "./plugins/homelab"
+      "source": "./plugins/homelab",
+      "category": "deployment",
+      "tags": [
+        "self-hosted",
+        "linux",
+        "wireguard",
+        "palworld",
+        "tarball"
+      ]
     },
     {
       "name": "media-agent",
-      "source": "./plugins/media-agent"
+      "source": "./plugins/media-agent",
+      "category": "design",
+      "tags": [
+        "video",
+        "audio",
+        "images",
+        "voice-over",
+        "comfyui",
+        "remotion"
+      ]
     },
     {
       "name": "mobile-agent",
-      "source": "./plugins/mobile-agent"
+      "source": "./plugins/mobile-agent",
+      "category": "development",
+      "tags": [
+        "android",
+        "expo",
+        "react-native",
+        "adb",
+        "metro"
+      ]
     }
   ]
 }
