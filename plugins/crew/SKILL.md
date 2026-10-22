@@ -69,11 +69,12 @@ repeating it, and say which ones you confirmed.
 
 ## delegate: one slice of coding work
 
-Only agy, opencode, Copilot and Codex, whose CLIs run crew's guard hooks. Read
+Only agy, opencode, Copilot, Codex and Grok, whose CLIs run crew's guard hooks. Read
 [references/delegate.md](references/delegate.md) for when to delegate, the
 task file, the gate, the verdict and the mandatory diff review. Each backend
 has its own guard: [agy](references/agy.md), [opencode](references/opencode.md),
-[copilot](references/copilot.md) and [codex](references/codex.md).
+[copilot](references/copilot.md), [codex](references/codex.md) and
+[grok](references/grok.md).
 
 ## Reporting
 

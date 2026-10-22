@@ -53,6 +53,12 @@ Fourth backend, `"backend": "codex"` (Codex CLI 0.163.0): `codex exec` in the
 as `-c hooks.<Event>=...` for the run only (nothing in the tree) and run through
 `--dangerously-bypass-hook-trust`. `hook cx-pre` translates `Bash` and each file
 an `apply_patch` touches into decide_pre's calls; `hook cx-stop` runs the gate.
+
+Fifth backend, `"backend": "grok"` (Grok Build 1.0.67): `grok -p --sandbox
+workspace`, with the same three hooks in a per-run ~/.grok/hooks/crew-<run>.json
+that acts only for this run's CREW_RUN (Grok refuses hooks in its GROK_CONFIG
+overlay, and loads global hooks only in a trusted folder, so the repo must be
+trusted first). `hook gk-pre` translates Grok's tools; `hook gk-stop` is cx-stop.
 """
 
 import argparse
@@ -96,7 +102,7 @@ SECRET_EXCEPTIONS = ("*.example", "*.sample", "*.template")
 # stopped without touching anything the user started.
 RUN_ENV = "CREW_RUN"
 WORKER_ENV = {"NX_DAEMON": "false"}
-BACKENDS = ("agy", "opencode", "copilot", "codex")
+BACKENDS = ("agy", "opencode", "copilot", "codex", "grok")
 # review keeps crew's guard hooks on these; every other backend reviews through ask.
 REVIEW_GUARDED = ("agy", "opencode", "copilot")
 OPENCODE_DEFAULT_MODEL = "opencode/minimax-m3.1-flash-free"
@@ -125,6 +131,25 @@ TESTED_CODEX_VERSION = "0.163.0"
 CODEX_DEFAULT_MODEL = "gpt-6-luna"
 CODEX_REPORT_ASKS = 2
 CX_INERT_TOOLS = {"update_plan", "view_image"}
+# Grok: hooks in a per-run ~/.grok/hooks/crew-<run>.json (the only per-run place
+# Grok reads hooks from; its GROK_CONFIG overlay refuses them). Grok loads global
+# hooks only in a folder it trusts, so the repo must be trusted first, and every
+# handler acts only when CREW_RUN is this run's: other Grok sessions see a no-op.
+# Under `--sandbox workspace` the worker cannot write ~/.grok/hooks.
+TESTED_GROK_VERSION = "1.0.67"
+GROK_DEFAULT_MODEL = "grok-4.7-build-fast"
+GROK_HOOK_DIR = os.path.expanduser("~/.grok/hooks")
+GROK_TOOLS = "run_terminal_command,read_file,search_replace,list_dir,grep,write,todo_write"
+GK_TOOLS = {
+    "run_terminal_command": ("run_command", {"command": "CommandLine"}),
+    "read_file": ("view_file", {"target_file": "AbsolutePath"}),
+    "list_dir": ("list_dir", {"target_directory": "DirectoryPath"}),
+    "grep": ("grep_search", {"path": "SearchPath", "pattern": "Query"}),
+    "write": ("write_to_file", {"file_path": "TargetFile", "content": "CodeContent"}),
+    "search_replace": ("replace_file_content", {"file_path": "TargetFile", "old_string": "TargetContent",
+                                                "new_string": "ReplacementContent"}),
+}
+GK_INERT_TOOLS = {"todo_write"}
 COPILOT_DEFAULT_MODEL = "auto"
 COPILOT_HOOK_DIR = ".github/hooks"
 COPILOT_HOOK_PREFIX = "crew-"
@@ -497,7 +522,7 @@ def normalize_task(task: dict) -> dict:
         "backend": backend,
         "disable_claude_code": task.get("disable_claude_code", False),
         "model": task.get("model", {"opencode": OPENCODE_DEFAULT_MODEL, "copilot": COPILOT_DEFAULT_MODEL,
-                                    "codex": CODEX_DEFAULT_MODEL}.get(backend, DEFAULT_MODEL)),
+                                    "codex": CODEX_DEFAULT_MODEL, "grok": GROK_DEFAULT_MODEL}.get(backend, DEFAULT_MODEL)),
         "effort": task.get("effort"),
         "copilot_model_override": task.get("copilot_model_override", False),
         "max_ai_credits": credits,
@@ -563,10 +588,10 @@ def compose_prompt(task: dict, repo: str) -> str:
 def report_rule(task: dict) -> str:
     """opencode has no --json-schema: the report is the last JSON object in
     the final message, and the driver asks again if it is missing."""
-    if task.get("backend") not in ("opencode", "copilot", "codex"):
+    if task.get("backend") not in ("opencode", "copilot", "codex", "grok"):
         return ""
     again = (" Every final message, including the one after gate feedback, must end with it."
-             if task.get("backend") in ("copilot", "codex") else "")
+             if task.get("backend") in ("copilot", "codex", "grok") else "")
     return ("- End your final message with the report as ONE JSON object (no prose after it) matching "
             f"this JSON schema: {json.dumps(task['report_schema'], separators=(',', ':'))}.{again}\n")
 
@@ -851,10 +876,26 @@ def decide_cx(payload: dict, ctx: dict) -> dict:
     return {"decision": "allow"}
 
 
+def decide_gk(payload: dict, ctx: dict) -> dict:
+    """Grok PreToolUse: its tools translated to decide_pre's names. MCP tools
+    (`server__tool`) are denied: `--tools` does not remove them."""
+    tool = str(payload.get("tool_name", ""))
+    if tool in GK_INERT_TOOLS:
+        return {"decision": "allow"}
+    if "__" in tool:
+        return deny(f"Tool {tool} blocked: no MCP tools in a crew run.")
+    inp = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
+    name, keys = GK_TOOLS.get(tool, (tool, {}))
+    args = {keys[k]: v for k, v in inp.items() if k in keys}
+    return decide_pre({"toolCall": {"name": name, "args": args}}, ctx)
+
+
 def cx_stop(rundir: str, ctx: dict, payload: dict) -> dict:
     """Codex `Stop`: the gate, then the report in `last_assistant_message`.
     A block continues the turn with the reason as the next prompt."""
-    if ctx.get("mode") != "delegate":
+    # Grok also fires a closing Stop with no last_assistant_message (no turn to
+    # continue): never block that one.
+    if ctx.get("mode") != "delegate" or "last_assistant_message" not in payload:
         return {"decision": "allow"}
     passed, text, n = gate_cached(rundir, ctx, "Stop")
     if not passed:
@@ -882,13 +923,13 @@ def cx_stop(rundir: str, ctx: dict, payload: dict) -> dict:
 def cx_hook_output(event: str, out: dict) -> str:
     """Codex's contract (Claude's shape): a PreToolUse deny is hookSpecificOutput
     with permissionDecision; Stop blocks with decision/reason; allow prints nothing."""
-    if event == "cx-pre":
+    if event in ("cx-pre", "gk-pre"):
         if out.get("decision") == "allow":
             return ""
         return json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                                   "permissionDecisionReason": out.get("reason") or "denied"}},
                           ensure_ascii=False)
-    if event == "cx-stop" and out.get("decision") == "block":
+    if event in ("cx-stop", "gk-stop") and out.get("decision") == "block":
         return json.dumps({"decision": "block", "reason": out.get("reason", "")}, ensure_ascii=False)
     return ""
 
@@ -1160,6 +1201,25 @@ def hook_main(event: str, rundir: str) -> int:
                                   for k, v in args.items() if k not in ("file_text", "old_str", "new_str")}
                                  if isinstance(args, dict) else str(args)[:300])
             append_jsonl(log, entry)
+        elif event.startswith("gk-") and os.environ.get(RUN_ENV) != ctx.get("run_id"):
+            out = {"decision": "allow"}      # another Grok session: this run's hooks do nothing
+        elif event == "gk-start":
+            append_jsonl(log, {"event": "session_start", "conversation": payload.get("session_id")})
+            out = {"decision": "allow"}
+        elif event == "gk-pre":
+            out = decide_gk(payload, ctx)
+            entry = {"event": "pre", "tool": payload.get("tool_name"), "decision": out["decision"]}
+            if out["decision"] != "allow":
+                entry["reason"] = out.get("reason", "")[:300]
+                entry["args"] = {k: str(v)[:300] for k, v in (payload.get("tool_input") or {}).items()
+                                 if k not in ("content", "old_string", "new_string")} \
+                    if isinstance(payload.get("tool_input"), dict) else {}
+            append_jsonl(log, entry)
+        elif event == "gk-stop":
+            out = cx_stop(rundir, ctx, payload)
+            append_jsonl(log, {"event": "stop", "reason": "Stop",
+                               "stop_hook_active": payload.get("stop_hook_active"),
+                               "decision": out["decision"]})
         elif event == "cx-start":
             append_jsonl(log, {"event": "session_start", "model": payload.get("model"),
                                "conversation": payload.get("session_id")})
@@ -1236,9 +1296,9 @@ def hook_main(event: str, rundir: str) -> int:
         except OSError:
             pass
         out = ({"decision": "deny", "reason": f"internal guard failure ({exc!r}); call denied for safety"}
-               if event in ("pre", "oc-pre", "cp-pre", "cx-pre") else {"decision": "stop"} if event == "stop"
+               if event in ("pre", "oc-pre", "cp-pre", "cx-pre", "gk-pre") else {"decision": "stop"} if event == "stop"
                else {"decision": "allow"} if event == "cp-stop" else {})
-    if event.startswith("cx-"):
+    if event.startswith(("cx-", "gk-")):
         print(cx_hook_output(event, out))
     else:
         print(cp_hook_output(event, out) if event in ("cp-pre", "cp-stop") else json.dumps(out, ensure_ascii=False))
@@ -2287,6 +2347,72 @@ def evaluate_cx(rc, stdout: str, stderr: str):
     return fails, {"text": text, "thread_id": thread, "usage": usage}
 
 
+def preflight_grok(repo: str) -> tuple:
+    gk = shutil.which("grok")
+    if not gk:
+        raise Refusal("grok not found on PATH")
+    try:
+        ins = json.loads(subprocess.run([gk, "inspect", "--json"], cwd=repo, capture_output=True, text=True,
+                                        timeout=120).stdout or "{}")
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        ins = {}
+    if ins.get("projectTrusted") is not True:
+        raise Refusal("Grok loads hooks only in a folder it trusts, and this repo is not trusted: run "
+                      f"`cd {shlex.quote(repo)} && grok --trust inspect` once (that also lets the repo's own "
+                      "hooks, MCP servers and instructions load in Grok), then retry")
+    warns = []
+    if TESTED_GROK_VERSION not in str(ins.get("grokVersion", "")):
+        warns.append(f"grok {ins.get('grokVersion')!r}: tested on {TESTED_GROK_VERSION}")
+    return gk, warns
+
+
+def install_gk_hooks(rundir: str, run_id: str, gate_budget_s: int) -> str:
+    me = os.path.realpath(__file__)
+    groups = {}
+    for event, name, timeout in (("SessionStart", "gk-start", 30), ("PreToolUse", "gk-pre", 60),
+                                 ("Stop", "gk-stop", gate_budget_s)):
+        cmd = f"{shlex.quote(sys.executable)} {shlex.quote(me)} hook {name} --state {shlex.quote(rundir)}"
+        groups[event] = [{"matcher": "", "hooks": [{"type": "command", "command": cmd, "timeout": timeout}]}]
+    os.makedirs(GROK_HOOK_DIR, exist_ok=True)
+    path = os.path.join(GROK_HOOK_DIR, f"crew-{run_id}.json")
+    write_json(path, {"hooks": groups})
+    return path
+
+
+def grok_cmd(gk: str, prompt: str, task: dict) -> list:
+    cmd = [gk, "-p", prompt, "--output-format", "streaming-messages-json", "--sandbox", "workspace",
+           "--permission-mode", "bypassPermissions", "--tools", GROK_TOOLS, "--no-subagents",
+           "-m", task["model"]]
+    return cmd + (["--reasoning-effort", task["effort"]] if task.get("effort") else [])
+
+
+def evaluate_gk(rc, stdout: str, stderr: str):
+    """streaming-messages-json: the last assistant message, the session id, and
+    the result event (missing = cut run; is_error = failed turn)."""
+    fails, text, session, usage, result = [], None, None, None, None
+    for line in stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(ev, dict):
+            continue
+        session = ev.get("session_id") or session
+        if ev.get("type") == "assistant":
+            said = "".join(b.get("text", "") for b in ((ev.get("message") or {}).get("content") or [])
+                           if isinstance(b, dict) and b.get("type") == "text").strip()
+            text = said or text
+        elif ev.get("type") == "result":
+            result, usage = ev, ev.get("usage")
+    if rc != 0:
+        fails.append(f"grok exited {rc}: {tail(stderr, 300).strip()}")
+    if result is None:
+        fails.append("grok never reported a result (the run was cut)")
+    elif result.get("is_error"):
+        fails.append(f"grok result is an error: {str(result.get('result') or result.get('subtype'))[:300]}")
+    return fails, {"text": text, "session_id": session, "usage": usage}
+
+
 def base_ctx(repo, task, mode):
     return {
         "mode": mode, "repo": repo, "scope": task["scope"], "side_effects": task["side_effects"],
@@ -2305,6 +2431,7 @@ def cmd_delegate(a) -> int:
     opencode = task["backend"] == "opencode"
     copilot = task["backend"] == "copilot"
     codex = task["backend"] == "codex"
+    grok = task["backend"] == "grok"
     repo = repo_root(a.repo or os.getcwd())
     git(repo, "rev-parse", "--verify", "HEAD")
     other_cp_hooks = refuse_cp_leftovers(repo) if copilot else []
@@ -2330,6 +2457,8 @@ def cmd_delegate(a) -> int:
                              f"with the same trust (COPILOT_ALLOW_ALL=true): {other_cp_hooks}")
     elif codex:
         cx, pre_warns = preflight_codex()
+    elif grok:
+        gk, pre_warns = preflight_grok(repo)
     else:
         pre_warns = preflight_agy(task["model"], task["min_quota"], not a.no_quota_probe, rundir)
     ctx = base_ctx(repo, task, "delegate")
@@ -2337,7 +2466,7 @@ def cmd_delegate(a) -> int:
     if copilot:
         ctx.update(ignore_paths=[cp_hook_rel(ctx["run_id"])], report_schema=task["report_schema"],
                    events_file=os.path.join(rundir, "copilot.stdout"))
-    if codex:
+    if codex or grok:
         ctx["report_schema"] = task["report_schema"]
     write_json(os.path.join(rundir, "ctx.json"), ctx)
     write_json(os.path.join(rundir, "task.json"), task)
@@ -2372,6 +2501,25 @@ def cmd_delegate(a) -> int:
         rc, stdout, stderr = run_agy(codex_cmd(cx, prompt, task, rundir, ctx), repo, rundir, task["timeout"],
                                      name="codex", env={**os.environ, **WORKER_ENV, RUN_ENV: ctx["run_id"]})
         fails, info = evaluate_cx(rc, stdout, stderr)
+        report = extract_report(info.pop("text"))
+        fails += report_problems(report, task["report_schema"])
+        if isinstance(report, dict) and report.get("status") in ("partial", "blocked"):
+            fails.append(f"the worker declared itself {report['status']!r}")
+        warns = []
+        run_info = {"rc": rc, "wall_seconds": round(time.time() - started), **info}
+    elif grok:
+        n_cmds = len(ctx["gate"]["format"]) + len(ctx["gate"]["checks"]) + 1
+        hook_file = install_gk_hooks(rundir, ctx["run_id"], ctx["gate_timeout"] * n_cmds + 60)
+        try:
+            eprint(f"crew: grok running ({task['model']}, workspace sandbox, timeout {task['timeout']}s)…")
+            rc, stdout, stderr = run_agy(grok_cmd(gk, prompt, task), repo, rundir, task["timeout"], name="grok",
+                                         env={**os.environ, **WORKER_ENV, RUN_ENV: ctx["run_id"]})
+        finally:
+            try:
+                os.remove(hook_file)
+            except OSError:
+                pass
+        fails, info = evaluate_gk(rc, stdout, stderr)
         report = extract_report(info.pop("text"))
         fails += report_problems(report, task["report_schema"])
         if isinstance(report, dict) and report.get("status") in ("partial", "blocked"):
@@ -2930,7 +3078,7 @@ def self_test() -> int:
                                 "gate": {"checks": ["true"]}})
         check(otask["model"] == OPENCODE_DEFAULT_MODEL and not otask["disable_claude_code"],
               "opencode: default model and CLAUDE.md loaded")
-        for bad, why in ((dict(prompt="x", scope=["a"], gate={"checks": ["t"]}, backend="grok"), "backend"),
+        for bad, why in ((dict(prompt="x", scope=["a"], gate={"checks": ["t"]}, backend="hermes"), "backend"),
                          (dict(prompt="x", scope=["*"], gate={"checks": ["t"]}, backend="opencode"),
                           "scope covers opencode.json"),
                          (dict(prompt="x", scope=["a"], gate={"checks": ["t"]}, disable_claude_code="1"),
@@ -3048,6 +3196,61 @@ def self_test() -> int:
                                     '{"type":"turn.completed","usage":{}}', "")
         check(not f_ok and info["text"] == "done" and info["thread_id"] == "t", "codex evaluation")
         check(evaluate_cx(0, '{"type":"thread.started","thread_id":"t"}', "")[0], "codex cut turn fails")
+        # grok: tool translation, run-gated hooks, closing Stop, command, evaluation
+        gtask = normalize_task({"prompt": "x", "scope": ["src/*"], "backend": "grok", "gate": {"checks": ["true"]}})
+        check(gtask["model"] == GROK_DEFAULT_MODEL, "grok default model")
+        gctx = base_ctx(repo, gtask, "delegate")
+        gdir = os.path.join(tmp, "gk-run")
+        os.makedirs(gdir, exist_ok=True)
+        gk = lambda tool, inp: decide_gk({"tool_name": tool, "tool_input": inp}, gctx)["decision"]  # noqa: E731
+        for tool, inp, want, why in (
+                ("read_file", {"target_file": "src/a.txt"}, "allow", "read in the repo"),
+                ("read_file", {"target_file": "/etc/passwd"}, "deny", "read outside the repo"),
+                ("list_dir", {"target_directory": "."}, "allow", "list the repo"),
+                ("grep", {"pattern": "x", "path": "."}, "allow", "grep the repo"),
+                ("write", {"file_path": "src/new.txt", "content": "x"}, "allow", "write in scope"),
+                ("write", {"file_path": "README.md", "content": "x"}, "deny", "write out of scope"),
+                ("search_replace", {"file_path": "src/a.txt", "old_string": "a", "new_string": "b"}, "allow",
+                 "edit in scope"),
+                ("search_replace", {"file_path": ".env", "old_string": "a", "new_string": "b"}, "deny",
+                 "edit a secret"),
+                ("run_terminal_command", {"command": "ls src"}, "allow", "read-only shell"),
+                ("run_terminal_command", {"command": "printf hi > src/a.txt"}, "deny", "shell redirect"),
+                ("ai-memory__memory_handoff_list", {}, "deny", "MCP tool"),
+                ("web_fetch", {"url": "https://x"}, "deny", "tool outside the allowlist"),
+                ("todo_write", {"todos": []}, "allow", "inert tool")):
+            check(gk(tool, inp) == want, f"grok {why}: expected {want}")
+        check(cx_stop(gdir, gctx, {"stop_hook_active": False})["decision"] == "allow",
+              "grok closing Stop without a message is never blocked")
+        gcmd = grok_cmd("grok", "P", dict(gtask, effort="low"))
+        check(gcmd[gcmd.index("--sandbox") + 1] == "workspace" and "--no-subagents" in gcmd
+              and gcmd[gcmd.index("--tools") + 1] == GROK_TOOLS and gcmd[-1] == "low", "grok command")
+        gf, ginfo = evaluate_gk(0, '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"done"}]}}\n'
+                                   '{"type":"result","session_id":"s","is_error":false,"usage":{}}', "")
+        check(not gf and ginfo["text"] == "done" and ginfo["session_id"] == "s", "grok evaluation")
+        check(evaluate_gk(0, '{"type":"assistant","message":{"content":[]}}', "")[0], "grok cut run fails")
+        global GROK_HOOK_DIR
+        saved_dir, GROK_HOOK_DIR = GROK_HOOK_DIR, os.path.join(tmp, "grok-hooks")
+        try:
+            hf = install_gk_hooks(gdir, "run-x", 900)
+            hj = read_json(hf)
+            check(sorted(hj["hooks"]) == ["PreToolUse", "SessionStart", "Stop"]
+                  and "gk-stop" in hj["hooks"]["Stop"][0]["hooks"][0]["command"]
+                  and hj["hooks"]["Stop"][0]["hooks"][0]["timeout"] == 900, "grok hooks file")
+        finally:
+            GROK_HOOK_DIR = saved_dir
+        # another Grok session (no or another CREW_RUN) gets a silent allow from this run's hooks
+        write_json(os.path.join(gdir, "ctx.json"), dict(gctx, run_id="run-x"))
+        for env_run, want in ((None, ""), ("other", ""), ("run-x", "deny")):
+            e = dict(os.environ)
+            e.pop(RUN_ENV, None)
+            if env_run:
+                e[RUN_ENV] = env_run
+            pr = subprocess.run([sys.executable, os.path.realpath(__file__), "hook", "gk-pre", "--state", gdir],
+                                input=json.dumps({"tool_name": "write", "tool_input": {"file_path": "README.md"}}),
+                                capture_output=True, text=True, env=e, timeout=60)
+            got = json.loads(pr.stdout)["hookSpecificOutput"]["permissionDecision"] if pr.stdout.strip() else ""
+            check(got == want, f"grok hook with CREW_RUN={env_run}: expected {want or 'no-op'}")
         cctx = base_ctx(repo, ctask, "delegate")
         cp = lambda tool, args: decide_cp({"toolName": tool, "toolArgs": args}, cctx)["decision"]  # noqa: E731
         for tool, args, want, why in (
@@ -3699,7 +3902,7 @@ def main(argv=None) -> int:
     sub.add_parser("backends", help="list backends, tiers, binaries and test status")
     h = sub.add_parser("hook", help="agy hook handler (installed per run)")
     h.add_argument("event", choices=["pre", "stop", "start", "oc-pre", "cp-pre", "cp-stop",
-                                     "cx-start", "cx-pre", "cx-stop"])
+                                     "cx-start", "cx-pre", "cx-stop", "gk-start", "gk-pre", "gk-stop"])
     h.add_argument("--state", required=True)
     a = p.parse_args(argv)
     if a.cmd == "hook":
