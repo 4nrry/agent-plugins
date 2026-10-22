@@ -16,7 +16,7 @@ Other tools get the skill through `just link-skills global` at the repo root.
 |---|---|---|
 | `ask` | agy, opencode, Codex, Grok, Hermes, Claude Code; Copilot, Cursor, Muse, Kimi built from `--help`, untested | one read-only turn, or the next turn of a session (`--session`) |
 | `review` | every `ask` backend; agy, opencode and Copilot under crew's guard hooks | schema'd findings on a diff or files |
-| `delegate` | agy, opencode, Copilot, Codex, Grok | one coding slice under the worker CLI's own hooks and a gate |
+| `delegate` | agy, opencode, Copilot, Codex, Grok, Cursor | one coding slice under the worker CLI's own hooks and a gate |
 | `backends` | all | binary, tiers, effort values, read-only mechanism, last version tested |
 
 Tiers `cheap`, `mid` and `top` map to a model and an effort per backend in
@@ -28,7 +28,7 @@ reads to that vendor; the skill makes the host ask first.
 |---|---|
 | Skill | `SKILL.md`: picking a backend and tier, `ask`, `review`, `delegate` |
 | Scripts | `scripts/crew.py`, and `scripts/backends.py` with each CLI's argv, parser and tiers |
-| References | `references/delegate.md`; per backend `agy.md`, `opencode.md`, `copilot.md`, `codex.md`, `grok.md`; `clis.md` for every agent CLI's flags and folders |
+| References | `references/delegate.md`; per backend `agy.md`, `opencode.md`, `copilot.md`, `codex.md`, `grok.md`, `cursor.md`; `clis.md` for every agent CLI's flags and folders |
 | Hook | `hooks/inject.sh`: `UserPromptSubmit`, one line pointing at the skill when the prompt names a backend |
 
 Every worker carries `CREW_RUN`, and crew refuses to start a worker inside one.
