@@ -50,6 +50,8 @@ so every command of the gate runs here, never by the worker.
 """
 
 import argparse
+import contextlib
+import io
 import fnmatch
 import hashlib
 import json
@@ -2289,6 +2291,60 @@ def cmd_delegate(a) -> int:
     return 0 if verdict["ok"] else 1
 
 
+def review_diff(repo: str, rng) -> str:
+    if not rng:
+        return ""
+    diff_txt = git(repo, "diff", "--no-ext-diff", rng)
+    if not diff_txt.strip():
+        raise Refusal(f"git diff {rng} is empty")
+    if len(diff_txt.encode()) > MAX_DIFF_BYTES:
+        diff_txt = diff_txt.encode()[:MAX_DIFF_BYTES].decode(errors="ignore") + \
+            "\n…(diff truncated; read the files for the rest)…"
+    return diff_txt
+
+
+REVIEW_RETRY = ("Your last reply did not end with one JSON object matching the schema ({problems}). "
+                "Reply with only that JSON object, nothing else.")
+
+
+def review_via_ask(a, repo: str, question: str, schema: dict) -> int:
+    """review on a backend crew has no guard hooks for: the backend's own read-only
+    mode (see backends.py), the report parsed from the reply, and one more turn in
+    the same session when it is missing or incomplete."""
+    diff_txt = review_diff(repo, a.diff)
+    prompt = question
+    if diff_txt:
+        prompt += f"\n\n## Diff under review (`git diff {a.diff}`)\n```diff\n{diff_txt}\n```"
+    prompt += ("\n\n---\nYou are a read-only reviewer. Do not modify files and do not run commands "
+               "that change anything. Every finding must quote the exact code or text that supports it "
+               "in `evidence`. Prefer `unsure` over a guess.\n"
+               "End your reply with ONE JSON object (no prose after it) matching this JSON schema: "
+               f"{json.dumps(schema, separators=(',', ':'))}\n")
+    kw = dict(tier=a.tier, model=a.model, effort=a.effort, cwd=repo,
+              timeout_s=parse_duration(a.timeout), allow_same_vendor=a.allow_same_vendor)
+    turns = [run_ask(a.backend, prompt, **kw)]
+    report = extract_report(turns[-1]["text"] or "")
+    problems = report_problems(report, schema)
+    if problems and turns[-1]["ok"] and turns[-1]["session"]:
+        turns.append(run_ask(a.backend, REVIEW_RETRY.format(problems="; ".join(problems)),
+                             session=turns[-1]["session"], **kw))
+        report = extract_report(turns[-1]["text"] or "")
+        problems = report_problems(report, schema)
+    fails = [f for t in turns for f in t["failures"]] + problems
+    warns = sorted({w for t in turns for w in t["warnings"]})
+    if a.backend == "hermes" and not diff_txt:
+        warns.append("hermes has no file tools: without --diff it saw only the question")
+    last = turns[-1]
+    verdict = {"ok": not fails, "mode": "review", "backend": a.backend, "model": last["model"],
+               "effort": last["effort"], "session": last["session"], "failures": fails,
+               "warnings": warns, "report": report, "turns": len(turns),
+               "usage": [t["usage"] for t in turns], "read_only": last["read_only"],
+               "rundirs": [t["rundir"] for t in turns],
+               "next": "Second opinion from another model: check each evidence against the code before acting."}
+    print(json.dumps(verdict, ensure_ascii=False, indent=2))
+    return 0 if verdict["ok"] else 1
+
+
 def cmd_review(a) -> int:
     trap_signals()
     repo = repo_root(a.repo or os.getcwd())
@@ -2303,6 +2359,8 @@ def cmd_review(a) -> int:
         schema = read_json(a.schema)
         if not (isinstance(schema, dict) and schema.get("type") == "object"):
             raise Refusal(f"{a.schema}: schema needs a root of type=object")
+    if a.backend not in BACKENDS:
+        return review_via_ask(a, repo, question, schema)
     opencode, copilot = a.backend == "opencode", a.backend == "copilot"
     model = a.model or {"opencode": OPENCODE_DEFAULT_MODEL, "copilot": COPILOT_DEFAULT_MODEL}.get(
         a.backend, DEFAULT_MODEL)
@@ -2312,14 +2370,7 @@ def cmd_review(a) -> int:
             raise Refusal(problem)
         other_cp_hooks = refuse_cp_leftovers(repo)
     timeout_s = parse_duration(a.timeout)
-    diff_txt = ""
-    if a.diff:
-        diff_txt = git(repo, "diff", "--no-ext-diff", a.diff)
-        if not diff_txt.strip():
-            raise Refusal(f"git diff {a.diff} is empty")
-        if len(diff_txt.encode()) > MAX_DIFF_BYTES:
-            diff_txt = diff_txt.encode()[:MAX_DIFF_BYTES].decode(errors="ignore") + \
-                "\n…(diff truncated; read the files for the rest)…"
+    diff_txt = review_diff(repo, a.diff)
     rundir = new_rundir(repo, "review")
     eprint(f"crew: run dir {rundir}")
     if opencode:
@@ -3346,6 +3397,22 @@ def self_test() -> int:
                 check(main(["ask", "agy", "ping"]) == 2, "ask: refused inside a crew worker")
             finally:
                 del os.environ[RUN_ENV]
+            # review on an ask backend: no JSON on turn 1, the report on the resumed turn
+            fcx = os.path.join(fakebin, "codex")
+            with open(fcx, "w") as fh:
+                fh.write("#!/bin/sh\n[ \"$1\" = --version ] && { echo codex-cli 0.163.0; exit 0; }\n"
+                         "echo '{\"type\":\"thread.started\",\"thread_id\":\"t1\"}'\n"
+                         "case \"$*\" in *resume*) txt='{\\\"verdict\\\":\\\"approve\\\",\\\"findings\\\":[],"
+                         "\\\"summary\\\":\\\"ok\\\"}';; *) txt='looks fine';; esac\n"
+                         "printf '{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\","
+                         "\"text\":\"%s\"}}\\n' \"$txt\"\n")
+            os.chmod(fcx, 0o755)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+                rc = main(["review", "is add() right?", "--backend", "codex", "--repo", repo])
+            rv = json.loads(buf.getvalue())
+            check(rc == 0 and rv["turns"] == 2 and rv["report"]["verdict"] == "approve",
+                  "review via ask: asks again in the same session for the missing report")
         finally:
             os.environ["PATH"] = old_path
         check(backends.self_test() == 0, "backends self-test")
@@ -3376,7 +3443,12 @@ def main(argv=None) -> int:
     r.add_argument("--diff", help="range for `git diff`, e.g. HEAD~1 or main...HEAD")
     r.add_argument("--schema")
     r.add_argument("--model")
-    r.add_argument("--backend", choices=BACKENDS, default="agy")
+    r.add_argument("--backend", default="agy",
+                   help="agy, opencode, copilot (crew's guard hooks) or any other backend in backends.py")
+    r.add_argument("--tier", default="cheap", choices=("cheap", "mid", "top"),
+                   help="backends outside agy/opencode/copilot")
+    r.add_argument("--effort")
+    r.add_argument("--allow-same-vendor", action="store_true")
     r.add_argument("--repo")
     r.add_argument("--timeout", default=DEFAULT_REVIEW_TIMEOUT)
     r.add_argument("--min-quota", type=float, default=DEFAULT_MIN_QUOTA)
