@@ -26,6 +26,9 @@ maps them per harness.
   tier; the adversarial pass goes to the mid tier, which matched the top model
   at contesting in paired runs. Widening the fan-out buys coverage, not
   correctness.
+- Route effort with the model: search and fetch loops run the cheap tier at
+  low effort. A subagent or workflow `agent()` with no effort set inherits the
+  session's, so set both where you set the model.
 - A small model detects well and writes unsafely: it fuses non-adjacent
   sentences and drops qualifiers. Cheap is safe only with a closed schema and
   string-checked quotes.
@@ -37,6 +40,16 @@ maps them per harness.
 
 ## Fan-out
 
+Sizes and coding rules below come from the repo's research record,
+`bench/shared/2026-10-21-subagents-for-coding-research/CLAIMS.md`.
+
+- For coding, default to one agent. On SWE-bench Verified every multi-agent
+  setup scored below a single agent; task structure, not agent count, decides.
+- Fan out only independent, mostly read-only subtasks: search, review,
+  separate modules. Never several agents editing coupled code.
+- Keep it small, 3–5 agents. That size, and over 10 for complex work, comes
+  from research tasks; no source gives one for coding.
+- Count the cost first: vendors report 3–10x a single agent's tokens.
 - Fan out for breadth, never for prose. Agents find; you write.
 - Pipeline independent items. Add a barrier only when the next step needs the
   whole set (dedup, total, early exit): it costs the slowest item every time.
