@@ -3,37 +3,46 @@
 `scripts/fleet_worker.py` runs the search and extract phases of a deep-research
 pipeline on another agent CLI. You keep scope, the 3-vote verify and synthesis.
 
+Every worker turn goes through the **crew** plugin: `crew.py ask <backend> --web
+--schema`. crew owns each CLI's flags, its read-only web profile, isolation, the
+opencode model allowlist, output parsing and version warnings. This script owns
+the research: prompts, schemas, sanitizing, merging and ranking. crew must be
+installed; it is found as a sibling plugin, through `~/.agents/skills/crew`, or
+in Claude Code's plugin copies, and `CREW_PY` overrides all of them.
+
 ```bash
-python3 scripts/fleet_worker.py check                       # installed backends, tested phases
+python3 scripts/fleet_worker.py check                       # crew's path and the web-capable backends
 python3 scripts/fleet_worker.py --self-test
 python3 scripts/fleet_worker.py search --backend grok,hermes,agy --question Q --angles angles.json -o search.json
 python3 scripts/fleet_worker.py extract --backend opencode --question Q --sources search.json -o claims.json
 ```
 
 `angles.json` is `[{"label", "query", "rationale"}]`. `extract` reads
-`search`'s output directly. With several backends, `--model` takes
-`backend=model[,backend=model]`.
+`search`'s output directly. Each backend runs crew's `--tier` (default
+`cheap`); `--model` overrides it, as `backend=model[,backend=model]` with
+several backends, and `--effort` sets the effort.
 
 ## Choosing backends
 
+Web-capable in crew: grok, agy, hermes, codex, claude (from a host that is not
+Claude), opencode.
+
 | Phase | Start with | Avoid |
 |---|---|---|
-| Search | several engines at once — `grok,hermes,agy` covers xAI and Google indexes | agy alone: it can stall to its print timeout |
+| Search | several engines at once: `grok,hermes,agy` covers xAI and Google indexes | opencode: its web search is cancelled here and the run exits 1 |
 | Extract | opencode (free model), grok, or hermes with a page reader | agy: its quotes were mostly not on the page |
 
-Run `check` first: a backend version or phase not in `TESTED` carries a warning
-in the output, and needs a smoke run before you trust it.
+crew's warnings (a backend or version never run end to end) are carried into
+the output; treat them as a reason for a smoke run before trusting the result.
 
 ## What the script enforces
 
-- Each worker runs in an empty temp dir, in its CLI's read-only mode.
 - Schemas are closed; arrays are cut to their limit; a quote under 20
   characters fails the item.
 - Control, format and bidi code points are stripped from every string a page
   produced.
-- Exit 0 never counts: each backend's own success signal is read.
-- opencode runs only an allowlist of free models; non-zero-retention terms are
-  repeated in the output warnings.
+- A worker whose crew verdict fails, or that returns no object, is reported per
+  item with its reasons, never dropped.
 - Search results are merged by URL; `foundBy` lists the engines that agreed,
   and agreement orders sources within a relevance level.
 
@@ -43,9 +52,8 @@ in the output, and needs a smoke run before you trust it.
   `firecrawl`) in `~/.hermes/config.yaml`. It truncates each page to
   `web.extract_char_limit` characters, keeping head and tail; size it to your
   pages.
-- opencode's 200k-context free models hold one page; a search loop that
-  fetches many pages needs a 1M one.
+- opencode's free models rotate in Zen; crew's `cheap` tier for opencode names
+  the one to use, and `crew.py backends` shows it.
 
-Measurements behind these choices:
-`bench/plugins/agent-fleet/results/2026-10-21-fleet-worker-smoke-CLAIMS.md`
-in the source repository.
+Measurements behind these choices: `bench/plugins/agent-fleet/results/` in the
+source repository.

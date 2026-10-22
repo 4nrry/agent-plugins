@@ -15,7 +15,7 @@ and the workflow are Claude Code only.
 |---|---|---|
 | Skill | `SKILL.md` | The rules, in tiers rather than model names |
 | Harness map | `references/harnesses.md` | Tiers, model setting and read-only children per harness |
-| CLI workers | `references/cli-workers.md`, `scripts/fleet_worker.py` | Search and extract on grok, agy, opencode or hermes, read-only |
+| CLI workers | `references/cli-workers.md`, `scripts/fleet_worker.py` | Search and extract on another CLI through crew's `ask --web --schema`, read-only |
 | Verifier | `scripts/verify_citations.py` | Fetches each cited URL and string-checks the quote |
 | Workflow | `workflows/deep-research.js` | Claude Code's built-in deep research with per-phase `model:` overrides |
 | Injection hook | `hooks/inject.sh` | `UserPromptSubmit`: loads the skill when the prompt contains `deep-research` or `ultracode` |

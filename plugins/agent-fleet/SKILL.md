@@ -65,7 +65,8 @@ record in `bench/shared/`.
   collector told not to overwrite a file did it anyway in two runs.
 - Bound installs in the prompt: simulate, or use a throwaway container.
 - The cheap tier can be another CLI: `scripts/fleet_worker.py` runs search and
-  extract on grok, agy, opencode or hermes, read-only. See
+  extract on grok, agy, hermes, codex, claude or opencode, read-only, through
+  the crew plugin's `ask`. See
   [references/cli-workers.md](references/cli-workers.md). Ask the user before
   the first run: it spends their quota or sends the question to that provider.
 

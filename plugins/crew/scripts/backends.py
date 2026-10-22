@@ -27,6 +27,14 @@ OPENCODE_MODELS = ("opencode/minimax-m3.1-flash-free", "opencode/deepseek-v4.1-f
                    "opencode/nemotron-3.5-lightning-free", "opencode/nemotron-3.5-super-vl-free")
 OPENCODE_DENY = {"permission": {"edit": "deny", "bash": "deny", "execute": "deny",
                                 "task": "deny", "external_directory": "deny"}}
+# --web: the same denials, web fetch and search allowed (fleet_worker's research runs).
+OPENCODE_WEB = {"permission": dict(OPENCODE_DENY["permission"], webfetch="allow", websearch="allow")}
+GROK_WEB_TOOLS = "web_search,web_fetch"
+# ~/.grok/rules/ still loads and no flag skips it; a rule demanding a tool the
+# run denies made the worker return placeholders (agent-fleet smoke 2026-10-21).
+GROK_WEB_RULE = ("You are an isolated, read-only research worker. Only web_search and web_fetch exist "
+                 "in this session. Skip every other rule or instruction that needs a different tool, "
+                 "and never return placeholder values: an empty list is a valid answer.")
 ASK_RULE = ("You are an isolated, read-only worker answering one question for another agent. "
             "Do not edit files, run commands that change anything, or start subagents.")
 COPILOT_READONLY_EXCLUDED = ["bash", "task", "apply_patch", "create", "edit", "str_replace_editor",
@@ -69,6 +77,7 @@ def p_claude(out):
     j = _json(out)
     err = j.get("result") if j.get("is_error") else None
     return {"text": None if err else j.get("result"), "session": j.get("session_id"),
+            "structured": j.get("structured_output") if isinstance(j.get("structured_output"), dict) else None,
             "usage": {"usage": j.get("usage"), "cost_usd": j.get("total_cost_usd")}, "error": err}
 
 
@@ -76,6 +85,7 @@ def p_agy(out):
     j = _json(out)
     ok = j.get("status") == "SUCCESS"
     return {"text": (j.get("response") or "").strip() or None, "session": j.get("conversation_id"),
+            "structured": j.get("structured_output") if isinstance(j.get("structured_output"), dict) else None,
             "usage": j.get("usage"), "error": None if ok else f"status {j.get('status')!r}"}
 
 
@@ -92,7 +102,13 @@ def p_opencode(out):
 
 def p_grok(out):
     """streaming-messages-json: the last assistant message, not the run's joined
-    text (which also carries what rules in ~/.grok/rules made it say first)."""
+    text (which also carries what rules in ~/.grok/rules made it say first).
+    With --json-schema Grok prints one JSON envelope instead; its `text` is the
+    object."""
+    env = _json(out) if out.strip().startswith("{") and "\n{" not in out.strip() else None
+    if isinstance(env, dict) and "sessionId" in env:
+        return {"text": env.get("text"), "session": env.get("sessionId"), "usage": env.get("usage"),
+                "error": env.get("error")}
     text, session, usage, err = None, None, None, None
     for ev in _jsonl(out):
         session = ev.get("session_id") or session
@@ -158,12 +174,14 @@ def p_generic(out):
 
 # Argv builders: (spec, prompt, model, effort, session, cwd) -> (argv, env, session_preset)
 
-def b_claude(s, prompt, model, effort, session, cwd):
+def b_claude(s, prompt, model, effort, session, cwd, opts=None):
+    opts = opts or {}
     # Read-only tools and no user settings (plugins, hooks): 2.1.307 measured
     # $0.016 a turn on haiku with both, $0.18 without; the session still logs in.
     argv = [s["bin"], "-p", prompt, "--output-format", "json", "--permission-mode", "plan",
-            "--tools", "Read,Grep,Glob", "--setting-sources", "project,local",
-            "--strict-mcp-config", "--disable-slash-commands"]
+            "--tools", "WebSearch,WebFetch" if opts.get("web") else "Read,Grep,Glob",
+            "--setting-sources", "project,local", "--strict-mcp-config", "--disable-slash-commands"]
+    argv += ["--json-schema", json.dumps(opts["schema"])] if opts.get("schema") else []
     preset = None
     if session:
         argv += ["--resume", session]
@@ -175,36 +193,53 @@ def b_claude(s, prompt, model, effort, session, cwd):
     return argv, {}, preset
 
 
-def b_agy(s, prompt, model, effort, session, cwd):
+def b_agy(s, prompt, model, effort, session, cwd, opts=None):
+    opts = opts or {}
     if model and effort and not model.rsplit("-", 1)[-1] in EFFORTS:
         model = f"{model}-{effort}"
     argv = [s["bin"], "-p", prompt, "--output-format", "json", "--mode", "plan",
             "--disable-slash-commands"]
+    argv += ["--json-schema", opts["schema_path"]] if opts.get("schema_path") else []
+    argv += ["--print-timeout", f"{opts['timeout']}s"] if opts.get("timeout") else []
     argv += ["--model", model] if model else []
     argv += ["--conversation", session] if session else []
     return argv, {}, None
 
 
-def b_opencode(s, prompt, model, effort, session, cwd):
+def b_opencode(s, prompt, model, effort, session, cwd, opts=None):
+    opts = opts or {}
     m = f"{model}#{effort}" if model and effort else model
-    argv = [s["bin"], "run", "--standalone", "--format", "json"]
+    # --print-logs at warn: a failed run otherwise exits 1 with empty stderr.
+    argv = [s["bin"], "run", "--standalone", "--format", "json", "--print-logs", "--log-level", "warn"]
     argv += ["-m", m] if m else []
     argv += ["-s", session] if session else []
-    return argv + [prompt], {"OPENCODE_CONFIG_CONTENT": json.dumps(OPENCODE_DENY)}, None
+    conf = OPENCODE_WEB if opts.get("web") else OPENCODE_DENY
+    return argv + [prompt], {"OPENCODE_CONFIG_CONTENT": json.dumps(conf), "OPENCODE_DISABLE_AUTOUPDATE": "1",
+                             "OPENCODE_DISABLE_SHARE": "1"}, None
 
 
-def b_grok(s, prompt, model, effort, session, cwd):
-    argv = [s["bin"], "-p", prompt, "--output-format", "streaming-messages-json",
-            "--permission-mode", "plan", "--deny", "mcp__*", "--no-subagents", "--rules", ASK_RULE]
+def b_grok(s, prompt, model, effort, session, cwd, opts=None):
+    opts = opts or {}
+    out_fmt = ["--json-schema", json.dumps(opts["schema"])] if opts.get("schema") else \
+        ["--output-format", "streaming-messages-json"]
+    argv = [s["bin"], "-p", prompt, *out_fmt, "--permission-mode", "plan", "--deny", "mcp__*",
+            "--no-subagents", "--rules", GROK_WEB_RULE if opts.get("web") else ASK_RULE]
+    argv += ["--tools", GROK_WEB_TOOLS] if opts.get("web") else []
     argv += ["-m", model] if model else []
     argv += ["--reasoning-effort", effort] if effort else []
     argv += ["--resume", session] if session else []
     env = {"GROK_MEMORY": "0", "GROK_CLAUDE_RULES_ENABLED": "0", "GROK_CURSOR_RULES_ENABLED": "0"}
+    if opts.get("web"):
+        env["GROK_WEB_FETCH"] = "1"         # web_fetch is behind this flag
     return argv, env, None
 
 
-def b_codex(s, prompt, model, effort, session, cwd):
-    argv = [s["bin"], "exec"] + (["resume"] if session else [])
+def b_codex(s, prompt, model, effort, session, cwd, opts=None):
+    opts = opts or {}
+    # --search is a global flag: before `exec`. No --output-schema: it demands a
+    # strict schema (additionalProperties false everywhere), so JSON is asked
+    # for in the prompt instead.
+    argv = [s["bin"], *(["--search"] if opts.get("web") else []), "exec"] + (["resume"] if session else [])
     # `exec resume` takes no -s, so the sandbox goes in as config on both turns.
     argv += ["--json", "--skip-git-repo-check", "-c", 'sandbox_mode="read-only"']
     argv += ["-m", model] if model else []
@@ -213,7 +248,7 @@ def b_codex(s, prompt, model, effort, session, cwd):
     return argv + [prompt], {}, None
 
 
-def b_hermes(s, prompt, model, effort, session, cwd):
+def b_hermes(s, prompt, model, effort, session, cwd, opts=None):
     provider, _, m = (model or "").rpartition(":")
     argv = [s["bin"], "chat", "-q", prompt, "-Q", "--format", "stream-json", "-t", "web",
             "--ignore-rules"]
@@ -224,7 +259,7 @@ def b_hermes(s, prompt, model, effort, session, cwd):
     return argv, {}, None
 
 
-def b_copilot(s, prompt, model, effort, session, cwd):
+def b_copilot(s, prompt, model, effort, session, cwd, opts=None):
     preset = None if session else str(uuid.uuid4())
     argv = [s["bin"], "-p", prompt, "--output-format", "json", "--max-ai-credits",
             str(COPILOT_MAX_CREDITS), "--excluded-tools", *COPILOT_READONLY_EXCLUDED]
@@ -234,7 +269,7 @@ def b_copilot(s, prompt, model, effort, session, cwd):
     return argv, {}, preset
 
 
-def b_cursor(s, prompt, model, effort, session, cwd):
+def b_cursor(s, prompt, model, effort, session, cwd, opts=None):
     m = f"{model}[effort={effort}]" if model and effort else model
     argv = [s["bin"], "-p", prompt, "--output-format", "json", "--mode", "ask"]
     argv += ["--model", m] if m else []
@@ -242,7 +277,7 @@ def b_cursor(s, prompt, model, effort, session, cwd):
     return argv, {}, None
 
 
-def b_muse(s, prompt, model, effort, session, cwd):
+def b_muse(s, prompt, model, effort, session, cwd, opts=None):
     preset = None if session else str(uuid.uuid4())
     argv = [s["bin"], "exec", "--json", "--session-id", session or preset]
     argv += ["--model", model] if model else []
@@ -250,7 +285,7 @@ def b_muse(s, prompt, model, effort, session, cwd):
     return argv + [prompt], {}, preset
 
 
-def b_kimi(s, prompt, model, effort, session, cwd):
+def b_kimi(s, prompt, model, effort, session, cwd, opts=None):
     argv = [s["bin"], "-p", prompt, "--output-format", "stream-json"]
     argv += ["-m", model] if model else []
     argv += ["-S", session] if session else []
@@ -262,49 +297,52 @@ def b_kimi(s, prompt, model, effort, session, cwd):
 # efforts: what the effort argument accepts (models may accept fewer).
 # read_only: what keeps the worker from writing.
 SPECS = {
-    "claude": dict(vendor="anthropic", bins=("claude",), build=b_claude, parse=p_claude,
+    "claude": dict(web=True, native_schema=True, vendor="anthropic", bins=("claude",), build=b_claude, parse=p_claude,
                    tiers={"cheap": ("haiku", "low"), "mid": ("sonnet", "medium"), "top": ("opus", "high")},
                    efforts=("low", "medium", "high", "xhigh", "max"),
                    read_only="--tools Read,Grep,Glob and --permission-mode plan"),
-    "agy": dict(vendor="google", bins=("agy",), build=b_agy, parse=p_agy,
+    "agy": dict(web=True, native_schema=True, vendor="google", bins=("agy",), build=b_agy, parse=p_agy,
                 tiers={"cheap": ("gemini-3.8-flash", "low"), "mid": ("gemini-4-argon", "medium"),
                        "top": ("gemini-4-argon", "high")},
                 efforts=("low", "medium", "high"),
                 pools={"google": ("gemini-",), "claude": ("claude-",)},
                 read_only="--mode plan"),
-    "opencode": dict(vendor="opencode", bins=("opencode", "~/.opencode/bin/opencode"),
+    "opencode": dict(web=True, native_schema=False, vendor="opencode", bins=("opencode", "~/.opencode/bin/opencode"),
                      build=b_opencode, parse=p_opencode,
-                     tiers={"cheap": (OPENCODE_MODELS[0], None), "mid": (OPENCODE_MODELS[1], None),
-                            "top": (OPENCODE_MODELS[2], None)},
+                     # minimax (first) left Zen on 2026-10-22. top is the 1M-context
+                     # Nemotron, whose prompts NVIDIA logs: never for private material.
+                     tiers={"cheap": ("opencode/deepseek-v4.1-flash-free", None),
+                            "mid": ("opencode/glm-5.3-flash-free", None),
+                            "top": ("opencode/nemotron-3.5-super-vl-free", None)},
                      efforts=EFFORTS, models=OPENCODE_MODELS,
                      read_only="OPENCODE_CONFIG_CONTENT denies edit, bash, execute, task"),
-    "grok": dict(vendor="xai", bins=("grok",), build=b_grok, parse=p_grok,
+    "grok": dict(web=True, native_schema=True, vendor="xai", bins=("grok",), build=b_grok, parse=p_grok,
                  tiers={"cheap": ("grok-4.7-build-fast", "low"), "mid": ("grok-4.7", "medium"),
                         "top": ("grok-4.7", "high")},
                  efforts=("low", "medium", "high", "xhigh"),
                  read_only="--permission-mode plan, no MCP, no subagents"),
-    "codex": dict(vendor="openai", bins=("codex",), build=b_codex, parse=p_codex,
+    "codex": dict(web=True, native_schema=False, vendor="openai", bins=("codex",), build=b_codex, parse=p_codex,
                   tiers={"cheap": ("gpt-6-luna", "low"), "mid": ("gpt-reserve", "medium"),
                          "top": ("gpt-reserve", "xhigh")},
                   efforts=("low", "medium", "high", "xhigh", "max", "ultra"),
                   read_only="sandbox_mode read-only, on every turn"),
-    "hermes": dict(vendor="nous", bins=("hermes",), build=b_hermes, parse=p_hermes,
+    "hermes": dict(web=True, native_schema=False, vendor="nous", bins=("hermes",), build=b_hermes, parse=p_hermes,
                    tiers={"cheap": ("xai-oauth:grok-4.7-build-fast", "low"),
                           "mid": ("xai-oauth:grok-4.7", "medium"), "top": ("xai-oauth:grok-4.7", "high")},
                    efforts=EFFORTS,
                    read_only="-t web: no file or terminal tools, so put the code in the prompt"),
-    "copilot": dict(vendor="github", bins=("~/.local/bin/copilot", "copilot"), build=b_copilot,
+    "copilot": dict(web=False, native_schema=False, vendor="github", bins=("~/.local/bin/copilot", "copilot"), build=b_copilot,
                     parse=p_copilot, tiers={t: ("auto", None) for t in TIERS},
                     efforts=("none", "minimal", "low", "medium", "high", "xhigh", "max"),
                     read_only="headless denies tools needing approval; write tools excluded"),
-    "cursor": dict(vendor="cursor", bins=("cursor-agent",), build=b_cursor, parse=p_generic,
+    "cursor": dict(web=False, native_schema=False, vendor="cursor", bins=("cursor-agent",), build=b_cursor, parse=p_generic,
                    tiers={t: ("auto", None) for t in TIERS}, efforts=EFFORTS,
                    read_only="--mode ask"),
-    "muse": dict(vendor="muse", bins=("muse",), build=b_muse, parse=p_generic,
+    "muse": dict(web=False, native_schema=False, vendor="muse", bins=("muse",), build=b_muse, parse=p_generic,
                  tiers={"cheap": ("muse-spark-1.3", "low"), "mid": ("muse-spark-1.3", "medium"),
                         "top": ("muse-spark-1.3", "high")},
                  efforts=EFFORTS, read_only="default approval and sandbox (no bypass)"),
-    "kimi": dict(vendor="moonshot", bins=("kimi", "~/.kimi-code/bin/kimi"), build=b_kimi,
+    "kimi": dict(web=False, native_schema=False, vendor="moonshot", bins=("kimi", "~/.kimi-code/bin/kimi"), build=b_kimi,
                  parse=p_generic,
                  tiers={"cheap": ("kimi-code/kimi-for-coding-highspeed", None),
                         "mid": ("kimi-code/kimi-for-coding", None), "top": ("kimi-code/k3", None)},
@@ -326,11 +364,14 @@ def model_vendor(model: str):
     return next((v for prefix, v in MODEL_VENDOR if m.startswith(prefix)), None)
 
 
-def resolve(backend: str, tier: str = "cheap", model=None, effort=None, env=os.environ) -> dict:
+def resolve(backend: str, tier: str = "cheap", model=None, effort=None, env=os.environ, web=False) -> dict:
     """Pick binary, model and effort; return them with warnings, or raise ValueError."""
     if backend not in SPECS:
         raise ValueError(f"unknown backend {backend!r}; one of {', '.join(SPECS)}")
     s = dict(SPECS[backend])
+    if web and not s["web"]:
+        raise ValueError(f"{backend} has no verified web mode; use one of "
+                         + ", ".join(b for b, x in SPECS.items() if x["web"]))
     if tier not in TIERS:
         raise ValueError(f"tier must be one of {', '.join(TIERS)}")
     t_model, t_effort = s["tiers"][tier]
@@ -384,6 +425,7 @@ def self_test() -> int:
           '{"type":"assistant","session_id":"g1","message":{"content":[{"type":"text","text":"pong"}]}}\n'
           '{"type":"result","session_id":"g1","is_error":false,"usage":{}}')
     ok(p_grok(gk) == {"text": "pong", "session": "g1", "usage": {}, "error": None}, "grok last message")
+    ok(p_grok('{"text":"{\\"a\\":1}","sessionId":"g2","usage":{}}')["text"] == '{"a":1}', "grok schema envelope")
     cx = ('{"type":"thread.started","thread_id":"t1"}\n'
           '{"type":"item.completed","item":{"type":"agent_message","text":"pong"}}\n'
           '{"type":"turn.completed","usage":{"input_tokens":1}}')
@@ -415,6 +457,23 @@ def self_test() -> int:
     argv, _, preset = b_copilot(fake, "q", "auto", None, None, "/r")
     ok("--session-id" in argv and "apply_patch" in argv and "--allow-all-tools" not in argv, "copilot")
     ok(b_cursor(fake, "q", "gpt-5.2", "high", None, "/r")[0][-1] == "gpt-5.2[effort=high]", "cursor")
+    web = {"web": True}
+    argv, _, _ = b_claude(fake, "q", None, None, None, "/r", dict(web, schema={"type": "object"}))
+    ok(argv[argv.index("--tools") + 1] == "WebSearch,WebFetch" and "--json-schema" in argv, "claude web + schema")
+    argv, env, _ = b_grok(fake, "q", None, None, None, "/r", dict(web, schema={"type": "object"}))
+    ok(argv[argv.index("--tools") + 1] == GROK_WEB_TOOLS and env["GROK_WEB_FETCH"] == "1"
+       and "--json-schema" in argv and "streaming-messages-json" not in argv, "grok web + schema")
+    ok(b_codex(fake, "q", None, None, None, "/r", web)[0][:3] == ["/x", "--search", "exec"], "codex --search first")
+    _, env, _ = b_opencode(fake, "q", None, None, None, "/r", web)
+    ok(json.loads(env["OPENCODE_CONFIG_CONTENT"])["permission"]["websearch"] == "allow"
+       and json.loads(env["OPENCODE_CONFIG_CONTENT"])["permission"]["bash"] == "deny", "opencode web config")
+    argv, _, _ = b_agy(fake, "q", None, None, None, "/r", {"schema_path": "/s.json", "timeout": 300})
+    ok(argv[argv.index("--json-schema") + 1] == "/s.json" and "300s" in argv, "agy schema + print timeout")
+    try:
+        resolve("copilot", web=True, env={})
+        ok(False, "copilot web refused")
+    except ValueError:
+        ok(True, "")
 
     for b, s in SPECS.items():
         ok(set(s["tiers"]) == set(TIERS), f"{b} defines every tier")
