@@ -13,7 +13,8 @@ when a row matters.
   level, on more than about ten parallel children, or on structured output
   from a child. Parse the child's last JSON object and validate it yourself.
 - Grok Build runs up to 32 subagents at once per session and queues the rest;
-  `GROK_MAX_CONCURRENT_SUBAGENTS` changes the cap.
+  `[subagents] max_concurrent` in `config.toml` (or
+  `GROK_MAX_CONCURRENT_SUBAGENTS`) changes the cap.
 
 | Harness | Child agents | Model set in | Effort set in | Read-only child |
 |---|---|---|---|---|
