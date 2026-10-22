@@ -45,7 +45,10 @@ python3 scripts/crew.py ask <backend> --session <session> --prompt-file next.md 
 ```
 
 The worker runs read-only in `--cwd`. The verdict's `read_only` says how each
-backend enforces this, and a changed work tree fails the run.
+backend enforces this, and a changed work tree fails the run. `--web` swaps the
+file tools for web search and fetch (claude, agy, opencode, grok, codex,
+hermes); `--schema file.json` returns the reply's JSON object in `structured`,
+natively where the CLI supports it.
 
 Hermes gets no file tools, so put the code in the prompt. Kimi has no verified
 read-only headless mode.

@@ -111,7 +111,8 @@ WORKER_ENV = {"NX_DAEMON": "false"}
 BACKENDS = ("agy", "opencode", "copilot", "codex", "grok", "cursor")
 # review keeps crew's guard hooks on these; every other backend reviews through ask.
 REVIEW_GUARDED = ("agy", "opencode", "copilot")
-OPENCODE_DEFAULT_MODEL = "opencode/minimax-m3.1-flash-free"
+# minimax-m3.1-flash-free left Zen (provider.no-route, 2026-10-22); kept allowed should it return.
+OPENCODE_DEFAULT_MODEL = "opencode/deepseek-v4.1-flash-free"
 # The only opencode models a run may use (the user's choice, 2026-10-21); the
 # Zen data terms of each are in the opencode skill.
 OPENCODE_MODELS = ("opencode/minimax-m3.1-flash-free", "opencode/deepseek-v4.1-flash-free",
@@ -3007,8 +3008,11 @@ def read_prompt(a) -> str:
 
 
 def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None, session=None,
-            cwd=None, timeout_s=600, allow_same_vendor=False, env=None) -> dict:
-    """One turn with a worker CLI. Returns the verdict; never trusts the exit code alone."""
+            cwd=None, timeout_s=600, allow_same_vendor=False, env=None, web=False, schema=None) -> dict:
+    """One turn with a worker CLI. Returns the verdict; never trusts the exit code alone.
+    `web`: the backend's read-only web profile (search and fetch, no file tools).
+    `schema`: a JSON object is expected back, natively where the CLI supports it,
+    else asked for in the prompt; it lands in the verdict's `structured`."""
     import backends
     env = dict(os.environ if env is None else env)
     cwd = os.path.realpath(cwd or os.getcwd())
@@ -3016,7 +3020,7 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
         raise Refusal(f"prompt over {MAX_PROMPT_BYTES} bytes; put long material in a file the worker reads")
     try:
         r = backends.resolve(backend, tier, model, effort,
-                             env={} if allow_same_vendor else env)
+                             env={} if allow_same_vendor else env, web=web)
     except ValueError as exc:
         raise Refusal(str(exc))
     spec, warnings = r["spec"], list(r["warnings"])
@@ -3026,7 +3030,15 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
         repo = None
     rundir = new_rundir(repo, "ask") if repo else tempfile.mkdtemp(prefix="crew-ask-")
     run_id = os.path.basename(rundir)
-    argv, extra_env, preset = spec["build"](spec, prompt, r["model"], r["effort"], session, cwd)
+    opts = {"web": web, "timeout": timeout_s}
+    if schema:
+        opts["schema"] = schema
+        opts["schema_path"] = os.path.join(rundir, "schema.json")
+        write_json(opts["schema_path"], schema)
+        if not spec["native_schema"]:
+            prompt += ("\n\nEnd your reply with ONE JSON object (no prose after it) matching this JSON "
+                       f"schema: {json.dumps(schema, separators=(',', ':'))}")
+    argv, extra_env, preset = spec["build"](spec, prompt, r["model"], r["effort"], session, cwd, opts)
     env.update(extra_env)
     env.update(WORKER_ENV)
     env[RUN_ENV] = run_id
@@ -3062,22 +3074,36 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
         failures.append(f"exit {rc}: {tail(err, 400).strip()}")
     if parsed.get("error"):
         failures.append(str(parsed["error"]))
-    if not parsed.get("text"):
+    if not parsed.get("text") and not parsed.get("structured"):
         failures.append("no reply in the output")
+    structured = None
+    if schema:
+        structured = parsed.get("structured") or extract_report(parsed.get("text") or "")
+        if not isinstance(structured, dict):
+            failures.append("no JSON object in the reply")
     if repo and fingerprint(repo, []) != before:
         failures.append("the work tree changed during a read-only ask")
+    if not repo and not failures:
+        shutil.rmtree(rundir, ignore_errors=True)        # outside a repo nothing is kept for a clean run
+        rundir = None
     return {"ok": not failures, "backend": backend, "tier": tier, "model": r["model"],
             "effort": r["effort"], "session": parsed.get("session") or preset or session,
-            "text": parsed.get("text"), "usage": parsed.get("usage"), "read_only": spec["read_only"],
+            "text": parsed.get("text"), "structured": structured, "usage": parsed.get("usage"),
+            "read_only": "web search and fetch only" if web else spec["read_only"],
             "version": version, "failures": failures, "warnings": warnings,
             "left_processes_stopped": sorted(left), "duration_s": round(time.time() - t0, 1),
             "rundir": rundir}
 
 
 def cmd_ask(a) -> int:
+    schema = None
+    if a.schema:
+        schema = read_json(a.schema)
+        if not (isinstance(schema, dict) and schema.get("type") == "object"):
+            raise Refusal(f"{a.schema}: schema needs a root of type=object")
     verdict = run_ask(a.backend, read_prompt(a), tier=a.tier, model=a.model, effort=a.effort,
                       session=a.session, cwd=a.cwd, timeout_s=parse_duration(a.timeout),
-                      allow_same_vendor=a.allow_same_vendor)
+                      allow_same_vendor=a.allow_same_vendor, web=a.web, schema=schema)
     print(json.dumps(verdict, ensure_ascii=False, indent=2))
     return 0 if verdict["ok"] else 1
 
@@ -4130,6 +4156,8 @@ def main(argv=None) -> int:
     k.add_argument("--timeout", default="10m")
     k.add_argument("--allow-same-vendor", action="store_true",
                    help="allow a backend from the host's own vendor")
+    k.add_argument("--web", action="store_true", help="web search and fetch only, no file tools")
+    k.add_argument("--schema", help="JSON schema file: the reply's object lands in `structured`")
     sub.add_parser("backends", help="list backends, tiers, binaries and test status")
     h = sub.add_parser("hook", help="agy hook handler (installed per run)")
     h.add_argument("event", choices=["pre", "stop", "start", "oc-pre", "cp-pre", "cp-stop",

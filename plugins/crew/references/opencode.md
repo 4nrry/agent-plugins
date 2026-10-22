@@ -12,13 +12,16 @@ Use it when agy's quota is gone, or for extra slices at no cost.
 
 ## Models and data
 
-Only these six are accepted; the default is the first. Terms from the Zen
-docs — re-read them before relying on this table, they change:
+Only these six are accepted. Zen rotates its free models: on 2026-10-22
+minimax left (`provider.no-route`), so the default and the `cheap` tier are
+deepseek, `mid` is glm, and `top` is Nemotron Super VL (1M context, but NVIDIA
+logs the prompts). Terms from the Zen docs; re-read them before relying on this
+table, they change:
 
 | Model | Data terms |
 |---|---|
-| `opencode/minimax-m3.1-flash-free` (default, 1M context) | zero retention, no training |
-| `opencode/deepseek-v4.1-flash-free` | zero retention, no training |
+| `opencode/minimax-m3.1-flash-free` (unavailable since 2026-10-22) | zero retention, no training |
+| `opencode/deepseek-v4.1-flash-free` (default) | zero retention, no training |
 | `opencode/glm-5.3-flash-free` | zero retention, no training |
 | `opencode/nemotron-3.5-super-vl-free` | logged by NVIDIA to improve its products: no personal or confidential data |
 | `opencode/nemotron-3.5-lightning-free` | same as Super VL |
