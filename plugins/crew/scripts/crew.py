@@ -59,6 +59,12 @@ workspace`, with the same three hooks in a per-run ~/.grok/hooks/crew-<run>.json
 that acts only for this run's CREW_RUN (Grok refuses hooks in its GROK_CONFIG
 overlay, and loads global hooks only in a trusted folder, so the repo must be
 trusted first). `hook gk-pre` translates Grok's tools; `hook gk-stop` is cx-stop.
+
+Sixth backend, `"backend": "cursor"` (cursor-agent 2026.10.19): `cursor-agent -p`
+with a failClosed preToolUse in a .cursor/hooks.json written for the run.
+`stop` hooks do not fire in -p, so the gate is an outer loop resuming the chat,
+as with opencode; Cursor's sandbox does not start here, so the hooks are the
+only limit.
 """
 
 import argparse
@@ -102,7 +108,7 @@ SECRET_EXCEPTIONS = ("*.example", "*.sample", "*.template")
 # stopped without touching anything the user started.
 RUN_ENV = "CREW_RUN"
 WORKER_ENV = {"NX_DAEMON": "false"}
-BACKENDS = ("agy", "opencode", "copilot", "codex", "grok")
+BACKENDS = ("agy", "opencode", "copilot", "codex", "grok", "cursor")
 # review keeps crew's guard hooks on these; every other backend reviews through ask.
 REVIEW_GUARDED = ("agy", "opencode", "copilot")
 OPENCODE_DEFAULT_MODEL = "opencode/minimax-m3.1-flash-free"
@@ -150,6 +156,23 @@ GK_TOOLS = {
                                                 "new_string": "ReplacementContent"}),
 }
 GK_INERT_TOOLS = {"todo_write"}
+# Cursor CLI: `preToolUse` from a .cursor/hooks.json written into the repo for
+# the run (like agy's .agents/hooks.json), failClosed. `stop` does not fire in
+# `cursor-agent -p` (lab), so the gate is an outer loop resuming the chat, like
+# opencode. Its sandbox does not start on this machine (AppArmor), so the run
+# uses `--sandbox disabled` and the hooks are the only limit.
+TESTED_CURSOR_VERSION = "2026.10.19-6bbf2c4"
+CURSOR_DEFAULT_MODEL = "auto"
+CURSOR_HOOK_FILE = ".cursor/hooks.json"
+CU_TOOLS = {
+    "Read": ("view_file", {"file_path": "AbsolutePath"}),
+    "List": ("list_dir", {"file_path": "DirectoryPath"}),
+    "Grep": ("grep_search", {"file_path": "SearchPath", "pattern": "Query"}),
+    "Write": ("write_to_file", {"file_path": "TargetFile"}),
+    "Delete": ("write_to_file", {"file_path": "TargetFile"}),
+    "Shell": ("run_command", {"command": "CommandLine", "cwd": "Cwd"}),
+}
+CU_INERT_TOOLS = {"ReadLints", "TodoWrite"}
 COPILOT_DEFAULT_MODEL = "auto"
 COPILOT_HOOK_DIR = ".github/hooks"
 COPILOT_HOOK_PREFIX = "crew-"
@@ -480,6 +503,8 @@ def normalize_task(task: dict) -> dict:
     backend = task.get("backend", "agy")
     if backend not in BACKENDS:
         errs.append(f"backend {backend!r}: use one of {BACKENDS}")
+    elif backend == "cursor" and isinstance(scope, list) and any(in_globs(f, scope) for f in (CURSOR_HOOK_FILE,)):
+        errs.append("scope covers .cursor/hooks.json, where the run's guard lives")
     elif backend == "opencode" and isinstance(scope, list) and any(
             in_globs(f, scope) for f in OPENCODE_CONFIG_FILES):
         errs.append("scope covers opencode.json(c), which the driver restores after every opencode run")
@@ -522,7 +547,8 @@ def normalize_task(task: dict) -> dict:
         "backend": backend,
         "disable_claude_code": task.get("disable_claude_code", False),
         "model": task.get("model", {"opencode": OPENCODE_DEFAULT_MODEL, "copilot": COPILOT_DEFAULT_MODEL,
-                                    "codex": CODEX_DEFAULT_MODEL, "grok": GROK_DEFAULT_MODEL}.get(backend, DEFAULT_MODEL)),
+                                    "codex": CODEX_DEFAULT_MODEL, "grok": GROK_DEFAULT_MODEL,
+                                    "cursor": CURSOR_DEFAULT_MODEL}.get(backend, DEFAULT_MODEL)),
         "effort": task.get("effort"),
         "copilot_model_override": task.get("copilot_model_override", False),
         "max_ai_credits": credits,
@@ -588,7 +614,7 @@ def compose_prompt(task: dict, repo: str) -> str:
 def report_rule(task: dict) -> str:
     """opencode has no --json-schema: the report is the last JSON object in
     the final message, and the driver asks again if it is missing."""
-    if task.get("backend") not in ("opencode", "copilot", "codex", "grok"):
+    if task.get("backend") not in ("opencode", "copilot", "codex", "grok", "cursor"):
         return ""
     again = (" Every final message, including the one after gate feedback, must end with it."
              if task.get("backend") in ("copilot", "codex", "grok") else "")
@@ -887,6 +913,22 @@ def decide_gk(payload: dict, ctx: dict) -> dict:
     inp = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
     name, keys = GK_TOOLS.get(tool, (tool, {}))
     args = {keys[k]: v for k, v in inp.items() if k in keys}
+    return decide_pre({"toolCall": {"name": name, "args": args}}, ctx)
+
+
+def decide_cu(payload: dict, ctx: dict) -> dict:
+    """Cursor preToolUse: its tools translated to decide_pre's names; writes into
+    .cursor/ are denied (the run's hooks live there); anything else not listed
+    (Fetch, MCP, ComputerUse, shell stdin) falls to decide_pre's allowlist."""
+    tool = str(payload.get("tool_name", ""))
+    if tool in CU_INERT_TOOLS:
+        return {"decision": "allow"}
+    inp = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
+    name, keys = CU_TOOLS.get(tool, (tool, {}))
+    args = {keys[k]: v for k, v in inp.items() if k in keys and v not in (None, "")}
+    target = args.get("TargetFile")
+    if isinstance(target, str) and os.path.relpath(resolve(target, ctx["repo"]), ctx["repo"]).startswith(".cursor"):
+        return deny("Write blocked in .cursor/: the run's hooks live there.")
     return decide_pre({"toolCall": {"name": name, "args": args}}, ctx)
 
 
@@ -1201,6 +1243,17 @@ def hook_main(event: str, rundir: str) -> int:
                                   for k, v in args.items() if k not in ("file_text", "old_str", "new_str")}
                                  if isinstance(args, dict) else str(args)[:300])
             append_jsonl(log, entry)
+        elif event == "cu-start":
+            append_jsonl(log, {"event": "session_start", "conversation": payload.get("session_id")})
+            out = {"decision": "allow"}
+        elif event == "cu-pre":
+            out = decide_cu(payload, ctx)
+            entry = {"event": "pre", "tool": payload.get("tool_name"), "decision": out["decision"]}
+            if out["decision"] != "allow":
+                entry["reason"] = out.get("reason", "")[:300]
+                entry["args"] = {k: str(v)[:300] for k, v in (payload.get("tool_input") or {}).items()
+                                 if k not in ("content",)} if isinstance(payload.get("tool_input"), dict) else {}
+            append_jsonl(log, entry)
         elif event.startswith("gk-") and os.environ.get(RUN_ENV) != ctx.get("run_id"):
             out = {"decision": "allow"}      # another Grok session: this run's hooks do nothing
         elif event == "gk-start":
@@ -1296,9 +1349,14 @@ def hook_main(event: str, rundir: str) -> int:
         except OSError:
             pass
         out = ({"decision": "deny", "reason": f"internal guard failure ({exc!r}); call denied for safety"}
-               if event in ("pre", "oc-pre", "cp-pre", "cx-pre", "gk-pre") else {"decision": "stop"} if event == "stop"
+               if event in ("pre", "oc-pre", "cp-pre", "cx-pre", "gk-pre", "cu-pre") else {"decision": "stop"} if event == "stop"
                else {"decision": "allow"} if event == "cp-stop" else {})
-    if event.startswith(("cx-", "gk-")):
+    if event.startswith("cu-"):
+        print(json.dumps({"permission": "allow"} if out.get("decision") == "allow" else
+                         {"permission": "deny", "agent_message": out.get("reason") or "denied",
+                          "user_message": "crew guard: " + (out.get("reason") or "denied")[:200]}
+                         if event == "cu-pre" else {}, ensure_ascii=False))
+    elif event.startswith(("cx-", "gk-")):
         print(cx_hook_output(event, out))
     else:
         print(cp_hook_output(event, out) if event in ("cp-pre", "cp-stop") else json.dumps(out, ensure_ascii=False))
@@ -2413,6 +2471,126 @@ def evaluate_gk(rc, stdout: str, stderr: str):
     return fails, {"text": text, "session_id": session, "usage": usage}
 
 
+def preflight_cursor(repo: str) -> tuple:
+    cu = shutil.which("cursor-agent")
+    if not cu:
+        raise Refusal("cursor-agent not found on PATH")
+    if os.path.lexists(os.path.join(repo, CURSOR_HOOK_FILE)):
+        raise Refusal(f"{CURSOR_HOOK_FILE} already exists; crew writes its own there for the run. If it is "
+                      f"left over from a crew run that was killed, remove it: rm {shlex.quote(CURSOR_HOOK_FILE)}")
+    warns = []
+    try:
+        ver = subprocess.run([cu, "--version"], capture_output=True, text=True, timeout=30).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        ver = ""
+    if ver != TESTED_CURSOR_VERSION:
+        warns.append(f"cursor-agent {ver!r}: tested on {TESTED_CURSOR_VERSION}")
+    warns.append("cursor runs without an OS sandbox (it does not start here); the crew hooks are the only limit")
+    return cu, warns
+
+
+def install_cu_hooks(repo: str, rundir: str) -> bool:
+    """Write .cursor/hooks.json for the run. Returns whether .cursor/ was created."""
+    path = os.path.join(repo, CURSOR_HOOK_FILE)
+    created = not os.path.isdir(os.path.dirname(path))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    base = f"{shlex.quote(sys.executable)} {shlex.quote(os.path.realpath(__file__))} hook"
+    st = shlex.quote(rundir)
+    spec = {"version": 1, "hooks": {
+        "sessionStart": [{"command": f"{base} cu-start --state {st}", "timeout": 30}],
+        "preToolUse": [{"command": f"{base} cu-pre --state {st}", "timeout": 60, "failClosed": True}]}}
+    write_json(path, spec)
+    return created
+
+
+def remove_cu_hooks(repo: str, created_dir: bool) -> None:
+    path = os.path.join(repo, CURSOR_HOOK_FILE)
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    if created_dir:
+        try:
+            os.rmdir(os.path.dirname(path))
+        except OSError:
+            pass
+
+
+def cursor_cmd(cu: str, msg: str, task: dict, chat) -> list:
+    model = task["model"]
+    if task.get("effort") and model != "auto":
+        model = f"{model}[effort={task['effort']}]"
+    return [cu, "-p", msg, "--output-format", "stream-json", "--force", "--trust", "--sandbox", "disabled",
+            "--model", model, *(["--resume", chat] if chat else [])]
+
+
+def evaluate_cu(rc, stdout: str, stderr: str):
+    """stream-json: the result event (success, is_error, the final text) and the
+    chat id to resume. A missing result is a cut run."""
+    fails, result, chat = [], None, None
+    for line in stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(ev, dict):
+            chat = ev.get("session_id") or chat
+            if ev.get("type") == "result":
+                result = ev
+    if rc != 0:
+        fails.append(f"cursor-agent exited {rc}: {tail(stderr, 300).strip()}")
+    if result is None:
+        fails.append("cursor-agent never reported a result (the run was cut)")
+    elif result.get("is_error") or result.get("subtype") != "success":
+        fails.append(f"cursor-agent result: {result.get('subtype')} {str(result.get('result'))[:200]}")
+    return fails, {"text": (result or {}).get("result"), "session": chat,
+                   "duration_ms": (result or {}).get("duration_ms")}
+
+
+def drive_cursor(cu: str, task: dict, repo: str, rundir: str, prompt: str, ctx: dict):
+    """run -> gate -> `--resume <chat>` with the gate output, up to
+    max_gate_attempts runs, as drive_opencode. Returns (failures, report, info)."""
+    env = {**os.environ, **WORKER_ENV, RUN_ENV: ctx["run_id"]}
+    deadline = time.time() + task["timeout"]
+    fails, runs, chat, report, msg, n = [], [], None, None, prompt, task["max_gate_attempts"]
+    for i in range(1, n + 1):
+        left = int(deadline - time.time())
+        if left < 30:
+            fails.append("task timeout exhausted before the gate and the report were ready")
+            break
+        eprint(f"crew: cursor run {i}/{n} ({task['model']}{', chat ' + chat if chat else ''})…")
+        rc, out, err = run_agy(cursor_cmd(cu, msg, task, chat), repo, rundir, left, name=f"cursor-{i}",
+                               env=env, grace=0)
+        run_fails, info = evaluate_cu(rc, out, err)
+        chat = chat or info["session"]
+        runs.append({"attempt": i, "rc": rc, "duration_ms": info["duration_ms"]})
+        if run_fails:
+            fails += [f"run {i}: {f}" for f in run_fails]
+            break
+        report = extract_report(info["text"])
+        passed, text, _ = gate_cached(rundir, ctx, f"driver:{i}")
+        problems = report_problems(report, task["report_schema"])
+        if passed and not problems:
+            break
+        if not chat:
+            fails.append("no session_id in the events: cannot resume")
+            break
+        parts = []
+        if not passed:
+            parts.append(f"The gate FAILED (attempt {i} of {n}); the task is not done. Fix the real cause, "
+                         "without disabling tests, without forbidden shortcuts and without leaving the allowed "
+                         f"files. Gate output:\n{tail(text)}")
+        if problems:
+            parts.append("Your final message must end with the report as ONE JSON object matching the schema "
+                         f"given before ({'; '.join(problems)}).")
+        msg = "\n\n".join(parts)
+    if not fails:
+        fails += report_problems(report, task["report_schema"])
+    if isinstance(report, dict) and report.get("status") in ("partial", "blocked"):
+        fails.append(f"the worker declared itself {report['status']!r}")
+    return fails, report, {"chat": chat, "runs": runs}
+
+
 def base_ctx(repo, task, mode):
     return {
         "mode": mode, "repo": repo, "scope": task["scope"], "side_effects": task["side_effects"],
@@ -2432,6 +2610,7 @@ def cmd_delegate(a) -> int:
     copilot = task["backend"] == "copilot"
     codex = task["backend"] == "codex"
     grok = task["backend"] == "grok"
+    cursor = task["backend"] == "cursor"
     repo = repo_root(a.repo or os.getcwd())
     git(repo, "rev-parse", "--verify", "HEAD")
     other_cp_hooks = refuse_cp_leftovers(repo) if copilot else []
@@ -2459,6 +2638,8 @@ def cmd_delegate(a) -> int:
         cx, pre_warns = preflight_codex()
     elif grok:
         gk, pre_warns = preflight_grok(repo)
+    elif cursor:
+        cu, pre_warns = preflight_cursor(repo)
     else:
         pre_warns = preflight_agy(task["model"], task["min_quota"], not a.no_quota_probe, rundir)
     ctx = base_ctx(repo, task, "delegate")
@@ -2468,6 +2649,8 @@ def cmd_delegate(a) -> int:
                    events_file=os.path.join(rundir, "copilot.stdout"))
     if codex or grok:
         ctx["report_schema"] = task["report_schema"]
+    if cursor:
+        ctx["ignore_paths"] = [CURSOR_HOOK_FILE]
     write_json(os.path.join(rundir, "ctx.json"), ctx)
     write_json(os.path.join(rundir, "task.json"), task)
     schema_path = os.path.join(rundir, "report.schema.json")
@@ -2507,6 +2690,14 @@ def cmd_delegate(a) -> int:
             fails.append(f"the worker declared itself {report['status']!r}")
         warns = []
         run_info = {"rc": rc, "wall_seconds": round(time.time() - started), **info}
+    elif cursor:
+        created = install_cu_hooks(repo, rundir)
+        try:
+            fails, report, run_info = drive_cursor(cu, task, repo, rundir, prompt, ctx)
+        finally:
+            remove_cu_hooks(repo, created)
+        warns = []
+        run_info["wall_seconds"] = round(time.time() - started)
     elif grok:
         n_cmds = len(ctx["gate"]["format"]) + len(ctx["gate"]["checks"]) + 1
         hook_file = install_gk_hooks(rundir, ctx["run_id"], ctx["gate_timeout"] * n_cmds + 60)
@@ -3251,6 +3442,46 @@ def self_test() -> int:
                                 capture_output=True, text=True, env=e, timeout=60)
             got = json.loads(pr.stdout)["hookSpecificOutput"]["permissionDecision"] if pr.stdout.strip() else ""
             check(got == want, f"grok hook with CREW_RUN={env_run}: expected {want or 'no-op'}")
+        # cursor: tool translation, .cursor/ protection, hooks file in the tree, command, evaluation
+        utask = normalize_task({"prompt": "x", "scope": ["src/*"], "backend": "cursor", "gate": {"checks": ["true"]}})
+        check(utask["model"] == CURSOR_DEFAULT_MODEL, "cursor default model")
+        try:
+            normalize_task({"prompt": "x", "scope": ["*"], "backend": "cursor", "gate": {"checks": ["t"]}})
+            check(False, "cursor scope covering .cursor/hooks.json accepted")
+        except Refusal:
+            check(True, "")
+        uctx = base_ctx(repo, utask, "delegate")
+        cu = lambda tool, inp: decide_cu({"tool_name": tool, "tool_input": inp}, uctx)["decision"]  # noqa: E731
+        for tool, inp, want, why in (
+                ("Read", {"file_path": f"{repo}/src/a.txt"}, "allow", "read in the repo"),
+                ("Read", {"file_path": "/etc/passwd"}, "deny", "read outside the repo"),
+                ("List", {"file_path": "."}, "allow", "list the repo"),
+                ("Grep", {"pattern": "x", "file_path": "src"}, "allow", "grep the repo"),
+                ("Write", {"file_path": "src/new.txt", "content": "x"}, "allow", "write in scope"),
+                ("Write", {"file_path": "README.md", "content": "x"}, "deny", "write out of scope"),
+                ("Write", {"file_path": ".cursor/hooks.json", "content": "{}"}, "deny", "write the run's hooks"),
+                ("Delete", {"file_path": "src/a.txt"}, "allow", "delete in scope"),
+                ("Shell", {"command": "ls src", "cwd": ""}, "allow", "read-only shell"),
+                ("Shell", {"command": "printf hi > src/a.txt", "cwd": ""}, "deny", "shell redirect"),
+                ("Fetch", {"url": "https://x"}, "deny", "tool outside the allowlist"),
+                ("ReadLints", {}, "allow", "inert tool")):
+            check(cu(tool, inp) == want, f"cursor {why}: expected {want}")
+        ucmd = cursor_cmd("cursor-agent", "P", dict(utask, model="gpt-5.2", effort="high"), "chat-1")
+        check(ucmd[ucmd.index("--model") + 1] == "gpt-5.2[effort=high]" and ucmd[-2:] == ["--resume", "chat-1"]
+              and ucmd[ucmd.index("--sandbox") + 1] == "disabled", "cursor command")
+        check(cursor_cmd("cursor-agent", "P", dict(utask, effort="high"), None)[-1] == "auto",
+              "cursor: no effort suffix on auto")
+        uf, uinfo = evaluate_cu(0, '{"type":"system","subtype":"init","session_id":"c1"}\n'
+                                   '{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"c1"}', "")
+        check(not uf and uinfo["text"] == "done" and uinfo["session"] == "c1", "cursor evaluation")
+        check(evaluate_cu(0, '{"type":"system","subtype":"init","session_id":"c1"}', "")[0], "cursor cut run fails")
+        ucreated = install_cu_hooks(repo, os.path.join(tmp, "cu-run"))
+        uspec = read_json(os.path.join(repo, CURSOR_HOOK_FILE))
+        check(uspec["version"] == 1 and uspec["hooks"]["preToolUse"][0]["failClosed"] is True,
+              "cursor hooks file: failClosed preToolUse")
+        check(changed_paths(repo, [CURSOR_HOOK_FILE]) == [], "cursor hooks file is not a change")
+        remove_cu_hooks(repo, ucreated)
+        check(not os.path.exists(os.path.join(repo, ".cursor")), ".cursor removed")
         cctx = base_ctx(repo, ctask, "delegate")
         cp = lambda tool, args: decide_cp({"toolName": tool, "toolArgs": args}, cctx)["decision"]  # noqa: E731
         for tool, args, want, why in (
@@ -3902,7 +4133,8 @@ def main(argv=None) -> int:
     sub.add_parser("backends", help="list backends, tiers, binaries and test status")
     h = sub.add_parser("hook", help="agy hook handler (installed per run)")
     h.add_argument("event", choices=["pre", "stop", "start", "oc-pre", "cp-pre", "cp-stop",
-                                     "cx-start", "cx-pre", "cx-stop", "gk-start", "gk-pre", "gk-stop"])
+                                     "cx-start", "cx-pre", "cx-stop", "gk-start", "gk-pre", "gk-stop",
+                                     "cu-start", "cu-pre"])
     h.add_argument("--state", required=True)
     a = p.parse_args(argv)
     if a.cmd == "hook":
