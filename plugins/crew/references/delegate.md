@@ -13,8 +13,8 @@
 You plan, write the task, set scope and gate, read the verdict and review the
 diff. The worker executes one slice, headless. It never decides design,
 commits, or declares anything done. `scripts/crew.py` is the guard rail.
-`delegate` drives three backends, each with its own guard: [agy.md](agy.md),
-[opencode.md](opencode.md), [copilot.md](copilot.md).
+`delegate` drives four backends, each with its own guard: [agy.md](agy.md),
+[opencode.md](opencode.md), [copilot.md](copilot.md), [codex.md](codex.md).
 
 ## Ask first
 
@@ -56,7 +56,7 @@ Example: [task.example.json](task.example.json).
 | `gate.format` | the formatter; `{files}` becomes the changed in-scope files |
 | `gate.checks` | lint, typecheck, narrow tests; all must exit 0 |
 | `side_effects` | globs tools rewrite on their own (`nx.json`); tolerated, listed |
-| `backend`, `model` | `agy` (default), `opencode`, `copilot`; models in each backend's file |
+| `backend`, `model`, `effort` | `agy` (default), `opencode`, `copilot`, `codex`; models in each backend's file; `effort` for codex |
 | `timeout`, `gate_timeout`, `max_gate_attempts` | defaults `30m`, 900 s per command, 5 |
 | `allow_paths`, `deny_commands`, `secret_globs` | extra readable paths, extra denied command regexes, secret file names (default covers `.env*`, `.dev.vars`, `*.pem`, `*.key`, `id_rsa*`; `[]` disables) |
 
