@@ -1,6 +1,6 @@
 ---
 name: crew
-description: Uses another vendor's agent CLI as an isolated subagent to spend spare quota there — agy (Gemini), opencode (free Zen models), Codex, Grok, Hermes, Copilot, Cursor, Muse, Kimi, or Claude Code when the host is not Claude. Covers a read-only question or multi-turn conversation (ask), a second opinion on a diff (review), and one bounded coding slice under guard hooks and a mechanical gate (delegate), each returning a JSON verdict. Use when the user wants another vendor's model to answer, review or do part of the work, wants to offload a slice, or names one of these CLIs as a worker. Not for the host's own models: its native subagents serve those.
+description: Uses another vendor's agent CLI as an isolated subagent to spend spare quota there — agy (Gemini), opencode (free Zen models), Codex, Grok, Hermes, Copilot, Cursor, Muse, Kimi, or Claude Code when the host is not Claude. Covers a read-only question or multi-turn conversation (ask), a second opinion on a diff (review), and one bounded coding slice under guard hooks and a mechanical gate (delegate), each returning a JSON verdict. Use when the user wants another vendor's model to answer, review or do part of the work, wants to offload a slice, or names one of these CLIs as a worker. Not for the host's own models, which its native subagents serve.
 ---
 
 # crew
