@@ -47,6 +47,12 @@ loaded only because the run sets COPILOT_ALLOW_ALL=true, forward every tool
 call to `hook cp-pre` (same decide_pre) and run the gate on agentStop. The
 shell and subagents are removed from the model (`--excluded-tools bash task`),
 so every command of the gate runs here, never by the worker.
+
+Fourth backend, `"backend": "codex"` (Codex CLI 0.163.0): `codex exec` in the
+`workspace-write` OS sandbox, with SessionStart, PreToolUse and Stop hooks passed
+as `-c hooks.<Event>=...` for the run only (nothing in the tree) and run through
+`--dangerously-bypass-hook-trust`. `hook cx-pre` translates `Bash` and each file
+an `apply_patch` touches into decide_pre's calls; `hook cx-stop` runs the gate.
 """
 
 import argparse
@@ -90,7 +96,9 @@ SECRET_EXCEPTIONS = ("*.example", "*.sample", "*.template")
 # stopped without touching anything the user started.
 RUN_ENV = "CREW_RUN"
 WORKER_ENV = {"NX_DAEMON": "false"}
-BACKENDS = ("agy", "opencode", "copilot")
+BACKENDS = ("agy", "opencode", "copilot", "codex")
+# review keeps crew's guard hooks on these; every other backend reviews through ask.
+REVIEW_GUARDED = ("agy", "opencode", "copilot")
 OPENCODE_DEFAULT_MODEL = "opencode/minimax-m3.1-flash-free"
 # The only opencode models a run may use (the user's choice, 2026-10-21); the
 # Zen data terms of each are in the opencode skill.
@@ -110,6 +118,13 @@ OPENCODE_CONFIG_FILES = ("opencode.json", "opencode.jsonc")
 # (scratchpad lab, 2026-10-13, n=1 per case), where only `--model auto` is
 # accepted and it routes to gpt-5.6-luna.
 TESTED_COPILOT_VERSION = "1.0.96"
+# Codex: hooks passed as `-c hooks.<Event>=...` for the run only (nothing in the
+# tree), `--dangerously-bypass-hook-trust` because they are new every run, and
+# the OS sandbox (`-s workspace-write`, no network) under them.
+TESTED_CODEX_VERSION = "0.163.0"
+CODEX_DEFAULT_MODEL = "gpt-6-luna"
+CODEX_REPORT_ASKS = 2
+CX_INERT_TOOLS = {"update_plan", "view_image"}
 COPILOT_DEFAULT_MODEL = "auto"
 COPILOT_HOOK_DIR = ".github/hooks"
 COPILOT_HOOK_PREFIX = "crew-"
@@ -443,6 +458,9 @@ def normalize_task(task: dict) -> dict:
     elif backend == "opencode" and isinstance(scope, list) and any(
             in_globs(f, scope) for f in OPENCODE_CONFIG_FILES):
         errs.append("scope covers opencode.json(c), which the driver restores after every opencode run")
+    effort = task.get("effort")
+    if effort is not None and effort not in ("low", "medium", "high", "xhigh", "max", "ultra"):
+        errs.append(f"effort {effort!r}: one of low, medium, high, xhigh, max, ultra")
     if not isinstance(task.get("disable_claude_code", False), bool):
         errs.append("disable_claude_code must be a boolean")
     if not isinstance(task.get("copilot_model_override", False), bool):
@@ -478,8 +496,9 @@ def normalize_task(task: dict) -> dict:
         "report_schema": schema,
         "backend": backend,
         "disable_claude_code": task.get("disable_claude_code", False),
-        "model": task.get("model", {"opencode": OPENCODE_DEFAULT_MODEL,
-                                    "copilot": COPILOT_DEFAULT_MODEL}.get(backend, DEFAULT_MODEL)),
+        "model": task.get("model", {"opencode": OPENCODE_DEFAULT_MODEL, "copilot": COPILOT_DEFAULT_MODEL,
+                                    "codex": CODEX_DEFAULT_MODEL}.get(backend, DEFAULT_MODEL)),
+        "effort": task.get("effort"),
         "copilot_model_override": task.get("copilot_model_override", False),
         "max_ai_credits": credits,
         "timeout": parse_duration(task.get("timeout", DEFAULT_TIMEOUT)),
@@ -544,10 +563,10 @@ def compose_prompt(task: dict, repo: str) -> str:
 def report_rule(task: dict) -> str:
     """opencode has no --json-schema: the report is the last JSON object in
     the final message, and the driver asks again if it is missing."""
-    if task.get("backend") not in ("opencode", "copilot"):
+    if task.get("backend") not in ("opencode", "copilot", "codex"):
         return ""
     again = (" Every final message, including the one after gate feedback, must end with it."
-             if task.get("backend") == "copilot" else "")
+             if task.get("backend") in ("copilot", "codex") else "")
     return ("- End your final message with the report as ONE JSON object (no prose after it) matching "
             f"this JSON schema: {json.dumps(task['report_schema'], separators=(',', ':'))}.{again}\n")
 
@@ -802,6 +821,76 @@ def decide_cp(payload: dict, ctx: dict) -> dict:
         if out["decision"] != "allow":
             return out
     return {"decision": "allow"}
+
+
+def cx_calls(tool: str, inp) -> list:
+    """A Codex tool call as agy-shaped payloads for decide_pre. The shell is
+    `Bash` with `command`; file edits are `apply_patch` (matched as Edit/Write
+    too) with the patch text in `command`, one payload per file it touches."""
+    if tool in CX_INERT_TOOLS:
+        return []
+    inp = inp if isinstance(inp, dict) else {}
+    if tool == "Bash":
+        return [{"toolCall": {"name": "run_command",
+                              "args": {"CommandLine": str(inp.get("command", "")), "Cwd": inp.get("workdir") or ""}}}]
+    if tool in ("apply_patch", "Edit", "Write"):
+        targets = PATCH_TARGET.findall(str(inp.get("command", "")))
+        return ([{"toolCall": {"name": "write_to_file", "args": {"TargetFile": t}}} for t in targets]
+                or [{"toolCall": {"name": "apply_patch", "args": {}}}])
+    return [{"toolCall": {"name": tool, "args": {}}}]
+
+
+def decide_cx(payload: dict, ctx: dict) -> dict:
+    tool = str(payload.get("tool_name", ""))
+    if tool.startswith("mcp__"):
+        return deny(f"Tool {tool} blocked: no MCP tools in a crew run.")
+    for call in cx_calls(tool, payload.get("tool_input")):
+        out = decide_pre(call, ctx)
+        if out["decision"] != "allow":
+            return out
+    return {"decision": "allow"}
+
+
+def cx_stop(rundir: str, ctx: dict, payload: dict) -> dict:
+    """Codex `Stop`: the gate, then the report in `last_assistant_message`.
+    A block continues the turn with the reason as the next prompt."""
+    if ctx.get("mode") != "delegate":
+        return {"decision": "allow"}
+    passed, text, n = gate_cached(rundir, ctx, "Stop")
+    if not passed:
+        if n >= ctx["max_gate_attempts"]:
+            return {"decision": "allow"}
+        return {"decision": "block", "reason":
+                f"The gate FAILED (attempt {n} of {ctx['max_gate_attempts']}); the task is not done. Fix the "
+                "real cause, without disabling tests, without forbidden shortcuts and without leaving the "
+                "allowed files. End your final message with the JSON report. Gate output:\n" + tail(text)}
+    final = payload.get("last_assistant_message")
+    problems = report_problems(extract_report(final), ctx.get("report_schema") or DEFAULT_REPORT_SCHEMA)
+    if not problems:
+        return {"decision": "allow"}
+    asks_path = os.path.join(rundir, "report-asks.json")
+    asks = read_json(asks_path, {"n": 0})
+    if asks["n"] >= CODEX_REPORT_ASKS:
+        return {"decision": "allow"}
+    asks["n"] += 1
+    write_json(asks_path, asks)
+    return {"decision": "block", "reason":
+            "The gate passed. Now end your final message with the report as ONE JSON object matching the "
+            f"schema given before ({'; '.join(problems)}). Do not change any file."}
+
+
+def cx_hook_output(event: str, out: dict) -> str:
+    """Codex's contract (Claude's shape): a PreToolUse deny is hookSpecificOutput
+    with permissionDecision; Stop blocks with decision/reason; allow prints nothing."""
+    if event == "cx-pre":
+        if out.get("decision") == "allow":
+            return ""
+        return json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                                  "permissionDecisionReason": out.get("reason") or "denied"}},
+                          ensure_ascii=False)
+    if event == "cx-stop" and out.get("decision") == "block":
+        return json.dumps({"decision": "block", "reason": out.get("reason", "")}, ensure_ascii=False)
+    return ""
 
 
 def decide_oc(payload: dict, ctx: dict) -> dict:
@@ -1071,6 +1160,22 @@ def hook_main(event: str, rundir: str) -> int:
                                   for k, v in args.items() if k not in ("file_text", "old_str", "new_str")}
                                  if isinstance(args, dict) else str(args)[:300])
             append_jsonl(log, entry)
+        elif event == "cx-start":
+            append_jsonl(log, {"event": "session_start", "model": payload.get("model"),
+                               "conversation": payload.get("session_id")})
+            out = {"decision": "allow"}
+        elif event == "cx-pre":
+            out = decide_cx(payload, ctx)
+            entry = {"event": "pre", "tool": payload.get("tool_name"), "decision": out["decision"]}
+            if out["decision"] != "allow":
+                entry["reason"] = out.get("reason", "")[:300]
+                entry["args"] = {"command": str((payload.get("tool_input") or {}).get("command", ""))[:300]}
+            append_jsonl(log, entry)
+        elif event == "cx-stop":
+            out = cx_stop(rundir, ctx, payload)
+            append_jsonl(log, {"event": "stop", "reason": "Stop",
+                               "stop_hook_active": payload.get("stop_hook_active"),
+                               "decision": out["decision"]})
         elif event == "cp-stop":
             out = cp_stop(rundir, ctx, payload)
             append_jsonl(log, {"event": "stop", "reason": "agentStop",
@@ -1131,9 +1236,12 @@ def hook_main(event: str, rundir: str) -> int:
         except OSError:
             pass
         out = ({"decision": "deny", "reason": f"internal guard failure ({exc!r}); call denied for safety"}
-               if event in ("pre", "oc-pre", "cp-pre") else {"decision": "stop"} if event == "stop"
+               if event in ("pre", "oc-pre", "cp-pre", "cx-pre") else {"decision": "stop"} if event == "stop"
                else {"decision": "allow"} if event == "cp-stop" else {})
-    print(cp_hook_output(event, out) if event in ("cp-pre", "cp-stop") else json.dumps(out, ensure_ascii=False))
+    if event.startswith("cx-"):
+        print(cx_hook_output(event, out))
+    else:
+        print(cp_hook_output(event, out) if event in ("cp-pre", "cp-stop") else json.dumps(out, ensure_ascii=False))
     return 0
 
 
@@ -2118,6 +2226,67 @@ def run_copilot(cp: str, prompt: str, model: str, repo: str, rundir: str, ctx: d
 # subcommands
 # --------------------------------------------------------------------------
 
+def preflight_codex() -> tuple:
+    cx = shutil.which("codex")
+    if not cx:
+        raise Refusal("codex not found on PATH")
+    warns = []
+    try:
+        ver = subprocess.run([cx, "--version"], capture_output=True, text=True, timeout=30).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        ver = ""
+    if TESTED_CODEX_VERSION not in ver:
+        warns.append(f"codex {ver!r}: tested on {TESTED_CODEX_VERSION}")
+    return cx, warns
+
+
+def codex_hooks_args(rundir: str, gate_budget_s: int) -> list:
+    """`-c hooks.<Event>=[...]` for SessionStart, PreToolUse and Stop, each running
+    `crew.py hook cx-*` on this run dir. Stop's timeout covers a full gate."""
+    me = os.path.realpath(__file__)
+    out = []
+    for event, name, timeout in (("SessionStart", "cx-start", 30), ("PreToolUse", "cx-pre", 60),
+                                 ("Stop", "cx-stop", gate_budget_s)):
+        cmd = f"{shlex.quote(sys.executable)} {shlex.quote(me)} hook {name} --state {shlex.quote(rundir)}"
+        out += ["-c", f'hooks.{event}=[{{matcher="",hooks=[{{type="command",command={json.dumps(cmd)},'
+                      f'timeout={timeout}}}]}}]']
+    return out
+
+
+def codex_cmd(cx: str, prompt: str, task: dict, rundir: str, ctx: dict) -> list:
+    n_cmds = len(ctx["gate"]["format"]) + len(ctx["gate"]["checks"]) + 1
+    cmd = [cx, "exec", "--json", "--skip-git-repo-check", "--dangerously-bypass-hook-trust",
+           "-s", "workspace-write", "-c", 'approval_policy="never"', "-m", task["model"]]
+    if task.get("effort"):
+        cmd += ["-c", f'model_reasoning_effort="{task["effort"]}"']
+    return cmd + codex_hooks_args(rundir, ctx["gate_timeout"] * n_cmds + 60) + [prompt]
+
+
+def evaluate_cx(rc, stdout: str, stderr: str):
+    """Codex JSONL: the thread id, the last agent message, usage, and whether the
+    turn completed. Exit 0 alone proves nothing."""
+    fails, text, thread, usage, completed = [], None, None, None, False
+    for line in stdout.splitlines():
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        t = ev.get("type") if isinstance(ev, dict) else None
+        if t == "thread.started":
+            thread = ev.get("thread_id")
+        elif t == "item.completed" and (ev.get("item") or {}).get("type") in (None, "agent_message"):
+            text = (ev.get("item") or {}).get("text") or text
+        elif t == "turn.completed":
+            completed, usage = True, ev.get("usage")
+        elif t in ("error", "turn.failed"):
+            fails.append(f"codex {t}: {json.dumps(ev)[:300]}")
+    if rc not in (0,):
+        fails.append(f"codex exited {rc}: {tail(stderr, 300).strip()}")
+    if not completed:
+        fails.append("codex never completed its turn (no turn.completed event)")
+    return fails, {"text": text, "thread_id": thread, "usage": usage}
+
+
 def base_ctx(repo, task, mode):
     return {
         "mode": mode, "repo": repo, "scope": task["scope"], "side_effects": task["side_effects"],
@@ -2135,6 +2304,7 @@ def cmd_delegate(a) -> int:
     task = load_task(a.task, backend=a.backend, model=a.model)
     opencode = task["backend"] == "opencode"
     copilot = task["backend"] == "copilot"
+    codex = task["backend"] == "codex"
     repo = repo_root(a.repo or os.getcwd())
     git(repo, "rev-parse", "--verify", "HEAD")
     other_cp_hooks = refuse_cp_leftovers(repo) if copilot else []
@@ -2158,6 +2328,8 @@ def cmd_delegate(a) -> int:
         if other_cp_hooks:
             pre_warns.append(f"the repo's own hooks in {COPILOT_HOOK_DIR}/ load together with the run's, "
                              f"with the same trust (COPILOT_ALLOW_ALL=true): {other_cp_hooks}")
+    elif codex:
+        cx, pre_warns = preflight_codex()
     else:
         pre_warns = preflight_agy(task["model"], task["min_quota"], not a.no_quota_probe, rundir)
     ctx = base_ctx(repo, task, "delegate")
@@ -2165,6 +2337,8 @@ def cmd_delegate(a) -> int:
     if copilot:
         ctx.update(ignore_paths=[cp_hook_rel(ctx["run_id"])], report_schema=task["report_schema"],
                    events_file=os.path.join(rundir, "copilot.stdout"))
+    if codex:
+        ctx["report_schema"] = task["report_schema"]
     write_json(os.path.join(rundir, "ctx.json"), ctx)
     write_json(os.path.join(rundir, "task.json"), task)
     schema_path = os.path.join(rundir, "report.schema.json")
@@ -2193,6 +2367,17 @@ def cmd_delegate(a) -> int:
         if usage is None:
             warns.append("copilot usage.json missing or unreadable: credits spent unknown")
         run_info = {"rc": rc, "wall_seconds": round(time.time() - started), **info, "usage": usage}
+    elif codex:
+        eprint(f"crew: codex running ({task['model']}, workspace-write sandbox, timeout {task['timeout']}s)…")
+        rc, stdout, stderr = run_agy(codex_cmd(cx, prompt, task, rundir, ctx), repo, rundir, task["timeout"],
+                                     name="codex", env={**os.environ, **WORKER_ENV, RUN_ENV: ctx["run_id"]})
+        fails, info = evaluate_cx(rc, stdout, stderr)
+        report = extract_report(info.pop("text"))
+        fails += report_problems(report, task["report_schema"])
+        if isinstance(report, dict) and report.get("status") in ("partial", "blocked"):
+            fails.append(f"the worker declared itself {report['status']!r}")
+        warns = []
+        run_info = {"rc": rc, "wall_seconds": round(time.time() - started), **info}
     else:
         cmd = ["agy", "-p", prompt, "--model", task["model"], "--output-format", "json",
                "--json-schema", schema_path, "--print-timeout", f"{task['timeout']}s",
@@ -2359,7 +2544,7 @@ def cmd_review(a) -> int:
         schema = read_json(a.schema)
         if not (isinstance(schema, dict) and schema.get("type") == "object"):
             raise Refusal(f"{a.schema}: schema needs a root of type=object")
-    if a.backend not in BACKENDS:
+    if a.backend not in REVIEW_GUARDED:
         return review_via_ask(a, repo, question, schema)
     opencode, copilot = a.backend == "opencode", a.backend == "copilot"
     model = a.model or {"opencode": OPENCODE_DEFAULT_MODEL, "copilot": COPILOT_DEFAULT_MODEL}.get(
@@ -2745,7 +2930,7 @@ def self_test() -> int:
                                 "gate": {"checks": ["true"]}})
         check(otask["model"] == OPENCODE_DEFAULT_MODEL and not otask["disable_claude_code"],
               "opencode: default model and CLAUDE.md loaded")
-        for bad, why in ((dict(prompt="x", scope=["a"], gate={"checks": ["t"]}, backend="codex"), "backend"),
+        for bad, why in ((dict(prompt="x", scope=["a"], gate={"checks": ["t"]}, backend="grok"), "backend"),
                          (dict(prompt="x", scope=["*"], gate={"checks": ["t"]}, backend="opencode"),
                           "scope covers opencode.json"),
                          (dict(prompt="x", scope=["a"], gate={"checks": ["t"]}, disable_claude_code="1"),
@@ -2824,6 +3009,45 @@ def self_test() -> int:
               and "ONE JSON object" in cprompt and "after gate feedback" in cprompt,
               "copilot prompt: no shell, automatic gate, report in every final message")
         check("Run the format and check commands yourself" in compose_prompt(task, repo), "agy prompt untouched")
+        # codex: tool translation, decisions, stop gate, hook output, inline-hook TOML
+        xtask = normalize_task({"prompt": "x", "scope": ["src/*"], "backend": "codex", "effort": "low",
+                                "gate": {"checks": ["true"]}})
+        check(xtask["model"] == CODEX_DEFAULT_MODEL and xtask["effort"] == "low", "codex task defaults")
+        check("ONE JSON object" in compose_prompt(xtask, repo), "codex prompt asks for the report")
+        xctx = base_ctx(repo, xtask, "delegate")
+        cx = lambda tool, inp: decide_cx({"tool_name": tool, "tool_input": inp}, xctx)["decision"]  # noqa: E731
+        patch = lambda op, f: f"*** Begin Patch\n*** {op} File: {f}\n+x\n*** End Patch"  # noqa: E731
+        for tool, inp, want, why in (
+                ("Bash", {"command": "ls src"}, "allow", "read-only shell in the repo"),
+                ("Bash", {"command": "printf hi > src/a.txt"}, "deny", "shell redirect"),
+                ("Bash", {"command": "cat /etc/passwd"}, "deny", "shell read outside the repo"),
+                ("Bash", {"command": "git commit -am x"}, "deny", "git write"),
+                ("apply_patch", {"command": patch("Add", "src/new.txt")}, "allow", "patch in scope"),
+                ("apply_patch", {"command": patch("Update", "README.md")}, "deny", "patch out of scope"),
+                ("apply_patch", {"command": patch("Add", ".env")}, "deny", "patch on a secret"),
+                ("apply_patch", {"command": "garbage"}, "deny", "unparsed patch"),
+                ("mcp__fs__read", {}, "deny", "MCP tool"),
+                ("update_plan", {"plan": []}, "allow", "inert tool")):
+            check(cx(tool, inp) == want, f"codex {why}: expected {want}")
+        check(cx_hook_output("cx-pre", {"decision": "allow"}) == "", "codex allow prints nothing")
+        dj = json.loads(cx_hook_output("cx-pre", {"decision": "deny", "reason": "r"}))
+        check(dj["hookSpecificOutput"]["permissionDecision"] == "deny", "codex deny shape")
+        check(json.loads(cx_hook_output("cx-stop", {"decision": "block", "reason": "go"}))["decision"] == "block",
+              "codex stop block shape")
+        import tomllib
+        hargs = codex_hooks_args("/tmp/run dir", 900)
+        parsed = [tomllib.loads(hargs[i + 1]) for i in range(0, len(hargs), 2)]
+        check(sorted(k for d in parsed for k in d["hooks"]) == ["PreToolUse", "SessionStart", "Stop"]
+              and parsed[2]["hooks"]["Stop"][0]["hooks"][0]["timeout"] == 900
+              and "cx-stop" in parsed[2]["hooks"]["Stop"][0]["hooks"][0]["command"], "codex -c hooks are TOML")
+        xcmd = codex_cmd("codex", "P", xtask, "/tmp/r", xctx)
+        check("--dangerously-bypass-hook-trust" in xcmd and xcmd[xcmd.index("-s") + 1] == "workspace-write"
+              and 'model_reasoning_effort="low"' in xcmd and xcmd[-1] == "P", "codex command")
+        f_ok, info = evaluate_cx(0, '{"type":"thread.started","thread_id":"t"}\n'
+                                    '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}\n'
+                                    '{"type":"turn.completed","usage":{}}', "")
+        check(not f_ok and info["text"] == "done" and info["thread_id"] == "t", "codex evaluation")
+        check(evaluate_cx(0, '{"type":"thread.started","thread_id":"t"}', "")[0], "codex cut turn fails")
         cctx = base_ctx(repo, ctask, "delegate")
         cp = lambda tool, args: decide_cp({"toolName": tool, "toolArgs": args}, cctx)["decision"]  # noqa: E731
         for tool, args, want, why in (
@@ -3474,7 +3698,8 @@ def main(argv=None) -> int:
                    help="allow a backend from the host's own vendor")
     sub.add_parser("backends", help="list backends, tiers, binaries and test status")
     h = sub.add_parser("hook", help="agy hook handler (installed per run)")
-    h.add_argument("event", choices=["pre", "stop", "start", "oc-pre", "cp-pre", "cp-stop"])
+    h.add_argument("event", choices=["pre", "stop", "start", "oc-pre", "cp-pre", "cp-stop",
+                                     "cx-start", "cx-pre", "cx-stop"])
     h.add_argument("--state", required=True)
     a = p.parse_args(argv)
     if a.cmd == "hook":
