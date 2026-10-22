@@ -1,12 +1,7 @@
----
-name: agy
-description: Specifics of crew's default backend, agy (Antigravity CLI, Gemini) — run flags, default model gemini-3.8-flash-high, escalation to gemini-4-argon-medium then claude-sonnet-5-5-medium, never Opus, the quota preflight, workspace hooks in .agents/hooks.json, and the background commands agy waits on. Use when delegating a slice or asking for a review through agy.
----
-
 # crew through agy
 
-Read the `delegate` skill first. Commands below run from the `delegate`
-skill's directory.
+Read [delegate.md](delegate.md) first. Commands run from the crew skill's
+directory (the one holding `SKILL.md`).
 
 ## The run
 

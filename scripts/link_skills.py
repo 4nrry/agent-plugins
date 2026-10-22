@@ -25,7 +25,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-GLOBAL = ["agent-fleet", "agents-md", "extension-audit", "game-facts", "homelab"]
+GLOBAL = ["agent-fleet", "agents-md", "crew", "extension-audit", "game-facts", "homelab"]
 
 HOME = Path.home()
 # ~/.agents/skills: Grok, Cursor, Kimi Code, ZCode, opencode, and Hermes through
