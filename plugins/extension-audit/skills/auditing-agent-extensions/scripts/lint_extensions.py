@@ -76,6 +76,24 @@ def parse_frontmatter(text):
     return fields, text[m.end():], m.group(0).count("\n") + 1
 
 
+def unsafe_scalars(text):
+    """Frontmatter keys whose plain (unquoted) value strict YAML parsers reject:
+    ': ' inside it, ' #' (starts a comment) or a trailing ':'. Claude Code reads
+    these leniently; Copilot CLI drops the whole skill without a message."""
+    m = FRONTMATTER.match(text)
+    bad = []
+    for raw in (m.group(1).splitlines() if m else []):
+        km = re.match(r"^([A-Za-z_][\w-]*):[ \t]+(\S.*)$", raw)
+        if not km:
+            continue
+        val = km.group(2).rstrip()
+        if val[0] in "'\"[{>|&*!%@`":
+            continue
+        if ": " in val or " #" in val or val.endswith(":"):
+            bad.append(km.group(1))
+    return bad
+
+
 def prose(text):
     return CODE_FENCE.sub("", text)
 
@@ -103,6 +121,11 @@ def check_skill(skill_md):
     fields, body, off = parse_frontmatter(text)
     if fields is None:
         return [finding("error", skill_md, 1, "frontmatter", "no YAML frontmatter on the first line")]
+
+    for key in unsafe_scalars(text):
+        out.append(finding("error", skill_md, 1, "yaml",
+                           f"{key}: unquoted value with ': ', ' #' or a trailing ':' is invalid YAML; "
+                           "quote it or reword (strict parsers such as Copilot CLI drop the skill)"))
 
     name = fields.get("name", "")
     if not name:
@@ -254,6 +277,19 @@ def self_test():
                      ("warn", "backslash-path"), ("error", "link"), ("error", "body-length")]:
             if want not in rules:
                 fails.append(f"missed {want}")
+
+        colon = t / "colon-skill"
+        colon.mkdir()
+        (colon / "SKILL.md").write_text(
+            "---\nname: colon-skill\ndescription: Does a thing. Not for others: they have their own.\n---\n# C\n",
+            encoding="utf-8")
+        if ("error", "yaml") not in {(f["level"], f["rule"]) for f in lint([colon])}:
+            fails.append("missed unquoted ': ' in a description")
+        (colon / "SKILL.md").write_text(
+            "---\nname: colon-skill\ndescription: \"Does a thing. Not for others: they have their own.\"\n---\n# C\n",
+            encoding="utf-8")
+        if any(f["rule"] == "yaml" for f in lint([colon])):
+            fails.append("flagged a quoted ': '")
 
         pt = t / "pt-skill"
         pt.mkdir()

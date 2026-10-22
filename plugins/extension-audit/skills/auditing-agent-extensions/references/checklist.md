@@ -17,6 +17,7 @@ disagree, the source wins.
 - [lint] `name`: ≤64 chars, lowercase letters, digits and hyphens, no "anthropic" or "claude", matches the directory.
 - [lint] `description`: present, ≤1,024 chars, no XML tags.
 - [lint] Description in third person ("Extracts…", not "I can…" or "You can…").
+- [lint] Frontmatter is valid strict YAML: quote a value that contains `: ` or ` #`. Claude Code reads it anyway; Copilot CLI silently drops the skill.
 - Description says what the skill does *and* when to use it, with the terms a user would type. Key use case first: Claude Code cuts description plus `when_to_use` at 1,536 chars.
 - Name is specific (gerund or noun phrase), consistent with sibling skills; not `helper`, `utils`, `tools`.
 - Outside Claude Code only `name`, `description`, `license`, `compatibility`, `metadata` and `allowed-tools` are accepted; other keys are a hard error on claude.ai and the Skills API.
