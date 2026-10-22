@@ -1,0 +1,116 @@
+# Subagents for coding, research 2026-10-21 — claims
+
+**Research notes, not run records.** Output of one `agent-fleet:deep-research` run (105 agent calls, 9,293,530 tokens, run `wf_181ff291-d5d`) on the question of how many subagents help in coding work. Raw result: `result.json` (`131e5357d6…2a0d`). Claims are as the run's verifiers voted them; nothing here was re-checked by hand.
+
+## Question
+
+How many subagents (parallel or sequential) are actually useful for software-engineering / coding tasks, according to Anthropic's own engineering blog posts, docs and papers (e.g. the multi-agent research system post, Claude Code subagents, agent teams, dynamic workflows) and to recent peer-reviewed or arXiv papers and other frontier labs (OpenAI, Google DeepMind, xAI) as comparison? Cover: (1) measured gains vs a single agent on coding benchmarks or real repos, and where multi-agent hurts (shared-context coding, coordination overhead, conflicting edits); (2) reported or recommended fan-out sizes and diminishing returns (e.g. how many subagents per task, scaling curves); (3) token and cost multipliers of multi-agent vs single-agent runs; (4) which task shapes benefit (breadth search, review, independent modules) vs which do not (tightly coupled edits); (5) concrete caps and defaults in coding harnesses (Claude Code, Codex, Antigravity, Grok Build, Copilot, Cursor) for parallel subagents. Prefer primary sources with numbers; mark vendor claims vs independent measurements.
+
+## Summary
+
+None of the surviving sources gives a measured best number of subagents for coding. The evidence that does exist points one way: multi-agent setups do not beat a single agent on coding, and sometimes do worse. In the most direct coding measurement (arXiv 2512.08296, an independent academic paper), every multi-agent architecture scored below the single agent on SWE-bench Verified, by 2% to 15% relative. On Terminal-Bench the results ranged from +1.7% to -19%. Both tests used only 20-instance subsets. Anthropic says much the same in its own guidance: most coding tasks have fewer truly parallelizable subtasks than research, coordination costs usually exceed the benefits outside three cases (context isolation, parallel work, specialization), and you should start with the simplest approach. The fan-out numbers that do exist come from research tasks, not coding. Anthropic's research system runs 3-5 subagents in parallel, scales from 1 agent to more than 10 for complex research, names spawning 50 subagents for a simple query as a failure mode, and beat a single agent by 90.2% on its internal eval. That gain cost about 15x the tokens of a chat, and Anthropic separately reports multi-agent runs using 3-10x the tokens of a single agent. All of these are vendor figures. In practice, the evidence supports a small fan-out of independent, mostly read-only subtasks (search, review, separate modules) and does not support parallel agents editing tightly coupled code. The only harness cap that survived verification is Grok Build's: 32 concurrent subagents by default, with extra ones queued, read from its source code.
+
+## Confirmed findings
+
+1. **high** — On coding benchmarks, multi-agent architectures do not beat a single agent and often do worse. SWE-bench Verified (GitHub issue resolution, 7 tools; single-agent mean 0.522): Hybrid -2.1%, Centralized -3.1%, Decentralized -5.4%, Independent -14.9%, all relative to the single-agent score. Terminal-Bench (2 tools; single-agent mean 0.344): Independent +1.7%, Centralized -19.2%. The authors attribute part of the drop to strong single-agent baselines (above 45%), which leave little room for coordination to help. A separate Berkeley paper (MAST) opens from the premise that multi-agent gains on popular benchmarks are often minimal.
+
+   Evidence: Independent academic measurement (Kim et al., Google Research / DeepMind / MIT; v3, April 2026; models tested: Sonnet 4/4.5, GPT-5 family, Gemini 2.x). The verifier checked every number against Section 4.2 of the arXiv HTML v3. Both benchmarks use 20-instance subsets with 40 configurations each, so differences of a few percent may be noise, and the main text gives no significance tests. The MAST paper (UC Berkeley, 2025) only states the premise; it does not measure single agent against multi-agent on coding. Both claims passed 3-0.
+
+   Sources: <https://arxiv.org/abs/2512.08296>, <https://arxiv.org/abs/2503.13657>
+
+2. **high** — What decides whether multi-agent helps is the structure of the task, not the number of agents. Across 260 controlled configurations (6 benchmarks, 1 single-agent and 4 multi-agent architectures, 3 LLM families), the change against a single agent ranged from +80.8% on decomposable financial reasoning to -70.0% on sequential planning. Anthropic reaches the same conclusion qualitatively. Multi-agent works best for breadth-first queries that go in independent directions, and fits poorly where all agents must share the same context or depend heavily on each other. Anthropic also says most coding tasks have fewer truly parallelizable subtasks than research.
+
+   Evidence: Two independent primary sources agree: an academic preprint (not peer-reviewed, and not coding-specific in this aggregate) and Anthropic's June 2025 engineering post. The paper's abstract has changed between versions (v1 reported 180 configurations); v3 matches the claim. Anthropic hedges its guidance with the word "today" and gives no coding benchmark to back it.
+
+   Sources: <https://arxiv.org/abs/2512.08296>, <https://www.anthropic.com/engineering/multi-agent-research-system>
+
+3. **medium** — Anthropic's guidance (January 2026) is that outside three cases (context isolation for subtasks that generate a lot of context, tasks that can run in parallel, and specialization), coordination costs typically exceed the benefits. It reports that some teams got equivalent results by improving the prompt of a single agent, and says to start with the simplest approach that works.
+
+   Evidence: This is a single first-party Anthropic blog post (dated 2026-01-23), and the verifier checked it against the page. The point about improved prompting is an anecdote, not a measurement. It agrees with the June 2025 research-system post.
+
+   Sources: <https://www.claude.com/blog/building-multi-agent-systems-when-and-how-to-use-them>
+
+4. **medium** — Recommended fan-out sizes come only from Anthropic's research system, not from coding. The lead agent starts 3-5 subagents in parallel. Effort scales with complexity: simple fact-finding needs 1 agent and 3-10 tool calls, direct comparisons 2-4 subagents with 10-15 calls each, and complex research more than 10 subagents with clearly divided responsibilities. Spawning 50 subagents for a simple query is named as an early failure mode.
+
+   Evidence: This is a single primary vendor source, and the verifier checked it word for word. The numbers are prompt heuristics for research tasks (June 2025, Opus 4 / Sonnet 4). They are not measured scaling curves and should not be read as fan-out sizes for coding. No surviving source gives a curve of performance against number of subagents for coding.
+
+   Sources: <https://www.anthropic.com/engineering/multi-agent-research-system>
+
+5. **medium** — Anthropic's multi-agent research system (Opus 4 as lead, Sonnet 4 as subagents) beat a single Claude Opus 4 agent by 90.2% on Anthropic's internal research eval.
+
+   Evidence: Vendor self-report on an unpublished internal eval of research tasks, not coding. The comparison does not hold tokens equal, since the multi-agent system uses far more of them. The verifier found no independent replication.
+
+   Sources: <https://www.anthropic.com/engineering/multi-agent-research-system>
+
+6. **medium** — Token multipliers (all vendor figures). A single agent uses about 4x the tokens of a chat, and a multi-agent system about 15x, which implies roughly 3.75x multi-agent against single agent. Token usage alone explains 80% of the performance variance on BrowseComp. Anthropic's 2026 guidance separately states that multi-agent runs typically use 3-10x more tokens than single-agent runs for equivalent tasks, and that some systems spent more tokens coordinating than executing.
+
+   Evidence: Two Anthropic primary sources are consistent with each other, but both are vendor-only and give no methodology (the 3-10x is attributed only to "our testing"). The 15x and 80% figures come from browsing and research tasks, not coding. The 80% is variance explained, not proof that more tokens cause better results. The one independent token-overhead measurement (2512.08296 Table 5: +58% to +515%, or 1.6x to 6.2x) was refuted 1-2, so no independent coding multiplier survived.
+
+   Sources: <https://www.anthropic.com/engineering/multi-agent-research-system>, <https://www.claude.com/blog/building-multi-agent-systems-when-and-how-to-use-them>
+
+7. **high** — In Grok Build, the default cap on concurrent subagents is 32, not the 8 that launch coverage reported. Subagents beyond the cap are queued, not rejected. The cap can be overridden with GROK_MAX_CONCURRENT_SUBAGENTS, and GROK_SUBAGENT_LIMIT_BEHAVIOR switches between queuing and failing (failing only when an operator opts in). The cap applies per session.
+
+   Evidence: The verifier read the primary source code directly through the GitHub API: xai-org/grok-build, crates/codegen/xai-grok-tools/src/implementations/grok_build/task/admission.rs, which contains `DEFAULT_MAX_CONCURRENT: usize = 32` and `LimitBehavior::Queue` (last commit 2026-08-06). The blog page itself returned HTTP 429. This is a reading of the code, not a vendor claim. The claim that xAI does not document these variables was not verified. Workflows (128 agents by default, ceiling of 1,024) is a separate feature.
+
+   Sources: <https://www.morphllm.com/comparisons/grok-build-vs-claude-code>
+
+8. **low** — A theoretical worst case: a task costing N tokens on Codex CLI could cost up to 8N on Grok Build if all 8 parallel subagents run to completion.
+
+   Evidence: A secondary blog's own linear calculation, not a measurement. It also assumes 8 agents, while the code default is 32. Artificial Analysis shows about 4.5x tokens per task for Grok Build against Codex, but the two used different models, so that figure does not isolate the effect of parallelism.
+
+   Sources: <https://codex.danielvaughan.com/2026/05/16/grok-build-vs-codex-cli-xai-parallel-agents-arena-mode-competitive-analysis/>
+
+## Refuted by the verifiers
+
+- Coordination overhead in token usage relative to a single agent is about +58% for Independent, +263% for Decentralized, +285% for Centralized and +515% for Hybrid (Table 5). Section 4.3 summarizes this as roughly 1.6x to 6.2x the single-agent token budget at matched performance. Success per 1K tokens falls from 67.7 (single-agent) to 13.6 (Hybrid). These are independent measurements in this paper, not vendor claims. (vote 1-2; <https://arxiv.org/abs/2512.08296>)
+- Independent academic measurement (Yin et al., Chinese Academy of Sciences / Northeastern Univ. / USTC; arXiv:2511.00872v1, cs.SE): on SWE-bench Lite program repair (300 issues), single-agent systems beat multi-agent systems on repair effectiveness in all 12 repositories. Values were read through a secondary LLM extraction of the PDF, so the quote is not verified verbatim. (vote 1-2; <https://arxiv.org/pdf/2511.00872>)
+- The paper attributes multi-agent coding overhead to inter-agent coordination: multi-agent setups need nearly twice as many steps as single-agent ones on vulnerability detection and program repair. Also reported: AgentOrchestra's planning agent accounts for about 66-67% of its tokens in all three tasks. Only single-backend runs (DeepSeek-v3.1) were tested, so transfer to other models is untested. (vote 1-2; <https://arxiv.org/pdf/2511.00872>)
+- Multi-agent coding setups fail because sub-agents build separate assumptions, which produces inconsistent reasoning and output. The source does not measure this. (vote 0-3; <https://biweekly-engineering.beehiiv.com/p/the-case-against-multi-agents-biweekly-engineering-episode-42>)
+- The source recommends one main agent that owns the full context and runs tasks sequentially, rather than parallel sub-agents, for coding work. (vote 0-3; <https://biweekly-engineering.beehiiv.com/p/the-case-against-multi-agents-biweekly-engineering-episode-42>)
+- Multi-agent coding systems work only in a narrower form: agents may contribute intelligence, but code writes stay single-threaded (one writer, several readers). (vote 0-3; <https://cognition.ai/blog>)
+- Multi-agent setups use roughly 15x the tokens of a single agent. The page gives no primary source for this figure, so it is unverified here. (vote 0-3; <https://echai.ventures/how-founders-use-ai/ai-agents/should-i-build-one-agent-or-a-team-of-agents-working-together>)
+- Multiple agents working from partial context make conflicting decisions. The page gives no data for this, so it is an unmeasured assertion, relevant to shared-context coding where agents may edit the same code. (vote 0-3; <https://echai.ventures/how-founders-use-ai/ai-agents/should-i-build-one-agent-or-a-team-of-agents-working-together>)
+- Multi-agent systems are worth using only for genuinely parallelizable, read-heavy work such as broad research, not for tightly coupled work. The page presents this as a recommendation without measurements. (vote 0-3; <https://echai.ventures/how-founders-use-ai/ai-agents/should-i-build-one-agent-or-a-team-of-agents-working-together>)
+- Grok Build allows up to eight concurrent sub-agents per session. This is a product specification the page relays secondhand from DevOps.com and does not verify; no default count is stated. (vote 1-2; <https://codex.danielvaughan.com/2026/05/16/grok-build-vs-codex-cli-xai-parallel-agents-arena-mode-competitive-analysis/>)
+- Vendor claim, relayed by a blog: Grok Build supports up to 8 parallel sub-agents, each in its own Git worktree. This is a stated cap, not a measured result, and the page gives no default fan-out. (vote 0-3; <https://www.digitalapplied.com/blog/xai-grok-build-cli-parallel-coding-agents>)
+- Claude Code publishes no cap on parallel subagents. Its subagents are opt-in and off the default path; the primary workflow is sequential, single-agent. Author's reading of Anthropic docs, not a measurement. (vote 0-3; <https://www.morphllm.com/comparisons/grok-build-vs-claude-code>)
+- Token cost of a fanned-out task scales with the number of child sessions, not with the size of the change. Each subagent carries its own context, so 32 children cost more than one agent for the same change. This is the author's reasoning only; the page gives no measured token multiplier for Grok Build or Claude Code. (vote 0-3; <https://www.morphllm.com/comparisons/grok-build-vs-claude-code>)
+- OpenAI Codex subagents are GA and can run up to 8 parallel agents from one task (vendor-stated cap; the page gives no primary citation). (vote 0-3; <https://www.morphllm.com/comparisons/gemini-cli-vs-codex>)
+
+## Caveats
+
+- Most of the specific numbers come from vendors, Anthropic above all, and from research or browsing tasks, not coding. The 90.2% gain, the 3-5 and 10+ fan-out guidance, the 15x and 3-10x token figures, and the advice that coordination usually costs more than it returns are all Anthropic self-reports without published methodology. The only independent coding measurement (arXiv 2512.08296) is a preprint that is not peer-reviewed. Its SWE-bench Verified and Terminal-Bench results use 20-instance subsets with no significance tests in the main text, so the direction (no gain) is more reliable than the exact percentages. Several sources that looked relevant failed verification. Two were independent: the token-overhead table in 2512.08296 (1-2) and the SWE-bench Lite study 2511.00872, where single agents won in all 12 repos (1-2). Cognition's 'single writer' argument was also refuted (0-3), but only because its URL pointed to the blog index page; its substance went unchecked. The following could not be confirmed: caps or defaults for parallel subagents in Claude Code, Codex (the claimed 8 was refuted), Antigravity, Copilot and Cursor, and any material from OpenAI, Google DeepMind or xAI on how many subagents to use. Section (5) of the question is therefore mostly unanswered beyond Grok Build. Dates matter: the Anthropic research post is from June 2025 (Opus 4 era), and its guidance on agent teams and dynamic workflows may have changed since. The Grok Build cap is current only as of the 2026-08-06 commit. The advice to use a small fan-out of read-only subagents and keep a single writer is an inference from the findings, not something any surviving source measured.
+
+## Open questions
+
+- Is there a measured curve of coding success rate and cost against the number of subagents (for example 1, 2, 4, 8, 16) on SWE-bench Verified or real repositories, with tokens held equal?
+- What caps and defaults for parallel subagents do current docs or source code set for Claude Code (subagents and agent teams), Codex, Antigravity, Copilot and Cursor?
+- Does a split of read-only parallel subagents (search, review) with a single writing agent measurably beat a single agent on coding, and at what token multiplier?
+- Have Anthropic's 2026 agent-teams or dynamic-workflow materials published coding-specific numbers that update the June 2025 guidance that coding has fewer truly parallelizable subtasks?
+
+## Sources
+
+| Source | Quality | Angle | Claims |
+|---|---|---|---|
+| <https://www.anthropic.com/engineering/multi-agent-research-system> | primary | Anthropic primary sources | 5 |
+| <https://www.claude.com/blog/building-multi-agent-systems-when-and-how-to-use-them> | blog | Anthropic primary sources | 5 |
+| <https://arxiv.org/abs/2512.08296> | primary | Academic scaling and failure analysis | 5 |
+| <https://arxiv.org/abs/2503.13657> | primary | Academic scaling and failure analysis | 5 |
+| <https://cognition.ai/blog> | blog | Contrarian: when multi-agent hurts coding | 3 |
+| <https://biweekly-engineering.beehiiv.com/p/the-case-against-multi-agents-biweekly-engineering-episode-42> | secondary | Contrarian: when multi-agent hurts coding | 4 |
+| <https://echai.ventures/how-founders-use-ai/ai-agents/should-i-build-one-agent-or-a-team-of-agents-working-together> | blog | Contrarian: when multi-agent hurts coding | 5 |
+| <https://codex.danielvaughan.com/2026/05/16/grok-build-vs-codex-cli-xai-parallel-agents-arena-mode-competitive-analysis/> | blog | Other frontier labs comparison | 4 |
+| <https://www.digitalapplied.com/blog/xai-grok-build-cli-parallel-coding-agents> | blog | Other frontier labs comparison | 4 |
+| <https://www.morphllm.com/comparisons/grok-build-vs-claude-code> | blog | Other frontier labs comparison | 5 |
+| <https://www.morphllm.com/comparisons/gemini-cli-vs-codex> | blog | Other frontier labs comparison | 3 |
+| <https://ssojet.com/blog/parallel-sub-agent-coding-tools> | blog | Other frontier labs comparison | 4 |
+| <https://claudeissues.com/issue/15487-feature-add-maxparallelagents-configuration-setting> | forum | Harness caps and defaults | 5 |
+| <https://aident.ai/blog/stop-claude-code-subagents-burning-tokens> | blog | Harness caps and defaults | 5 |
+| <https://dev.to/onlineeric/claude-code-sub-agents-burn-out-your-tokens-4cd8> | blog | Harness caps and defaults | 4 |
+| <https://www.mindstudio.ai/blog/claude-code-dynamic-workflows-parallel-sub-agents> | blog | Harness caps and defaults | 5 |
+| <https://crystl.dev/guides/claude-code-agents/> | blog | Harness caps and defaults | 4 |
+| <https://arxiv.org/pdf/2511.00872> | primary | Cost and task-shape tradeoffs | 4 |
+| <https://alexcloudstar.com/blog/multi-agent-vs-single-agent-architecture-2026/> | blog | Cost and task-shape tradeoffs | 5 |
+| <https://vibecoding.app/blog/multi-agent-vs-single-agent-coding> | blog | Cost and task-shape tradeoffs | 5 |
+| <https://www.codebridge.tech/articles/single-agent-vs-multi-agent-architecture-what-changes-in-reliability-cost-and-debuggability> | blog | Cost and task-shape tradeoffs | 5 |
+| <https://www.capgemini.com/?p=1062272> | blog | Cost and task-shape tradeoffs | 4 |

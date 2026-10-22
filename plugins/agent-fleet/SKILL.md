@@ -65,8 +65,10 @@ maps them per harness.
 - Read the match ratio, not pass/fail. About half or less means written from
   memory. Above a sentence the ratio means presence, not support: check where a
   short quote landed, unless it is a distinctive identifier.
-- An unreachable page is neither pass nor fail. Try an archive mirror; keep a
-  per-project list of hosts that refuse scripts.
+- An unreachable page is neither pass nor fail. Open it in the harness's
+  built-in browser if it has one (it renders scripts and carries the user's
+  session), or try an archive mirror; keep a per-project list of hosts that
+  refuse scripts.
 - Verify verdicts in both directions: the breadth tier under-marks uncertainty,
   an adversarial pass over-marks caveats. A contester's caveat is a claim to
   check, not a correction to accept.

@@ -1,0 +1,106 @@
+# Skills and prompting research, 2026-10-21 — claims
+
+**Research notes, not run records.** Output of one `agent-fleet:deep-research` run (105 agent calls, 9,961,445 tokens, run `wf_0ba10704-9cd`), kept so the sources behind `plugins/extension-audit/skills/auditing-agent-extensions/references/checklist.md` survive the session. Raw result: `result.json` (`3b7c998a5a…06ca`). Claims are as the run's verifiers voted them; nothing here was re-checked by hand.
+
+## Question
+
+What is the current (late 2026) state of the art, per official vendor documentation and peer-reviewed or arXiv papers, for (a) prompt engineering for frontier LLMs and coding agents — with Anthropic's docs as the primary reference and OpenAI, Google (Gemini) and xAI (Grok) prompting guides as comparison: structure, XML/markdown sectioning, examples, role prompting, long-context placement, chain-of-thought vs extended thinking/reasoning effort, prompt caching, tool descriptions, agentic system prompts, evaluation-driven prompt iteration; and (b) authoring agent extensions: Agent Skills (agentskills.io SKILL.md standard and Anthropic's skill authoring best practices: progressive disclosure, description writing, conciseness, scripts, evals), Claude Code plugins (manifest, marketplaces, validation, plugin evals), and hooks (event design, deterministic guards vs prompt rules, failure modes, security). Suggested angles: 1) Anthropic prompt-engineering and context-engineering docs and engineering blog posts; 2) OpenAI, Google Gemini and xAI official prompting guides for their latest models; 3) recent papers on prompt sensitivity, instruction following, long-context and agent prompting; 4) Agent Skills standard and Anthropic/Claude Code skill and plugin authoring guidance; 5) hooks and guardrail design for coding agents across Claude Code, Codex, Gemini CLI/Antigravity, Grok Build and Hermes. Output should support building a reusable audit checklist for a repository of skills, plugins and hooks.
+
+## Summary
+
+For prompt engineering, Anthropic's current documentation (which lists models up to Fable 5.1, Opus 5.5 and Sonnet 5.5) gives four main recommendations. Wrap each kind of content in its own XML tag. Give 3-5 examples inside <example> tags. Put long inputs (20k+ tokens) above the query and instructions. On Claude 4.6 and later, use adaptive thinking with the effort parameter instead of manual budget_tokens, which returns a 400 error on 4.7 and later. Anthropic's context-engineering guidance treats context as a scarce budget: use the smallest set of high-signal tokens, and prefer loading data just in time from lightweight references. Recent preprints back two rules for an audit checklist. First, piling up instructions and constraints measurably hurts performance; instruction-following collapses by about 80 simultaneous rules, and even constraints the model already satisfies lower task scores. Second, format and delimiter choices can swing measured scores a lot, mostly on smaller or older models, so prompt changes should be tested across several prompt variants and not judged on one prompt. For extensions, the documented skill rules are: only name and description load at startup, the body loads when relevant, and the SKILL.md body stays under 500 lines with detail moved to referenced files. For plugins, `claude plugin validate` (with --strict in CI) is the official manifest check, though it does not prove the plugin works. No claim about OpenAI, Gemini or xAI guides, hooks, prompt caching, tool descriptions, or Hermes's multi-CLI approach survived verification, so those parts of the question are still unanswered.
+
+## Confirmed findings
+
+1. **high** — Anthropic's prompt-structure baseline: wrap each type of content (instructions, context, examples, input) in its own XML tag, which reduces misinterpretation of complex or mixed-content prompts. Use 3-5 few-shot examples wrapped in <example>/<examples> tags to steer format, tone and structure (examples also work with thinking). For inputs of 20k+ tokens, put the long documents near the top, above the query, instructions and examples. Anthropic says this improves performance across all models, and that putting queries at the end improved quality by up to 30% in its own tests.
+
+   Evidence: 3-0 votes on all three claims. Verifiers read the live page (current to Fable 5.1 / Opus 5.5 / Sonnet 5.5) and found the wording near-verbatim. The XML guidance repeats for multi-document inputs (<document>, <document_content>, <source>). The older multishot and use-xml-tags pages give consistent advice, and no source disputes it. The 30% figure is an in-house vendor test. The 3-5 count is labelled a Tip.
+
+   Sources: <https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices>
+
+2. **high** — Reasoning configuration: on Claude 4.6 and later, Anthropic recommends adaptive thinking (thinking: {type: adaptive}) with the effort parameter. Manual budget_tokens still works on Opus/Sonnet 4.6 but is deprecated, and returns a 400 error on Claude 4.7 and later. Sonnet 5.5 removed manual extended thinking, and Fable/Mythos/Opus 5.5 always use adaptive thinking. For cross-provider harnesses, Inspect (UK AISI) exposes one reasoning_effort option (none, minimal, low, medium, high, xhigh, max) and maps it for each provider: OpenAI, Anthropic, Gemini, Grok and others. On Claude 3.7-4.5, which lack native effort, it converts the level into a thinking-token budget (2,048 to 32,000). The Inspect page covers configuration only and gives no advice on how to write prompts for reasoning models.
+
+   Evidence: 3-0 on all three claims. The 400 error is stated twice on Anthropic's page, including in its migration checklist. It is independently reported in NousResearch/hermes-agent issue #11137 (thinking.type.enabled is not supported for this model). The Inspect page was fetched raw and lists all seven effort levels plus a per-provider table that names GPT-5.6, Claude 5 and Gemini 4. The page has no date stamp. reasoning_tokens is unsupported on Claude 4.7+ and Claude 5.
+
+   Sources: <https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices>, <https://inspect.aisi.org.uk/reasoning.html>
+
+3. **medium** — Context engineering: treat context as a finite resource with diminishing marginal returns, and aim for the smallest set of high-signal tokens that makes the desired outcome likely. Prefer just-in-time retrieval: keep lightweight identifiers (file paths, stored queries, web links) and load data at runtime with tools. Anthropic itself calls a hybrid upfront load acceptable for speed or for static content.
+
+   Evidence: The scarce-budget principle passed 3-0. Independent support comes from Chroma's Context Rot study (July 2025, 18 models, accuracy fell as input grew) and, via secondary summaries, NoLiMa. The just-in-time claim passed 2-1: the post itself says runtime exploration is slower, that agents misuse tools without guidance, and that hybrids may work best. No head-to-head benchmark exists. The source is a first-party engineering blog from 2025-09-29, about 13 months old.
+
+   Sources: <https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents>
+
+4. **medium** — More instructions and constraints measurably degrade performance, so instruction count is an audit item. In one 2026 preprint, the rate of fully correct responses fell to effectively zero by N=80 simultaneous rules for all five models tested (Claude Sonnet 5, Haiku 4.5, Gemini 3.5 Flash, two Qwen models) and all four rendering formats, and stayed at zero through N=160. At N=40, Sonnet 5 was at 0.238 and Haiku at 0.119. The author suggests treating about 40 simultaneous instructions as a point to redesign (split rules across turns, tools or a validation pass) rather than keep tuning. A separate preprint introduces SustainScore: adding a constraint that the model's own successful output already satisfies still lowers task performance. Claude Sonnet 4.5 retained about 85% on one task, and many 32B-72B models retained about 65-82%.
+
+   Evidence: Both claims passed 3-0, and verifiers read the full PDFs: Table 4 values are exact, and the SustainScore body figures are 64.9-82.3%. Both are single-source, non-peer-reviewed preprints. Eliav uses 20 trials per cell, synthetic checkable rules, and Qwen with reasoning off. Its Limitations section says the thresholds do not transfer to other models, and the 40-instruction redesign point is the author's untested inference. The SustainScore paper tests older models (Sonnet 4.5, GPT-4.1-mini, Gemini 2.5 Flash, Grok-4-Fast). Earlier and related work (Jaroslawicz 2025, Harada 2025, and 2026 preprints) reports similar decay.
+
+   Sources: <https://arxiv.org/pdf/2607.19257>, <https://arxiv.org/pdf/2601.22047>
+
+5. **medium** — Prompt format is a measurable variable to test, not a cosmetic choice and not a settled rule. On current frontier models, no rendering format (markdown, plain text, prose, tabular) gave a reliable instruction-following advantage: four of five models showed deltas of 2.1 points or less with no consistent direction, and Qwen 35B was the only model with a consistent preference (plain text). Older and smaller models are much more sensitive. GPT-3.5 varied materially across plain text, Markdown, JSON and YAML templates, while GPT-4 was more robust. Changing only the single few-shot delimiter character moved MMLU accuracy by 18.3-29.4 points (best vs worst of 30 delimiters) on 7-9B open models. Prompt wrappers that differ only in formatting changed scores 30x more on some models than others, mostly through output-compliance and parseability failures.
+
+   Evidence: All claims passed 3-0 except the 30x FSI claim (2-1). The delimiter paper (FAIR/NYU) was read in full, including the appendix Table 5. For the FSI and He et al. papers only the abstracts were checked. The claim that compliance failures explain most of the wrapper effect was refuted 0-3 as a standalone claim, as was the specific GPT-3.5 '40% on code translation' figure, so neither should be cited as a number. The same Eliav paper found format matters a lot for long-context recall (a 48-point spread at 128k tokens) and that formatting costs 22-37% more tokens than plain text. The delimiter paper found that stating the delimiter explicitly improves robustness. Most of the large effects come from small or older models.
+
+   Sources: <https://arxiv.org/pdf/2607.19257>, <https://arxiv.org/pdf/2411.10541>, <https://arxiv.org/pdf/2510.05152>, <https://arxiv.org/abs/2607.09665>
+
+6. **medium** — Evaluation-driven iteration should not rely on a single prompt. Formatting, wrapper or delimiter choices can reorder model rankings: changing one delimiter character could put any of three open models in the lead, and format wrappers can flip leaderboard conclusions. For embedding models, a default prompt can be an outlier that inflates or deflates measured quality, and under adversarial prompt selection every one of six models could be ranked first. A skill or prompt eval should therefore report results across several prompt variants.
+
+   Evidence: All claims passed 3-0. These are primary preprints with small model pools: 3 open models in the delimiter Figure 1, and 6 open embedding models of up to 0.6B parameters, English only. The rank-1 result is an upper bound, and the embedding results do not transfer directly to generative or coding-agent prompts. arXiv 2402.01781 independently reports moves of up to 8 leaderboard positions from answer-ordering changes.
+
+   Sources: <https://arxiv.org/pdf/2510.05152>, <https://arxiv.org/abs/2607.09665>, <https://arxiv.org/html/2605.22544>
+
+7. **high** — Agent Skills use progressive disclosure. At startup only the name and description from each skill's frontmatter are preloaded (about 100 tokens per skill). The SKILL.md body is read only when the skill becomes relevant, and bundled files are read only as needed. Keep the SKILL.md body under 500 lines; the agentskills.io spec also suggests under 5,000 tokens, with file references one level deep. Move longer material into separate referenced files. Claude Code exceptions an audit should cover: the description plus when_to_use text is truncated at 1,536 characters; disable-model-invocation: true removes the description from context; subagents with preloaded skills get the full body at startup; after auto-compaction, the first 5,000 tokens of each recently invoked skill are re-attached, within a combined 25,000-token budget.
+
+   Evidence: Both claims passed 3-0 and were fetched live on 2026-10-21. The rule appears three times on the best-practices page, including its checklist, and the open standard repeats it. The 500-line limit is advisory and unbenchmarked ('for optimal performance'), and the spec puts no format restrictions on the body, so a checklist should treat it as a recommended ceiling plus a token budget rather than a hard rule.
+
+   Sources: <https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices>, <https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview>, <https://code.claude.com/docs/en/skills>, <https://agentskills.io/specification>
+
+8. **medium** — `claude plugin validate` is the official check for a plugin manifest, with three outcomes. 'Validation passed' means it loads. 'Passed with warnings' covers an unknown top-level field, a name that is not kebab-case, or a missing version, description or author; --strict turns these warnings into failures for CI. 'Validation failed' covers type mismatches, paths that are missing or escape the plugin root, and unknown keys in strict objects (userConfig, channels, lspServers, monitors), which stop the plugin from loading. It checks that files are well-formed and does not guarantee the plugin works.
+
+   Evidence: 3-0 vote from a single primary doc page that mentions v2.1.281 and v2.1.288 checks. Anthropic's own pre-submission checklist says validation does not guarantee the plugin works. Unofficial issue reports (claudeissues.com #77912 and #87004, seen only as search summaries) say it passes hook commands that point at missing files and can check zero skills. A related claim, that `name` is the only required plugin.json key and that components are namespaced as plugin:component, was refuted 1-2 and should not go in the checklist as stated.
+
+   Sources: <https://code.claude.com/docs/en/plugins-reference>
+
+## Refuted by the verifiers
+
+- Most of the wrapper-driven variation is explained by compliance failures (outputs that do not follow the requested format), not by reasoning accuracy alone. (vote 0-3; <https://arxiv.org/abs/2607.09665>)
+- On a code translation task, GPT-3.5-turbo's performance varied by up to 40% depending only on the prompt template. This is a concrete, checkable quantitative claim, but it covers one task and one model, and the figure comes from the abstract relay, so it should be checked against the full paper's tables before it is relied on. (vote 0-3; <https://arxiv.org/pdf/2411.10541>)
+- In plugin.json, `name` is the only required key, it must be kebab-case, and Claude Code namespaces every component under it (e.g. agent `reviewer` in plugin `deploy-tools` appears as `deploy-tools:reviewer`). (vote 1-2; <https://code.claude.com/docs/en/plugins-reference>)
+
+## Caveats
+
+- Coverage is uneven against the question. No confirmed claims cover OpenAI, Google Gemini or xAI Grok prompting guides, prompt caching, tool-description writing, agentic system prompts, skill description-writing or evals, plugin marketplaces or plugin evals, hook design or security, or the Hermes plugin/skill multi-CLI approach (the only Hermes mention is an issue about the Opus 4.7 400 error). Treat these as gaps, not as negative findings. The Anthropic findings rest on primary docs that are current as of 2026-10-21, but model-specific behavior (thinking and effort APIs, Claude Code limits such as 1,536 characters and 5,000/25,000 tokens, validator rules) changes with each release and should be rechecked when the checklist is used. All empirical findings come from arXiv preprints, mostly single-author and not peer-reviewed, with small model pools, synthetic tasks and often older or small open models. They support 'measure this' rules, not fixed thresholds; the papers themselves say the thresholds do not transfer. Some verifications covered only abstracts (FSI paper, He et al.). Two quantitative sub-claims (the FSI compliance attribution and GPT-3.5's 40%) were refuted and must not be cited. The context-engineering post is a vendor blog about 13 months old, and the just-in-time retrieval claim passed only 2-1.
+
+## Open questions
+
+- What do the current OpenAI (GPT-5.x), Google Gemini 3/4 and xAI Grok official prompting guides recommend on structure, examples, reasoning effort and agentic prompts, and where do they differ from Anthropic's?
+- What are the documented best practices and failure modes for Claude Code hooks (event choice, exit codes and blocking, deterministic guards vs prompt rules, timeouts, injection risk), and how do the equivalents in Codex, Gemini CLI/Antigravity and Grok Build compare?
+- How does the Hermes (NousResearch) plugin/skill repository handle portability across CLIs, and is it ahead of this repository's approach?
+- What does Anthropic recommend for skill description writing and trigger evaluation, plugin evals, and prompt caching layout, and can those be checked mechanically?
+
+## Sources
+
+| Source | Quality | Angle | Claims |
+|---|---|---|---|
+| <https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices> | primary | Anthropic prompt and context engineering (primary reference) | 5 |
+| <https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents> | primary | Anthropic prompt and context engineering (primary reference) | 5 |
+| <https://www.anthropic.com/engineering/writing-tools-for-agents> | blog | Anthropic prompt and context engineering (primary reference) | 4 |
+| <https://community.openai.com/t/how-to-write-effective-prompts-for-gpt-5/1347538> | forum | OpenAI, Google Gemini and xAI official prompting guides | 4 |
+| <https://vellum.ai/blog/gpt-5-prompting-guide> | blog | OpenAI, Google Gemini and xAI official prompting guides | 5 |
+| <https://inspect.aisi.org.uk/reasoning.html> | primary | OpenAI, Google Gemini and xAI official prompting guides | 5 |
+| <https://pydantic.dev/docs/ai/advanced-features/thinking/index.md> | secondary | OpenAI, Google Gemini and xAI official prompting guides | 4 |
+| <https://docs.orcarouter.ai/advanced/reasoning> | secondary | OpenAI, Google Gemini and xAI official prompting guides | 4 |
+| <https://prompthub.substack.com/p/how-to-actually-use-gpt-5> | blog | OpenAI, Google Gemini and xAI official prompting guides | 5 |
+| <https://arxiv.org/pdf/2607.19257> | primary | Academic evidence on prompt sensitivity and agent prompting | 5 |
+| <https://arxiv.org/abs/2607.09665> | primary | Academic evidence on prompt sensitivity and agent prompting | 4 |
+| <https://arxiv.org/html/2605.22544> | primary | Academic evidence on prompt sensitivity and agent prompting | 5 |
+| <https://arxiv.org/pdf/2601.22047> | primary | Academic evidence on prompt sensitivity and agent prompting | 5 |
+| <https://arxiv.org/pdf/2411.10541> | primary | Academic evidence on prompt sensitivity and agent prompting | 5 |
+| <https://arxiv.org/pdf/2510.05152> | primary | Academic evidence on prompt sensitivity and agent prompting | 5 |
+| <https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices> | primary | Agent Skills standard and Claude Code plugin authoring | 5 |
+| <https://code.claude.com/docs/en/plugins-reference> | primary | Agent Skills standard and Claude Code plugin authoring | 5 |
+| <https://code.claude.com/docs/en/plugin-marketplaces> | primary | Agent Skills standard and Claude Code plugin authoring | 5 |
+| <https://docs.anthropic.com/en/docs/claude-code/hooks> | primary | Hooks, guardrails and cross-CLI portability (incl. Hermes) | 5 |
+| <https://claudeissues.com/issue/13756-pretooluse-hooks-with-exit-code-2-do-not-block-tool-execution> | forum | Hooks, guardrails and cross-CLI portability (incl. Hermes) | 4 |
+| <https://hermes-agent.nousresearch.com/docs/developer-guide/plugins> | primary | Hooks, guardrails and cross-CLI portability (incl. Hermes) | 5 |
+| <https://hermes-agent.nousresearch.com/docs/plugins/agentplaybooks-portable> | unreliable | Hooks, guardrails and cross-CLI portability (incl. Hermes) | 0 |
+| <https://developers.googleblog.com/en/tailor-gemini-cli-to-your-workflow-with-hooks/> | blog | Hooks, guardrails and cross-CLI portability (incl. Hermes) | 5 |
