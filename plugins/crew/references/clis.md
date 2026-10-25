@@ -31,8 +31,23 @@ session.
 | Muse Code (`muse exec --help`) | `muse exec` | `--session-id` | `--model` | permission profile | `--output-schema` |
 | [Kimi Code](https://moonshotai.github.io/kimi-code/) (`~/.kimi-code/bin/kimi`) | `kimi -p` | `-S <id>` | `-m` | none headless: `--plan` refuses `-p` | none; `--output-format stream-json` |
 
-ZCode has no CLI: `zcode` opens the desktop app. Kimi's `--skills-dir` replaces
-the discovered skill folders for one run, which isolates a worker.
+Kimi's `--skills-dir` replaces the discovered skill folders for one run, which
+isolates a worker.
+
+ZCode is not a worker yet. `zcode` opens the desktop app, but the app bundles a
+CLI (`zcode-cli`, at `/opt/ZCode/resources/glm/zcode.cjs`). Run it as
+`ELECTRON_RUN_AS_NODE=1 /opt/ZCode/zcode <path>/zcode.cjs`. It has `-p`,
+`--resume <sessionId>`, `--mode plan`, `--json` and `skills list`. Two things
+block `-p` from the bundle:
+
+- it looks for `provider/zcode-builtin.json` next to `zcode.cjs`, while the
+  app keeps it in `resources/config/provider/`;
+- even with a copy that finds it, the run stops at "Select a model before
+  sending a message". `-p` takes no model, and the default is saved by the
+  CLI's TUI, which the bundle lacks (`@zcode/tui`).
+
+Its `app-server` protocol takes a model per message, which is the remaining
+way in.
 
 A worker's exit code 0 proves nothing: agy, opencode and Copilot all exit 0 on
 failed or cut runs. Judge from the event stream and a gate.
@@ -74,6 +89,7 @@ miss ones it does. Preview and experimental features are marked.
 | opencode | `task` with `mode: subagent` agents | none found | — |
 | Cursor | subagents (docs) | none found | not read: the TUI asked to log in |
 | Muse Code | yes | Workflow tool (its bundled skills drive it) | not read: trust screen |
+| ZCode | yes | dynamic workflows (`--workflow-mode`, `/dwf`); `/expert` | from the bundled CLI's `--help` |
 
 Use the native mechanism for the host's own models; use another CLI for another
 vendor's quota or model family. A native subagent or workflow step can itself
