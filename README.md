@@ -40,7 +40,16 @@ just link-skills status ~/code/app
 | Antigravity | `~/.gemini/config/skills` | `.agents/skills` |
 | Claude Code | the plugins | the plugins, per project in `.claude/settings.local.json` |
 
-Hooks and MCP servers do not travel with a linked skill. Grok and Cursor also
+Hooks and MCP servers do not travel with a linked skill. For tools without
+Claude-format plugins, `adapters/<tool>/` holds a bridge that `global` links
+into the tool's own folder; it runs the global plugins' `hooks/hooks.json` and
+`mcp.json` from the marketplace clone, so there is no second copy. Today:
+`adapters/opencode/4nrry-bridge.js` in `~/.config/opencode/plugins/`
+(UserPromptSubmit and PreToolUse hooks, and the MCP servers).
+
+Copilot, Codex and Cursor install the global plugins themselves: each ships an
+Agent Plugins `plugin.json`. Copilot can load them live from Claude Code's
+marketplace clone: `copilot plugin marketplace add ~/.claude/plugins/marketplaces/4nrry`. Grok and Cursor also
 load the Claude Code plugins themselves, hooks included. Codex can install this
 marketplace too; do not, or each skill loads twice. crew is linked too: a
 crew run sets `CREW_RUN`, and crew refuses to start a worker inside one.
