@@ -21,7 +21,8 @@ scripts/contact-sheet.sh check.jpg still.png shot.mp4
 ```
 
 Google Flow runs Omni and Veo on the Google AI subscription's credits through a
-browser ([references/flow.md](references/flow.md)).
+browser ([references/flow.md](references/flow.md)), and grok.com's Imagine makes
+1080p on the Grok subscription ([references/grok-web.md](references/grok-web.md)).
 `scripts/omni.py` takes the same prompt and still on the Gemini API key, which
 bills every call; [references/tools.md](references/tools.md) marks what each
 route bills.
