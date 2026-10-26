@@ -65,8 +65,8 @@ failed or cut runs. Judge from the event stream and a gate.
 | Codex and the ChatGPT app | `~/.agents/skills` | `.agents/skills` | Agent Plugins (root `plugin.json`), `.codex-plugin/` fallback; GitHub marketplaces | `.codex/hooks` | — |
 | Cursor | `~/.agents`, `~/.cursor`, `~/.claude` skills | `.agents`, `.cursor`, `.claude` | Agent Plugins (root `plugin.json`: skills, MCP) or `.cursor-plugin/` (all components); expands `${CLAUDE_PLUGIN_ROOT}`; the CLI loads Claude's installed plugins | `hooks.json`, also Claude's | — |
 | Kimi Code | `~/.agents/skills`, `~/.kimi-code/skills` | `.agents`, `.kimi-code` | own `kimi.plugin.json`, `/plugins install <url>` | `[[hooks]]` in `config.toml` | TUI asks per folder; `-p` loaded project skills without it |
-| ZCode | `~/.agents/skills`, `~/.zcode/skills` | `.agents`, `.zcode` | own marketplaces (`zcode plugins marketplace add`); Claude format not confirmed | `~/.zcode/cli/config.json`, `hooks.enabled` | — |
-| Muse Code | `~/.agents/skills`, `~/.claude/skills` | `.agents/skills` | plugin bundles mentioned, no install documented | — | interactive, once per folder |
+| ZCode | `~/.agents/skills`, `~/.zcode/skills` | `.agents`, `.zcode` | installs Claude Code marketplaces (`zcode plugins marketplace add <dir>`) with skills, hooks and MCP; skills then load twice beside linked ones | `~/.zcode/cli/config.json`, `hooks.enabled` | — |
+| Muse Code | `~/.agents/skills`, `~/.claude/skills` | `.agents/skills` | Agent Plugins and Claude-compatible bundles (`muse plugins install`, `marketplace add`); an Agent Plugins root drops `hooks/hooks.json` | `hooks` in `~/.config/muse/settings.json`, Claude's contract | interactive, once per folder |
 
 `~/.agents/skills` is the one folder nearly every tool reads; `link_skills.py`
 at the repo root links this marketplace's skills there.
