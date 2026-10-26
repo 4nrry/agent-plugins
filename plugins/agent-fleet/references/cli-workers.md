@@ -33,6 +33,7 @@ Claude), opencode.
 | Phase | Start with | Avoid |
 |---|---|---|
 | Search | several engines at once: `grok,hermes,agy` covers xAI and Google indexes; opencode adds Exa's index at no cost | — |
+| Search on X (posts, announcements, people, threads) | grok, hermes: the only engines here that read X | engines without X access, which return press coverage of a post instead of the post |
 | Extract | opencode (free model), grok, or hermes with a page reader | agy: its quotes were mostly not on the page |
 
 crew's warnings (a backend or version never run end to end) are carried into
