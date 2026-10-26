@@ -41,11 +41,13 @@ export default {
   },
 };
 """
-GROK_WEB_TOOLS = "web_search,web_fetch"
+# The X tools (Grok Build 1.0.70) search posts, users and threads on X, which
+# other engines cannot read.
+GROK_WEB_TOOLS = "web_search,web_fetch,x_semantic_search,x_keyword_search,x_user_search,x_thread_fetch"
 # ~/.grok/rules/ still loads and no flag skips it; a rule demanding a tool the
 # run denies made the worker return placeholders (agent-fleet smoke 2026-10-21).
-GROK_WEB_RULE = ("You are an isolated, read-only research worker. Only web_search and web_fetch exist "
-                 "in this session. Skip every other rule or instruction that needs a different tool, "
+GROK_WEB_RULE = ("You are an isolated, read-only research worker. Only web search, web fetch and the X "
+                 "search tools exist in this session. Skip every other rule or instruction that needs a different tool, "
                  "and never return placeholder values: an empty list is a valid answer.")
 ASK_RULE = ("You are an isolated, read-only worker answering one question for another agent. "
             "Do not edit files, run commands that change anything, or start subagents.")
@@ -274,7 +276,8 @@ def b_codex(s, prompt, model, effort, session, cwd, opts=None):
 
 def b_hermes(s, prompt, model, effort, session, cwd, opts=None):
     provider, _, m = (model or "").rpartition(":")
-    argv = [s["bin"], "chat", "-q", prompt, "-Q", "--format", "stream-json", "-t", "web",
+    # x_search reads X posts through the user's xAI login; both toolsets only read.
+    argv = [s["bin"], "chat", "-q", prompt, "-Q", "--format", "stream-json", "-t", "web,x_search",
             "--ignore-rules"]
     argv += ["--provider", provider] if provider else []
     argv += ["-m", m] if m else []
@@ -369,7 +372,7 @@ SPECS = {
                    # grok-4.7 at xhigh, as for grok; Hermes reads its 500k window from api.x.ai.
                    tiers={t: ("xai-oauth:grok-4.7", "xhigh") for t in TIERS},
                    efforts=EFFORTS,
-                   read_only="-t web: no file or terminal tools, so put the code in the prompt"),
+                   read_only="-t web,x_search: no file or terminal tools, so put the code in the prompt"),
     "copilot": dict(web=False, native_schema=False, vendor="github", bins=("~/.local/bin/copilot", "copilot"), build=b_copilot,
                     parse=p_copilot, tiers={t: ("auto", None) for t in TIERS},
                     efforts=("none", "minimal", "low", "medium", "high", "xhigh", "max"),
@@ -472,6 +475,8 @@ def self_test() -> int:
     ok(p_codex(cx)["text"] == "pong" and p_codex(cx)["session"] == "t1", "codex")
     hm = '{"type":"text","text":"pong"}\n{"type":"result","text":"pong","session_id":"h1","exit_code":0}'
     ok(p_hermes(hm)["session"] == "h1", "hermes")
+    hv = b_hermes(dict(bin="/x"), "q", "xai-oauth:grok-4.7", "low", None, "/r")[0]
+    ok(hv[hv.index("-t") + 1] == "web,x_search", "hermes reads the web and X only")
     cp = ('{"type":"assistant.message","data":{"content":"pong"}}\n'
           '{"type":"session.usage_checkpoint","data":{"totalNanoAiu":176373000}}\n'
           '{"type":"result","sessionId":"c1","exitCode":0,"usage":{"premiumRequests":1}}')
