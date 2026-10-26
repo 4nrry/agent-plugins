@@ -13,21 +13,27 @@ resolutions and its quirks are in [references/tools.md](references/tools.md).
 Text-to-video picks its own framing. Starting from a still keeps the
 composition and only moves the camera, so make and choose the still first
 (`image-generation` skill), then animate it. From this skill's directory, the
-pattern with the bundled Gemini Omni script:
+pattern on a subscription (Grok Build), which bills no API key:
 
 ```bash
-python3 scripts/omni.py "slow drone push forward along the windrows, mist drifting, no text" -o shot.mp4 --image still.png
+scripts/grok-video.sh "slow drone push forward along the windrows, mist drifting, no text" shot.mp4 --image still.png --res 720p
 scripts/contact-sheet.sh check.jpg still.png shot.mp4
 ```
 
+`scripts/omni.py` takes the same prompt and still on the Gemini API key, which
+bills every call; [references/tools.md](references/tools.md) marks what each
+route bills.
+
 When the shot must land on an exact frame (a match cut, a loop back to the
-opening, room left for the product composite), give the last frame too:
-`--last end.png`, and describe the move between them.
+opening, room left for the product composite), give the last frame too where
+the model takes one (`omni.py --last end.png`), and describe the move between
+them.
 
 ## A subject across shots
 
-- Pass the subject's reference images (`--ref`, repeatable; the sheet from the
-  `image-generation` skill) and name the subject in the prompt.
+- Pass the subject's reference images where the model takes them
+  (`omni.py --ref`, repeatable; the sheet from the `image-generation` skill)
+  and name the subject in the prompt.
 - To continue a shot, extend the clip rather than generating a new one: the
   model keeps the subject, the motion and the sound.
 - To fix one thing in a clip, edit it ("change only the sky") where the model

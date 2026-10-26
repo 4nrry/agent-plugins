@@ -3,15 +3,19 @@
 Checked against the vendors' docs and model cards on 2026-10-26. Check the
 license and the plan's terms again before a commercial piece.
 
-| Engine | Runs on | License | Trap |
-|---|---|---|---|
-| ElevenLabs | cloud | paid plan for commercial use | best pt-BR by a margin among the paid APIs |
-| xAI TTS, voice `liora`, through Hermes | cloud, SuperGrok subscription | xAI's terms | `scripts/hermes-tts.sh "text" s1.mp3`; mp3 24 kHz mono at about -20 LUFS, so normalize it like the rest |
-| Pocket TTS (Kyutai) | CPU, `uv tool install pocket-tts` | code MIT, weights CC-BY-4.0 (credit) | without `--language portuguese` Portuguese comes out as accented English; larger `_24l` variants exist |
-| Kokoro-82M | CPU | Apache-2.0 | pins Python below 3.13: `uv venv -p 3.12` |
-| Qwen3-TTS 1.7B | 8 GB GPU | Apache-2.0 | Portuguese sounds European; `--instruct` does not fix it |
-| Chatterbox Multilingual | 8 GB GPU, Python 3.11 | MIT | the `perth` watermarker is `None` in some builds: fall back to the dummy one |
-| Gemini TTS (`gemini-3.8-flash-tts`) | cloud, Gemini API | Gemini API terms | not tried yet |
+A subscription route spends the plan's quota and nothing more; an API-key
+route bills every call to that key. Prefer the subscription routes when the
+key's budget belongs to something else.
+
+| Engine | Billed to | Runs on | License | Trap |
+|---|---|---|---|---|
+| ElevenLabs | ElevenLabs plan credits | cloud | paid plan for commercial use | best pt-BR by a margin among the paid APIs |
+| xAI TTS, voice `liora`, through Hermes | SuperGrok subscription | cloud, SuperGrok subscription | xAI's terms | `scripts/hermes-tts.sh "text" s1.mp3`; mp3 24 kHz mono at about -20 LUFS, so normalize it like the rest |
+| Pocket TTS (Kyutai) | nothing (local) | CPU, `uv tool install pocket-tts` | code MIT, weights CC-BY-4.0 (credit) | without `--language portuguese` Portuguese comes out as accented English; larger `_24l` variants exist |
+| Kokoro-82M | nothing (local) | CPU | Apache-2.0 | pins Python below 3.13: `uv venv -p 3.12` |
+| Qwen3-TTS 1.7B | nothing (local) | 8 GB GPU | Apache-2.0 | Portuguese sounds European; `--instruct` does not fix it |
+| Chatterbox Multilingual | nothing (local) | 8 GB GPU, Python 3.11 | MIT | the `perth` watermarker is `None` in some builds: fall back to the dummy one |
+| Gemini TTS (`gemini-3.8-flash-tts`) | Gemini API key, per use | cloud, Gemini API | Gemini API terms | not tried yet |
 
 ## xAI through Hermes
 
