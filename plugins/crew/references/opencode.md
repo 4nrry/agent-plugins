@@ -76,3 +76,11 @@ python3 scripts/crew.py review --backend opencode --diff HEAD~1 --prompt-file /p
 ```
 
 No plan mode: empty scope, and the plugin denies every shell command.
+
+## Web search (`ask --web`)
+
+opencode 2.1 searches only through a provider picked once in its TUI. With
+none saved it asks, and a headless run cancels the question ("Web search
+cancelled", exit 1). crew's web profile loads a plugin, from the run dir, that
+picks Exa for that run only; the user's saved choice is not touched. The
+queries go to Exa (`mcp.exa.ai`, no key).
