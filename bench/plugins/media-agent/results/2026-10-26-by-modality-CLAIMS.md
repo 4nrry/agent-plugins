@@ -12,7 +12,7 @@ video-composition, kinocut-editing → video-editing, turntable-blender →
 
 | Fact | Result | Consequence |
 |---|---|---|
-| Veo 3.1 preview ids in the Gemini API | shut down 2026-10-22 (ai.google.dev/gemini-api/docs/video, read directly) | `veo.py` replaced by `omni.py` for `gemini-omni-1.1-flash` through the Interactions API; written from the docs, checked offline (arguments, response parsing), **not run against the API** |
+| Veo 3.1 preview ids in the Gemini API | shut down 2026-10-22 (ai.google.dev/gemini-api/docs/video, read directly) | `veo.py` replaced by `omni.py` for `gemini-omni-1.1-flash` through the Interactions API; written from the docs; one live run, 360p from a still: 640x360, 24 fps, 10.0 s with AAC audio, 1.1 MB, 20 s wall, the still's palette kept |
 | Kinocut latest | 1.16.4 | pin moved from 1.15.1; `info`, `trim` and the MCP `initialize` handshake ran on a test clip |
 | ElevenLabs STT | `scribe_v1` deprecated | `eleven.py stt` sends `scribe_v2`; not run |
 | RMBG-2.0 | own gated license, still non-commercial | table updated |

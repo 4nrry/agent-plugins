@@ -6,7 +6,7 @@ skill's directory.
 
 | Tool | Script | Good for | Notes |
 |---|---|---|---|
-| Gemini Omni (`gemini-omni-1.1-flash`), Gemini API | `python3 scripts/omni.py "<motion>" -o shot.mp4 --image still.png` | shots from a still, 720p native | 360p or 720p native; 1080p and 4k are upscaled by Google; 16:9 or 9:16; no negative prompt and no duration setting. Not run yet with this script |
+| Gemini Omni (`gemini-omni-1.1-flash`), Gemini API | `python3 scripts/omni.py "<motion>" -o shot.mp4 --image still.png` | shots from a still, 720p native | 360p or 720p native; 1080p and 4k are upscaled by Google; 16:9 or 9:16; no negative prompt and no duration setting: clips come back at 10 s, 24 fps, with an audio track (trim in the edit) |
 | Grok Imagine video, through Grok Build | `scripts/grok-video.sh "<motion>" out.mp4 --image still.png` | backgrounds, small cards, Reels backdrops | 480p by default, `--res 720p` when visible; follows the still, not the aspect ratio |
 | Grok Imagine API (`grok-imagine-video-1.5`, `-1.5-lite`) | none bundled | native 1080p, 1–15 s, reference images | priced per second; needs an xAI API key, not the SuperGrok login |
 | Veo 3.1 GA (`veo-3.1-generate-001`, `-fast-`) | none bundled | premium shots | only on Google's enterprise platform (Vertex), us-central1 |
