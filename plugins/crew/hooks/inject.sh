@@ -12,7 +12,8 @@
 # editor far more often than a worker.
 set -euo pipefail
 
-PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The skill lives in skills/crew/ (the Agent Plugins layout).
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../skills/crew" && pwd)"
 
 prompt=$(jq -r '.prompt // empty' 2>/dev/null) || exit 0
 [[ -n "$prompt" ]] || exit 0
@@ -27,8 +28,8 @@ done
 
 refs=""
 for backend in "${matched[@]}"; do
-  [[ -f "$PLUGIN_ROOT/references/$backend.md" ]] && refs+=" $PLUGIN_ROOT/references/$backend.md"
+  [[ -f "$SKILL_DIR/references/$backend.md" ]] && refs+=" $SKILL_DIR/references/$backend.md"
 done
 printf 'The crew skill may apply (matched: %s). Before using another agent CLI as a worker, read %s/SKILL.md%s. crew.py is %s/scripts/crew.py.\n' \
-  "${matched[*]}" "$PLUGIN_ROOT" "${refs:+ and, for delegate,$refs}" "$PLUGIN_ROOT"
+  "${matched[*]}" "$SKILL_DIR" "${refs:+ and, for delegate,$refs}" "$SKILL_DIR"
 exit 0

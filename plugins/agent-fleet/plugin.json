@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "agent-fleet",
+  "version": "1.5.0",
+  "description": "Rules for multi-agent work: model routing per phase, fan-out sizing, closed output schemas and citation checks, with CLI workers for search and extract and hooks that load the rules and check routing at dispatch.",
+  "author": {
+    "name": "4nrry",
+    "url": "https://github.com/4nrry"
+  },
+  "homepage": "https://github.com/4nrry/agent-plugins/tree/main/plugins/agent-fleet",
+  "repository": "https://github.com/4nrry/agent-plugins",
+  "license": "MIT"
+}
