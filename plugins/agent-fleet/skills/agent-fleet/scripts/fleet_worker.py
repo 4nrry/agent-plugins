@@ -33,7 +33,7 @@ USAGE
 -----
     fleet_worker.py check
     fleet_worker.py search  --backend grok --question Q --angles angles.json -o search.json
-    fleet_worker.py search  --backend grok,hermes,agy --model agy=gemini-3.8-flash-medium ...
+    fleet_worker.py search  --backend grok,agy,opencode --model agy=gemini-3.8-flash-medium ...
     fleet_worker.py extract --backend opencode --question Q --sources search.json -o claims.json
     fleet_worker.py --self-test
 
