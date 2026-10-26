@@ -65,6 +65,12 @@ with a failClosed preToolUse in a .cursor/hooks.json written for the run.
 `stop` hooks do not fire in -p, so the gate is an outer loop resuming the chat,
 as with opencode; Cursor's sandbox does not start here, so the hooks are the
 only limit.
+
+Seventh backend, `"backend": "claude"` (Claude Code 2.1.310), for a host that is
+not Claude: `claude -p --restricted` with the three hooks in a per-run
+--settings file; `hook cl-pre` translates Claude's tools and its allow is
+explicit, since headless Bash runs only on it; `hook cl-stop` is cx-stop. Its
+sandbox does not start here either.
 """
 
 import argparse
@@ -108,7 +114,7 @@ SECRET_EXCEPTIONS = ("*.example", "*.sample", "*.template")
 # stopped without touching anything the user started.
 RUN_ENV = "CREW_RUN"
 WORKER_ENV = {"NX_DAEMON": "false"}
-BACKENDS = ("agy", "opencode", "copilot", "codex", "grok", "cursor")
+BACKENDS = ("agy", "opencode", "copilot", "codex", "grok", "cursor", "claude")
 # review keeps crew's guard hooks on these; every other backend reviews through ask.
 REVIEW_GUARDED = ("agy", "opencode", "copilot")
 # minimax-m3.1-flash-free left Zen (provider.no-route, 2026-10-22); kept allowed should it return.
@@ -175,6 +181,30 @@ CU_TOOLS = {
     "Shell": ("run_command", {"command": "CommandLine", "cwd": "Cwd"}),
 }
 CU_INERT_TOOLS = {"ReadLints", "TodoWrite"}
+# Claude Code, for a host that is not Claude: hooks in a per-run --settings file
+# (lab 2026-10-25, 2.1.310: SessionStart, PreToolUse and Stop fire in -p; Stop
+# carries last_assistant_message and a block continues the turn). --restricted
+# skips the user's, project's and local settings (their hooks and plugins),
+# confines the file tools to the repo and refuses writes to settings and .git;
+# acceptEdits approves edits, and Bash runs only on the hook's explicit allow.
+# Its OS sandbox does not start here (bwrap: nested userns restricted), so the
+# hooks are the only limit on Bash.
+TESTED_CLAUDE_VERSION = "2.1.310"
+CLAUDE_DEFAULT_MODEL = "sonnet"
+CLAUDE_TOOLS = "Bash,Read,Edit,Write,Glob,Grep,TodoWrite"
+CL_TOOLS = {
+    "Bash": ("run_command", {"command": "CommandLine"}),
+    "Read": ("view_file", {"file_path": "AbsolutePath"}),
+    "Glob": ("find_by_name", {"path": "SearchDirectory", "pattern": "Pattern"}),
+    "Grep": ("grep_search", {"path": "SearchPath", "pattern": "Query"}),
+    "Write": ("write_to_file", {"file_path": "TargetFile", "content": "CodeContent"}),
+    "Edit": ("replace_file_content", {"file_path": "TargetFile", "old_string": "TargetContent",
+                                      "new_string": "ReplacementContent"}),
+}
+CL_INERT_TOOLS = {"TodoWrite"}
+# Created in the repo by --restricted on a refused write (lab); removed after
+# the run when it is new and empty.
+CLAUDE_SCRATCH_DIRS = (".claude/.cc-writes", ".claude")
 COPILOT_DEFAULT_MODEL = "auto"
 COPILOT_HOOK_DIR = ".github/hooks"
 COPILOT_HOOK_PREFIX = "crew-"
@@ -513,6 +543,8 @@ def normalize_task(task: dict) -> dict:
     effort = task.get("effort")
     if effort is not None and effort not in ("low", "medium", "high", "xhigh", "max", "ultra"):
         errs.append(f"effort {effort!r}: one of low, medium, high, xhigh, max, ultra")
+    if backend == "claude" and effort == "ultra":
+        errs.append("effort 'ultra': claude accepts low, medium, high, xhigh, max")
     if not isinstance(task.get("disable_claude_code", False), bool):
         errs.append("disable_claude_code must be a boolean")
     if not isinstance(task.get("copilot_model_override", False), bool):
@@ -550,7 +582,8 @@ def normalize_task(task: dict) -> dict:
         "disable_claude_code": task.get("disable_claude_code", False),
         "model": task.get("model", {"opencode": OPENCODE_DEFAULT_MODEL, "copilot": COPILOT_DEFAULT_MODEL,
                                     "codex": CODEX_DEFAULT_MODEL, "grok": GROK_DEFAULT_MODEL,
-                                    "cursor": CURSOR_DEFAULT_MODEL}.get(backend, DEFAULT_MODEL)),
+                                    "cursor": CURSOR_DEFAULT_MODEL, "claude": CLAUDE_DEFAULT_MODEL
+                                    }.get(backend, DEFAULT_MODEL)),
         "effort": task.get("effort"),
         "copilot_model_override": task.get("copilot_model_override", False),
         "max_ai_credits": credits,
@@ -616,10 +649,10 @@ def compose_prompt(task: dict, repo: str) -> str:
 def report_rule(task: dict) -> str:
     """opencode has no --json-schema: the report is the last JSON object in
     the final message, and the driver asks again if it is missing."""
-    if task.get("backend") not in ("opencode", "copilot", "codex", "grok", "cursor"):
+    if task.get("backend") not in ("opencode", "copilot", "codex", "grok", "cursor", "claude"):
         return ""
     again = (" Every final message, including the one after gate feedback, must end with it."
-             if task.get("backend") in ("copilot", "codex", "grok") else "")
+             if task.get("backend") in ("copilot", "codex", "grok", "claude") else "")
     return ("- End your final message with the report as ONE JSON object (no prose after it) matching "
             f"this JSON schema: {json.dumps(task['report_schema'], separators=(',', ':'))}.{again}\n")
 
@@ -918,6 +951,25 @@ def decide_gk(payload: dict, ctx: dict) -> dict:
     return decide_pre({"toolCall": {"name": name, "args": args}}, ctx)
 
 
+def decide_cl(payload: dict, ctx: dict) -> dict:
+    """Claude Code PreToolUse: its tools translated to decide_pre's names; MCP
+    and writes into .claude/ (settings and hooks a later session would load)
+    are denied; any other tool falls to decide_pre's allowlist."""
+    tool = str(payload.get("tool_name", ""))
+    if tool in CL_INERT_TOOLS:
+        return {"decision": "allow"}
+    if tool.startswith("mcp__"):
+        return deny(f"Tool {tool} blocked: no MCP tools in a crew run.")
+    inp = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
+    name, keys = CL_TOOLS.get(tool, (tool, {}))
+    args = {keys[k]: v for k, v in inp.items() if k in keys and v not in (None, "")}
+    target = args.get("TargetFile")
+    if isinstance(target, str) and os.path.relpath(resolve(target, ctx["repo"]), ctx["repo"]).split(
+            os.sep)[0] == ".claude":
+        return deny("Write blocked in .claude/: Claude Code loads settings and hooks from there.")
+    return decide_pre({"toolCall": {"name": name, "args": args}}, ctx)
+
+
 def decide_cu(payload: dict, ctx: dict) -> dict:
     """Cursor preToolUse: its tools translated to decide_pre's names; writes into
     .cursor/ are denied (the run's hooks live there); anything else not listed
@@ -967,13 +1019,15 @@ def cx_stop(rundir: str, ctx: dict, payload: dict) -> dict:
 def cx_hook_output(event: str, out: dict) -> str:
     """Codex's contract (Claude's shape): a PreToolUse deny is hookSpecificOutput
     with permissionDecision; Stop blocks with decision/reason; allow prints nothing."""
-    if event in ("cx-pre", "gk-pre"):
+    if event in ("cx-pre", "gk-pre", "cl-pre"):
         if out.get("decision") == "allow":
-            return ""
+            # Claude asks for approval before Bash; headless, only this allow runs it.
+            return json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                                      "permissionDecision": "allow"}}) if event == "cl-pre" else ""
         return json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                                   "permissionDecisionReason": out.get("reason") or "denied"}},
                           ensure_ascii=False)
-    if event in ("cx-stop", "gk-stop") and out.get("decision") == "block":
+    if event in ("cx-stop", "gk-stop", "cl-stop") and out.get("decision") == "block":
         return json.dumps({"decision": "block", "reason": out.get("reason", "")}, ensure_ascii=False)
     return ""
 
@@ -1275,6 +1329,24 @@ def hook_main(event: str, rundir: str) -> int:
             append_jsonl(log, {"event": "stop", "reason": "Stop",
                                "stop_hook_active": payload.get("stop_hook_active"),
                                "decision": out["decision"]})
+        elif event == "cl-start":
+            append_jsonl(log, {"event": "session_start", "model": payload.get("model"),
+                               "conversation": payload.get("session_id")})
+            out = {"decision": "allow"}
+        elif event == "cl-pre":
+            out = decide_cl(payload, ctx)
+            entry = {"event": "pre", "tool": payload.get("tool_name"), "decision": out["decision"]}
+            if out["decision"] != "allow":
+                entry["reason"] = out.get("reason", "")[:300]
+                entry["args"] = {k: str(v)[:300] for k, v in (payload.get("tool_input") or {}).items()
+                                 if k not in ("content", "old_string", "new_string")} \
+                    if isinstance(payload.get("tool_input"), dict) else {}
+            append_jsonl(log, entry)
+        elif event == "cl-stop":
+            out = cx_stop(rundir, ctx, payload)
+            append_jsonl(log, {"event": "stop", "reason": "Stop",
+                               "stop_hook_active": payload.get("stop_hook_active"),
+                               "decision": out["decision"]})
         elif event == "cx-start":
             append_jsonl(log, {"event": "session_start", "model": payload.get("model"),
                                "conversation": payload.get("session_id")})
@@ -1351,14 +1423,14 @@ def hook_main(event: str, rundir: str) -> int:
         except OSError:
             pass
         out = ({"decision": "deny", "reason": f"internal guard failure ({exc!r}); call denied for safety"}
-               if event in ("pre", "oc-pre", "cp-pre", "cx-pre", "gk-pre", "cu-pre") else {"decision": "stop"} if event == "stop"
+               if event in ("pre", "oc-pre", "cp-pre", "cx-pre", "gk-pre", "cu-pre", "cl-pre") else {"decision": "stop"} if event == "stop"
                else {"decision": "allow"} if event == "cp-stop" else {})
     if event.startswith("cu-"):
         print(json.dumps({"permission": "allow"} if out.get("decision") == "allow" else
                          {"permission": "deny", "agent_message": out.get("reason") or "denied",
                           "user_message": "crew guard: " + (out.get("reason") or "denied")[:200]}
                          if event == "cu-pre" else {}, ensure_ascii=False))
-    elif event.startswith(("cx-", "gk-")):
+    elif event.startswith(("cx-", "gk-", "cl-")):
         print(cx_hook_output(event, out))
     else:
         print(cp_hook_output(event, out) if event in ("cp-pre", "cp-stop") else json.dumps(out, ensure_ascii=False))
@@ -2473,6 +2545,62 @@ def evaluate_gk(rc, stdout: str, stderr: str):
     return fails, {"text": text, "session_id": session, "usage": usage}
 
 
+def preflight_claude() -> tuple:
+    import backends
+    if "anthropic" in backends.host_vendors():
+        raise Refusal("this host is Claude Code: use its own subagents, not a Claude worker")
+    cl = shutil.which("claude")
+    if not cl:
+        raise Refusal("claude not found on PATH")
+    warns = []
+    try:
+        ver = subprocess.run([cl, "--version"], capture_output=True, text=True, timeout=30).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired):
+        ver = ""
+    if TESTED_CLAUDE_VERSION not in ver:
+        warns.append(f"claude {ver!r}: tested on {TESTED_CLAUDE_VERSION}")
+    warns.append("claude runs without an OS sandbox (bwrap fails here); the crew hooks are the only limit on Bash")
+    return cl, warns
+
+
+def write_cl_settings(rundir: str, gate_budget_s: int) -> str:
+    me = os.path.realpath(__file__)
+    groups = {}
+    for event, name, timeout in (("SessionStart", "cl-start", 30), ("PreToolUse", "cl-pre", 60),
+                                 ("Stop", "cl-stop", gate_budget_s)):
+        cmd = f"{shlex.quote(sys.executable)} {shlex.quote(me)} hook {name} --state {shlex.quote(rundir)}"
+        groups[event] = [{"matcher": "", "hooks": [{"type": "command", "command": cmd, "timeout": timeout}]}]
+    path = os.path.join(rundir, "claude-settings.json")
+    write_json(path, {"hooks": groups})
+    return path
+
+
+def claude_cmd(cl: str, prompt: str, task: dict, settings: str) -> list:
+    cmd = [cl, "-p", prompt, "--output-format", "json", "--model", task["model"], "--restricted",
+           "--settings", settings, "--tools", CLAUDE_TOOLS, "--strict-mcp-config", "--disable-slash-commands",
+           "--permission-mode", "acceptEdits"]
+    return cmd + (["--effort", task["effort"]] if task.get("effort") else [])
+
+
+def evaluate_cl(rc, stdout: str, stderr: str):
+    """`--output-format json`: one result object; missing = cut run."""
+    fails = []
+    try:
+        res = json.loads(stdout.strip().splitlines()[-1]) if stdout.strip() else None
+    except ValueError:
+        res = None
+    if rc != 0:
+        fails.append(f"claude exited {rc}: {tail(stderr, 300).strip()}")
+    if not isinstance(res, dict) or res.get("type") != "result":
+        fails.append("claude never reported a result (the run was cut)")
+        res = {}
+    elif res.get("is_error"):
+        fails.append(f"claude result is an error: {str(res.get('result') or res.get('subtype'))[:300]}")
+    return fails, {"text": res.get("result"), "session_id": res.get("session_id"), "usage": res.get("usage"),
+                   "cost_usd": res.get("total_cost_usd"), "num_turns": res.get("num_turns"),
+                   "permission_denials": len(res.get("permission_denials") or [])}
+
+
 def preflight_cursor(repo: str) -> tuple:
     cu = shutil.which("cursor-agent")
     if not cu:
@@ -2613,6 +2741,7 @@ def cmd_delegate(a) -> int:
     codex = task["backend"] == "codex"
     grok = task["backend"] == "grok"
     cursor = task["backend"] == "cursor"
+    claude = task["backend"] == "claude"
     repo = repo_root(a.repo or os.getcwd())
     git(repo, "rev-parse", "--verify", "HEAD")
     other_cp_hooks = refuse_cp_leftovers(repo) if copilot else []
@@ -2642,6 +2771,9 @@ def cmd_delegate(a) -> int:
         gk, pre_warns = preflight_grok(repo)
     elif cursor:
         cu, pre_warns = preflight_cursor(repo)
+    elif claude:
+        cl, pre_warns = preflight_claude()
+        scratch = [d for d in CLAUDE_SCRATCH_DIRS if not os.path.lexists(os.path.join(repo, d))]
     else:
         pre_warns = preflight_agy(task["model"], task["min_quota"], not a.no_quota_probe, rundir)
     ctx = base_ctx(repo, task, "delegate")
@@ -2649,7 +2781,7 @@ def cmd_delegate(a) -> int:
     if copilot:
         ctx.update(ignore_paths=[cp_hook_rel(ctx["run_id"])], report_schema=task["report_schema"],
                    events_file=os.path.join(rundir, "copilot.stdout"))
-    if codex or grok:
+    if codex or grok or claude:
         ctx["report_schema"] = task["report_schema"]
     if cursor:
         ctx["ignore_paths"] = [CURSOR_HOOK_FILE]
@@ -2713,6 +2845,26 @@ def cmd_delegate(a) -> int:
             except OSError:
                 pass
         fails, info = evaluate_gk(rc, stdout, stderr)
+        report = extract_report(info.pop("text"))
+        fails += report_problems(report, task["report_schema"])
+        if isinstance(report, dict) and report.get("status") in ("partial", "blocked"):
+            fails.append(f"the worker declared itself {report['status']!r}")
+        warns = []
+        run_info = {"rc": rc, "wall_seconds": round(time.time() - started), **info}
+    elif claude:
+        n_cmds = len(ctx["gate"]["format"]) + len(ctx["gate"]["checks"]) + 1
+        settings = write_cl_settings(rundir, ctx["gate_timeout"] * n_cmds + 60)
+        try:
+            eprint(f"crew: claude running ({task['model']}, restricted, timeout {task['timeout']}s)…")
+            rc, stdout, stderr = run_agy(claude_cmd(cl, prompt, task, settings), repo, rundir, task["timeout"],
+                                         name="claude", env={**os.environ, **WORKER_ENV, RUN_ENV: ctx["run_id"]})
+        finally:
+            for d in scratch:          # innermost first; only what the run created, only when empty
+                try:
+                    os.rmdir(os.path.join(repo, d))
+                except OSError:
+                    pass
+        fails, info = evaluate_cl(rc, stdout, stderr)
         report = extract_report(info.pop("text"))
         fails += report_problems(report, task["report_schema"])
         if isinstance(report, dict) and report.get("status") in ("partial", "blocked"):
@@ -3469,6 +3621,79 @@ def self_test() -> int:
                                 capture_output=True, text=True, env=e, timeout=60)
             got = json.loads(pr.stdout)["hookSpecificOutput"]["permissionDecision"] if pr.stdout.strip() else ""
             check(got == want, f"grok hook with CREW_RUN={env_run}: expected {want or 'no-op'}")
+        # claude: tool translation, .claude/ protection, explicit allow, settings file, command, evaluation
+        ltask = normalize_task({"prompt": "x", "scope": ["src/*"], "backend": "claude", "gate": {"checks": ["true"]}})
+        check(ltask["model"] == CLAUDE_DEFAULT_MODEL, "claude default model")
+        try:
+            normalize_task({"prompt": "x", "scope": ["src/*"], "backend": "claude", "effort": "ultra",
+                            "gate": {"checks": ["t"]}})
+            check(False, "claude effort ultra accepted")
+        except Refusal:
+            check(True, "")
+        lctx = base_ctx(repo, ltask, "delegate")
+        cl = lambda tool, inp: decide_cl({"tool_name": tool, "tool_input": inp}, lctx)["decision"]  # noqa: E731
+        for tool, inp, want, why in (
+                ("Read", {"file_path": f"{repo}/src/a.txt"}, "allow", "read in the repo"),
+                ("Read", {"file_path": "/etc/passwd"}, "deny", "read outside the repo"),
+                ("Glob", {"pattern": "src/**"}, "allow", "glob the repo"),
+                ("Grep", {"pattern": "x", "path": "src"}, "allow", "grep the repo"),
+                ("Write", {"file_path": f"{repo}/src/new.txt", "content": "x"}, "allow", "write in scope"),
+                ("Write", {"file_path": f"{repo}/README.md", "content": "x"}, "deny", "write out of scope"),
+                ("Write", {"file_path": f"{repo}/.claude/settings.json", "content": "{}"}, "deny",
+                 "write Claude settings"),
+                ("Edit", {"file_path": f"{repo}/src/a.txt", "old_string": "a", "new_string": "b"}, "allow",
+                 "edit in scope"),
+                ("Edit", {"file_path": f"{repo}/.env", "old_string": "a", "new_string": "b"}, "deny", "edit a secret"),
+                ("Bash", {"command": "ls src", "description": "list"}, "allow", "read-only shell"),
+                ("Bash", {"command": "printf hi > src/a.txt"}, "deny", "shell redirect"),
+                ("mcp__ai-memory__memory_query", {}, "deny", "MCP tool"),
+                ("WebFetch", {"url": "https://x"}, "deny", "tool outside the allowlist"),
+                ("Task", {"prompt": "x"}, "deny", "subagent"),
+                ("TodoWrite", {"todos": []}, "allow", "inert tool")):
+            check(cl(tool, inp) == want, f"claude {why}: expected {want}")
+        check(json.loads(cx_hook_output("cl-pre", {"decision": "allow"}))["hookSpecificOutput"][
+              "permissionDecision"] == "allow", "claude allow is explicit (it approves Bash)")
+        check(json.loads(cx_hook_output("cl-stop", {"decision": "block", "reason": "go"}))["decision"] == "block",
+              "claude Stop block")
+        ldir = os.path.join(tmp, "cl-run")
+        os.makedirs(ldir, exist_ok=True)
+        lj = read_json(write_cl_settings(ldir, 900))
+        check(sorted(lj["hooks"]) == ["PreToolUse", "SessionStart", "Stop"]
+              and "cl-stop" in lj["hooks"]["Stop"][0]["hooks"][0]["command"]
+              and lj["hooks"]["Stop"][0]["hooks"][0]["timeout"] == 900, "claude settings file")
+        # the real hook command: argparse exits 2 on an unknown event, which Claude reads as a block
+        write_json(os.path.join(ldir, "ctx.json"), dict(lctx, run_id="run-l"))
+        for inp, want in (({"file_path": f"{repo}/README.md", "content": "x"}, "deny"),
+                          ({"file_path": f"{repo}/src/new.txt", "content": "x"}, "allow")):
+            pr = subprocess.run([sys.executable, os.path.realpath(__file__), "hook", "cl-pre", "--state", ldir],
+                                input=json.dumps({"tool_name": "Write", "tool_input": inp}),
+                                capture_output=True, text=True, timeout=60)
+            got = json.loads(pr.stdout)["hookSpecificOutput"]["permissionDecision"] if pr.returncode == 0 else ""
+            check(got == want, f"claude hook process: expected {want}")
+        check('"checks_run"' in compose_prompt(ltask, repo), "claude prompt carries the report schema")
+        lcmd = claude_cmd("claude", "P", dict(ltask, effort="low"), "/s.json")
+        check("--restricted" in lcmd and lcmd[lcmd.index("--settings") + 1] == "/s.json"
+              and lcmd[lcmd.index("--tools") + 1] == CLAUDE_TOOLS and "--strict-mcp-config" in lcmd
+              and lcmd[lcmd.index("--permission-mode") + 1] == "acceptEdits" and lcmd[-2:] == ["--effort", "low"],
+              "claude command")
+        lf, linfo = evaluate_cl(0, '{"type":"result","subtype":"success","is_error":false,"result":"done",'
+                                   '"session_id":"s","total_cost_usd":0.01}', "")
+        check(not lf and linfo["text"] == "done" and linfo["session_id"] == "s" and linfo["cost_usd"] == 0.01,
+              "claude evaluation")
+        check(evaluate_cl(0, "", "")[0], "claude cut run fails")
+        check(evaluate_cl(0, '{"type":"result","is_error":true,"result":"boom"}', "")[0], "claude error result fails")
+        hostenv = dict(os.environ, CLAUDECODE="1")
+        saved_env = dict(os.environ)
+        try:
+            os.environ.clear()
+            os.environ.update(hostenv)
+            preflight_claude()
+            check(False, "claude worker accepted inside Claude Code")
+        except Refusal:
+            check(True, "")
+        finally:
+            os.environ.clear()
+            os.environ.update(saved_env)
         # cursor: tool translation, .cursor/ protection, hooks file in the tree, command, evaluation
         utask = normalize_task({"prompt": "x", "scope": ["src/*"], "backend": "cursor", "gate": {"checks": ["true"]}})
         check(utask["model"] == CURSOR_DEFAULT_MODEL, "cursor default model")
@@ -4163,7 +4388,7 @@ def main(argv=None) -> int:
     h = sub.add_parser("hook", help="agy hook handler (installed per run)")
     h.add_argument("event", choices=["pre", "stop", "start", "oc-pre", "cp-pre", "cp-stop",
                                      "cx-start", "cx-pre", "cx-stop", "gk-start", "gk-pre", "gk-stop",
-                                     "cu-start", "cu-pre"])
+                                     "cu-start", "cu-pre", "cl-start", "cl-pre", "cl-stop"])
     h.add_argument("--state", required=True)
     a = p.parse_args(argv)
     if a.cmd == "hook":

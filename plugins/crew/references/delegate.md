@@ -13,9 +13,9 @@
 You plan, write the task, set scope and gate, read the verdict and review the
 diff. The worker executes one slice, headless. It never decides design,
 commits, or declares anything done. `scripts/crew.py` is the guard rail.
-`delegate` drives six backends, each with its own guard: [agy.md](agy.md),
+`delegate` drives seven backends, each with its own guard: [agy.md](agy.md),
 [opencode.md](opencode.md), [copilot.md](copilot.md), [codex.md](codex.md),
-[grok.md](grok.md), [cursor.md](cursor.md).
+[grok.md](grok.md), [cursor.md](cursor.md), [claude.md](claude.md).
 
 ## Ask first
 
@@ -57,7 +57,7 @@ Example: [task.example.json](task.example.json).
 | `gate.format` | the formatter; `{files}` becomes the changed in-scope files |
 | `gate.checks` | lint, typecheck, narrow tests; all must exit 0 |
 | `side_effects` | globs tools rewrite on their own (`nx.json`); tolerated, listed |
-| `backend`, `model`, `effort` | `agy` (default), `opencode`, `copilot`, `codex`, `grok`, `cursor`; models in each backend's file; `effort` for codex, grok and cursor |
+| `backend`, `model`, `effort` | `agy` (default), `opencode`, `copilot`, `codex`, `grok`, `cursor`, `claude`; models in each backend's file; `effort` for codex, grok, cursor and claude |
 | `timeout`, `gate_timeout`, `max_gate_attempts` | defaults `30m`, 900 s per command, 5 |
 | `allow_paths`, `deny_commands`, `secret_globs` | extra readable paths, extra denied command regexes, secret file names (default covers `.env*`, `.dev.vars`, `*.pem`, `*.key`, `id_rsa*`; `[]` disables) |
 
