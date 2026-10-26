@@ -27,7 +27,7 @@ ZCode, opencode, Muse Code, Hermes and Antigravity read plain skill folders.
 Code's marketplace clone, so updating the marketplace updates every tool:
 
 ```
-just link-skills global                          # every plugin except mobile-agent
+just link-skills global                          # agent-fleet, crew, media-agent (GLOBAL in the script)
 just link-skills project ~/code/app mobile-agent  # into the repo's .agents/skills, git-excluded
 just link-skills status ~/code/app
 ```

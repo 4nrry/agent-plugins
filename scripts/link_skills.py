@@ -25,7 +25,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-GLOBAL = ["agent-fleet", "agents-md", "crew", "extension-audit", "game-facts", "homelab", "media-agent"]
+# The user's choice (2026-10-26): only these reach the other tools; the rest
+# stay in Claude Code for now.
+GLOBAL = ["agent-fleet", "crew", "media-agent"]
 
 HOME = Path.home()
 # ~/.agents/skills: Grok, Cursor, Kimi Code, ZCode, opencode, and Hermes through
