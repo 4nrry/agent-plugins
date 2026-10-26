@@ -34,6 +34,10 @@ HOME = Path.home()
 # skills.external_dirs. Antigravity reads none of those, only its own folder.
 # Claude Code reads neither and gets the plugins instead.
 USER_ROOTS = [HOME / ".agents/skills", HOME / ".gemini/config/skills"]
+# Adapters run the GLOBAL plugins' hooks and MCP servers in a tool without
+# plugin support: every file in adapters/<tool>/ is linked into that tool's
+# folder by `global`.
+ADAPTER_ROOTS = {"opencode": HOME / ".config/opencode/plugins"}
 MARKETPLACE_CLONE = HOME / ".claude/plugins/marketplaces/4nrry"
 REPO = Path(__file__).resolve().parent.parent
 EXCLUDE_BEGIN = "# >>> link_skills.py (agent-plugins)"
@@ -73,7 +77,7 @@ def ours(link: Path, sources: list) -> bool:
     if not link.is_symlink():
         return False
     target = os.readlink(link)
-    return any(target.startswith(f"{s}/plugins/") for s in sources)
+    return any(target.startswith((f"{s}/plugins/", f"{s}/adapters/")) for s in sources)
 
 
 def sync(root: Path, want: dict, sources: list, dry: bool) -> list:
@@ -127,9 +131,16 @@ def write_exclude(repo: Path, names: list, dry: bool) -> None:
         path.write_text(text + "\n", encoding="utf-8")
 
 
-def cmd_global(source, sources, roots, plugins, dry) -> int:
+def adapters(source: Path, tool: str) -> dict:
+    folder = source / "adapters" / tool
+    return {f.name: f for f in sorted(folder.iterdir()) if f.is_file()} if folder.is_dir() else {}
+
+
+def cmd_global(source, sources, roots, plugins, dry, adapter_roots=None) -> int:
     want = wanted(source, plugins)
     conflicts = [c for root in roots for c in sync(root, want, sources, dry)]
+    for tool, root in (ADAPTER_ROOTS if adapter_roots is None else adapter_roots).items():
+        conflicts += sync(root, adapters(source, tool), sources, dry)
     for c in conflicts:
         print(f"conflict: {c}", file=sys.stderr)
     return 1 if conflicts else 0
@@ -186,17 +197,22 @@ def self_test() -> int:
             if not cond:
                 sys.exit(f"self-test failed: {what}")
 
-        rc = mute(cmd_global, src, sources, roots, ["a", "b"], False)
+        (src / "adapters/tool").mkdir(parents=True)
+        (src / "adapters/tool/bridge.js").write_text("// adapter")
+        aroot = t / "home/.config/tool/plugins"
+        mute(cmd_global, src, sources, roots, ["a", "b"], False, {"tool": aroot})
+        ok(os.readlink(aroot / "bridge.js") == str(src / "adapters/tool/bridge.js"), "adapter file linked")
+        rc = mute(cmd_global, src, sources, roots, ["a", "b"], False, {})
         ok(rc == 1, "a real file in the way is a conflict")
         ok((roots[0] / "x").read_text() == "a real file", "a real file is never replaced")
         ok(os.readlink(roots[1] / "x") == str(src / "plugins/b/skills/x"), "skill links to its dir")
         ok(os.readlink(roots[0] / "a") == str(src / "plugins/a"), "root SKILL.md links the plugin")
         (roots[0] / "x").unlink()
-        ok(mute(cmd_global, src, sources, roots, ["a", "b"], False) == 0, "second run is clean")
-        ok(mute(cmd_global, src, sources, roots, ["a"], False) == 0, "narrowing works")
+        ok(mute(cmd_global, src, sources, roots, ["a", "b"], False, {}) == 0, "second run is clean")
+        ok(mute(cmd_global, src, sources, roots, ["a"], False, {}) == 0, "narrowing works")
         ok(not (roots[0] / "y").exists() and (roots[0] / "foreign").is_dir(),
            "only this script's links are pruned")
-        mute(cmd_global, src, sources, roots, ["a"], True)
+        mute(cmd_global, src, sources, roots, ["a"], True, {})
         ok(sorted(p.name for p in roots[1].iterdir()) == ["a"], "idempotent")
 
         repo = t / "repo"
@@ -254,7 +270,8 @@ def main() -> int:
     if args.cmd == "project":
         return cmd_project(source, sources, args.repo.resolve(), args.plugins, args.dry_run)
     if args.cmd == "status":
-        return cmd_status(sources, USER_ROOTS + [r.resolve() / ".agents/skills" for r in args.repos])
+        return cmd_status(sources, USER_ROOTS + list(ADAPTER_ROOTS.values())
+                          + [r.resolve() / ".agents/skills" for r in args.repos])
     ap.print_help()
     return 2
 
