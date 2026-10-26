@@ -72,6 +72,14 @@ off.
 - **Captions.** They carry the voice; emphasis (an accent color, a box) is rare:
   the product name or the one number, never two at once. Never over a mouth or
   chin, and never under the platform's buttons.
+- **Test the opening.** Render two or three openings (only the hook changes,
+  which code makes cheap) and post them as tests to people who do not follow
+  the account; keep the one that holds. Compare with the account's own median:
+  no platform publishes a good skip rate.
+- **A series** from one template still needs its own story and pictures each
+  episode: platforms demote and demonetize repetitive, template-made posts.
+- **Declare AI** at upload when any shot, image or voice is realistic and
+  generated ([references/short-form.md](references/short-form.md)).
 
 ## Before delivery
 
