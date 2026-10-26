@@ -129,8 +129,9 @@ TESTED_OPENCODE_VERSION = "2.1.2"
 OPENCODE_CONFIG_FILES = ("opencode.json", "opencode.jsonc")
 # GitHub Copilot CLI. Everything here was seen on 1.0.96 with a Free account
 # (scratchpad lab, 2026-10-13, n=1 per case), where only `--model auto` is
-# accepted and it routes to gpt-5.6-luna.
-TESTED_COPILOT_VERSION = "1.0.96"
+# accepted and it routes to gpt-5.6-luna. 1.0.103 passed the delegate smoke
+# and a guarded review on 2026-10-25.
+TESTED_COPILOT_VERSION = "1.0.103"
 # Codex: hooks passed as `-c hooks.<Event>=...` for the run only (nothing in the
 # tree), `--dangerously-bypass-hook-trust` because they are new every run, and
 # the OS sandbox (`-s workspace-write`, no network) under them.
@@ -3030,7 +3031,7 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
         repo = None
     rundir = new_rundir(repo, "ask") if repo else tempfile.mkdtemp(prefix="crew-ask-")
     run_id = os.path.basename(rundir)
-    opts = {"web": web, "timeout": timeout_s}
+    opts = {"web": web, "timeout": timeout_s, "rundir": rundir}
     if schema:
         opts["schema"] = schema
         opts["schema_path"] = os.path.join(rundir, "schema.json")
