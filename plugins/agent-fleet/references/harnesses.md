@@ -22,6 +22,7 @@ when a row matters.
 | [Antigravity](https://antigravity.google/docs/subagents) | `.agents/agents/*.md`, `invoke_subagent` | `model:` in the file only, so one file per tier | not per child: the file has no effort key | `tools:` allowlist, empty by default |
 | [opencode](https://opencode.ai/docs/agents/) | `.opencode/agents/*.md` with `mode: subagent` | `model: provider/id` in the definition | `variant:` beside the agent's own `model`; `subagent` tool `model#variant` | `permission:` per tool; deny `edit`, `bash`, `execute`, `task` |
 | [Grok Build](https://github.com/xai-org/grok-build) | `.grok/agents/*.md`, `spawn_subagent` | spawn argument, role, persona or `[subagents.models]` | `effort:` in the file, or persona `reasoning_effort`; not a spawn argument | capability mode `read-only` |
+| [Cursor](https://cursor.com/docs/subagents) | `.cursor/agents/*.md`; also reads `.claude/agents/` and `.codex/agents/` | `model:` in the file (default `inherit`), or named by the parent at launch | bracket options in the model id: `claude-opus-5[effort=high]`; Grok 4.7's are `context`, `reasoning_effort`, `fast` | `readonly: true` |
 | [Hermes](https://hermes-agent.nousresearch.com/docs/user-guide/features/delegation) | no files; `delegate_task` batches | `delegation.model` in config only | `delegation.reasoning_effort`, one for all children, else the parent's | start the parent with a narrow `-t`; children inherit its toolsets |
 
 Claude Code resolves a subagent's effort as `CLAUDE_CODE_EFFORT_LEVEL` > Agent
