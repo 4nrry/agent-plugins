@@ -46,7 +46,7 @@ and, with `"effort"` in the task, `--reasoning-effort`.
 
 | Field | Meaning |
 |---|---|
-| `model` | default `grok-4.7-build-fast`; `grok models` lists the others |
+| `model` | default `grok-4.7`, the only model in 1.0.70; `grok models` lists them |
 | `effort` | `low` to `xhigh`, as the model offers |
 
 ## Failures only grok has
