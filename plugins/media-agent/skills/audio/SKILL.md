@@ -8,7 +8,8 @@ description: Gets music, sound effects and audio fixes for video under commercia
 Voice-over is in the `voice` skill. The rules below hold for any provider; how
 to run each one is in `references/`:
 [elevenlabs.md](references/elevenlabs.md) (SFX, music, cleanup,
-transcription, dubbing), [local-music.md](references/local-music.md) (music on
+transcription, dubbing), [xai.md](references/xai.md) (transcription),
+[local-music.md](references/local-music.md) (music on
 your own GPU) and [stock.md](references/stock.md) (libraries and their
 licenses).
 

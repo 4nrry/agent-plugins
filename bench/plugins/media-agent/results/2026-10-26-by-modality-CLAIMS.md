@@ -24,3 +24,14 @@ video-composition, kinocut-editing → video-editing, turntable-blender →
 
 Descriptions: 4,411 characters before, about 2,300 after. Lint
 (`lint_extensions.py`) and `claude plugin validate --strict` pass.
+
+## xAI on the SuperGrok subscription (live, n=1 each)
+
+| Route | Result |
+|---|---|
+| TTS through Hermes (`xai`, voice `liora`, pt-BR), `hermes-tts.sh` | ok in 7 s: mp3, 24 kHz mono, 128 kb/s, 2.9 s, -20.1 LUFS |
+| STT (`grok-voice-transcribe-2.0`) | no headless route: `hermes chat -t stt` returns `invalid_params`; transcription lives in Hermes's gateway only; Grok Build and Cursor CLI have no audio tools |
+| Image through Hermes (`grok-imagine-image-2.0`), `hermes-image.sh` | ok in 17–21 s: JPEG 1280x720 at "1k"; a public x.ai CDN URL for 48 h |
+| Video at 1080p, Grok Build `reference_to_video` | the agent asked for 1080p, then fell back to 720p: 1280x720, 24 fps, 6 s, with audio, 170 s |
+| Video at 1080p, Grok Build `image_to_video` | refused: "resolution_name must be one of: 480p, 720p. Got 1080p." |
+| Video through Hermes | its xAI plugin allows only 480p and 720p |

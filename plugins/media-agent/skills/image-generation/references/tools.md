@@ -9,7 +9,8 @@ that the file was written. Commands run from the skill's directory.
 | Grok Imagine, through Grok Build (`grok`) | `scripts/grok-image.sh "<prompt>" out.png` | exploring directions fast | sober documentary look; no negative prompt field |
 | Gemini image, through Antigravity (`agy`) | `scripts/agy-image.sh "<prompt>" out.png` | the final still | richer light and detail, more "AI look" |
 | Gemini image API | `scripts/nano.py <model> "<prompt>" -o out.png [--image in.png]` | batches, or when agy's quota is out | `gemini-nano-banana-2.1` (newest), `gemini-3.1-flash-image` (cheaper), `gemini-3-pro-image` (edits; ask gently, it overdoes changes) |
-| Grok Imagine API (`grok-imagine-image-2.0`, `-quality`) | none bundled | batches billed per image | needs an xAI API key, not the SuperGrok login |
+| Grok Imagine 2.0, through Hermes | `scripts/hermes-image.sh "<prompt>" out.jpg [landscape\|square\|portrait]` | the SuperGrok subscription's image model by name | JPEG, 1280x720 at the default "1k" (`image_gen.xai.resolution: 2k` in Hermes's config for more); with `image_gen.xai.storage.public_url` on, the file also sits at a public x.ai URL until it expires |
+| Grok Imagine API (`grok-imagine-image-2.0`, `-quality`) | none bundled | batches billed per image | needs an xAI API key |
 | Z-Image Turbo, local | `image-retouching` skill, `comfy-run.py generate` | offline, Apache-2.0 weights | 8 GB GPU |
 
 ## Setup
