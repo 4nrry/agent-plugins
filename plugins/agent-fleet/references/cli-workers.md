@@ -29,7 +29,7 @@ Claude), opencode.
 
 | Phase | Start with | Avoid |
 |---|---|---|
-| Search | several engines at once: `grok,hermes,agy` covers xAI and Google indexes | opencode: its web search is cancelled here and the run exits 1 |
+| Search | several engines at once: `grok,hermes,agy` covers xAI and Google indexes; opencode adds Exa's index at no cost | — |
 | Extract | opencode (free model), grok, or hermes with a page reader | agy: its quotes were mostly not on the page |
 
 crew's warnings (a backend or version never run end to end) are carried into

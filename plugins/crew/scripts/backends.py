@@ -13,14 +13,15 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 import uuid
 
 TIERS = ("cheap", "mid", "top")
 EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 
 # Versions on which a two-turn ask (new, then resumed) returned the right reply.
-LIVE = {"claude": "2.1.307", "agy": "1.4.4", "opencode": "2.1.2", "grok": "1.0.62",
-        "codex": "0.163.0", "hermes": "0.22.4"}
+LIVE = {"claude": "2.1.307", "agy": "1.4.4", "opencode": "2.1.4", "grok": "1.0.62",
+        "codex": "0.163.0", "hermes": "0.22.4", "copilot": "1.0.103"}
 
 OPENCODE_MODELS = ("opencode/minimax-m3.1-flash-free", "opencode/deepseek-v4.1-flash-free",
                    "opencode/glm-5.3-flash-free", "opencode/mimo-v2.6-flash-free",
@@ -29,6 +30,17 @@ OPENCODE_DENY = {"permission": {"edit": "deny", "bash": "deny", "execute": "deny
                                 "task": "deny", "external_directory": "deny"}}
 # --web: the same denials, web fetch and search allowed (fleet_worker's research runs).
 OPENCODE_WEB = {"permission": dict(OPENCODE_DENY["permission"], webfetch="allow", websearch="allow")}
+# opencode 2.1 searches only through a provider the user picked once in the
+# TUI; with none saved it asks, and `run` cancels the question ("Web search
+# cancelled"). This plugin picks Exa (keyless) in memory, for the run only.
+OPENCODE_WEB_PLUGIN = """// crew: web search through Exa for this run; nothing is saved.
+export default {
+  id: "crew-websearch",
+  async setup(ctx) {
+    await ctx.websearch.transform((w) => w.default.set("exa"));
+  },
+};
+"""
 GROK_WEB_TOOLS = "web_search,web_fetch"
 # ~/.grok/rules/ still loads and no flag skips it; a rule demanding a tool the
 # run denies made the worker return placeholders (agent-fleet smoke 2026-10-21).
@@ -37,8 +49,8 @@ GROK_WEB_RULE = ("You are an isolated, read-only research worker. Only web_searc
                  "and never return placeholder values: an empty list is a valid answer.")
 ASK_RULE = ("You are an isolated, read-only worker answering one question for another agent. "
             "Do not edit files, run commands that change anything, or start subagents.")
-COPILOT_READONLY_EXCLUDED = ["bash", "task", "apply_patch", "create", "edit", "str_replace_editor",
-                             "write_bash"]
+# 1.0.103 reports "write_bash" as an unknown tool name, so it is not listed.
+COPILOT_READONLY_EXCLUDED = ["bash", "task", "apply_patch", "create", "edit", "str_replace_editor"]
 COPILOT_MAX_CREDITS = 30   # the CLI refuses less; a brake on a runaway run, not a budget
 
 
@@ -148,15 +160,20 @@ def p_hermes(out):
 
 
 def p_copilot(out):
-    text, err = None, None
+    text, session, usage, aiu, err = None, None, None, None, "no result event"
     for ev in _jsonl(out):
         if ev.get("type") == "assistant.message":
             c = (ev.get("data") or {}).get("content")
             if isinstance(c, str) and c.strip():
                 text = c
-        elif ev.get("type") == "result" and ev.get("exitCode") not in (0, None):
-            err = f"exitCode {ev.get('exitCode')}"
-    return {"text": text, "session": None, "usage": None, "error": err}
+        elif ev.get("type") == "session.usage_checkpoint":
+            aiu = (ev.get("data") or {}).get("totalNanoAiu", aiu)
+        elif ev.get("type") == "result":
+            session, usage = ev.get("sessionId"), ev.get("usage")
+            err = None if ev.get("exitCode") in (0, None) else f"exitCode {ev.get('exitCode')}"
+    if usage is not None and aiu is not None:
+        usage = dict(usage, ai_credits=aiu / 1e9)
+    return {"text": text, "session": session, "usage": usage, "error": err}
 
 
 def p_generic(out):
@@ -214,8 +231,15 @@ def b_opencode(s, prompt, model, effort, session, cwd, opts=None):
     argv += ["-m", m] if m else []
     argv += ["-s", session] if session else []
     conf = OPENCODE_WEB if opts.get("web") else OPENCODE_DENY
-    return argv + [prompt], {"OPENCODE_CONFIG_CONTENT": json.dumps(conf), "OPENCODE_DISABLE_AUTOUPDATE": "1",
-                             "OPENCODE_DISABLE_SHARE": "1"}, None
+    env = {"OPENCODE_CONFIG_CONTENT": json.dumps(conf), "OPENCODE_DISABLE_AUTOUPDATE": "1",
+           "OPENCODE_DISABLE_SHARE": "1"}
+    if opts.get("web"):
+        cfg = os.path.join(opts["rundir"], "oc-web")
+        os.makedirs(os.path.join(cfg, "plugins"), exist_ok=True)
+        with open(os.path.join(cfg, "plugins", "crew-websearch.js"), "w", encoding="utf-8") as fh:
+            fh.write(OPENCODE_WEB_PLUGIN)
+        env["OPENCODE_CONFIG_DIR"] = cfg
+    return argv + [prompt], env, None
 
 
 def b_grok(s, prompt, model, effort, session, cwd, opts=None):
@@ -432,8 +456,14 @@ def self_test() -> int:
     ok(p_codex(cx)["text"] == "pong" and p_codex(cx)["session"] == "t1", "codex")
     hm = '{"type":"text","text":"pong"}\n{"type":"result","text":"pong","session_id":"h1","exit_code":0}'
     ok(p_hermes(hm)["session"] == "h1", "hermes")
-    cp = '{"type":"assistant.message","data":{"content":"pong"}}\n{"type":"result","exitCode":0}'
-    ok(p_copilot(cp)["text"] == "pong" and not p_copilot(cp)["error"], "copilot")
+    cp = ('{"type":"assistant.message","data":{"content":"pong"}}\n'
+          '{"type":"session.usage_checkpoint","data":{"totalNanoAiu":176373000}}\n'
+          '{"type":"result","sessionId":"c1","exitCode":0,"usage":{"premiumRequests":1}}')
+    r = p_copilot(cp)
+    ok(r["text"] == "pong" and r["session"] == "c1" and not r["error"]
+       and r["usage"] == {"premiumRequests": 1, "ai_credits": 0.176373}, "copilot")
+    ok(p_copilot('{"type":"assistant.message","data":{"content":"pong"}}')["error"] == "no result event",
+       "copilot cut run")
     ok(p_generic('{"type":"result","result":"pong","session_id":"x"}')["session"] == "x", "generic")
 
     fake = dict(bin="/x")
@@ -464,9 +494,14 @@ def self_test() -> int:
     ok(argv[argv.index("--tools") + 1] == GROK_WEB_TOOLS and env["GROK_WEB_FETCH"] == "1"
        and "--json-schema" in argv and "streaming-messages-json" not in argv, "grok web + schema")
     ok(b_codex(fake, "q", None, None, None, "/r", web)[0][:3] == ["/x", "--search", "exec"], "codex --search first")
-    _, env, _ = b_opencode(fake, "q", None, None, None, "/r", web)
-    ok(json.loads(env["OPENCODE_CONFIG_CONTENT"])["permission"]["websearch"] == "allow"
-       and json.loads(env["OPENCODE_CONFIG_CONTENT"])["permission"]["bash"] == "deny", "opencode web config")
+    with tempfile.TemporaryDirectory() as rd:
+        _, env, _ = b_opencode(fake, "q", None, None, None, "/r", dict(web, rundir=rd))
+        ok(json.loads(env["OPENCODE_CONFIG_CONTENT"])["permission"]["websearch"] == "allow"
+           and json.loads(env["OPENCODE_CONFIG_CONTENT"])["permission"]["bash"] == "deny", "opencode web config")
+        ok(env["OPENCODE_CONFIG_DIR"] == os.path.join(rd, "oc-web") and 'set("exa")' in open(
+            os.path.join(rd, "oc-web", "plugins", "crew-websearch.js"), encoding="utf-8").read(),
+           "opencode web provider plugin")
+    ok("OPENCODE_CONFIG_DIR" not in b_opencode(fake, "q", None, None, None, "/r", {})[1], "opencode ask: no plugin")
     argv, _, _ = b_agy(fake, "q", None, None, None, "/r", {"schema_path": "/s.json", "timeout": 300})
     ok(argv[argv.index("--json-schema") + 1] == "/s.json" and "300s" in argv, "agy schema + print timeout")
     try:
