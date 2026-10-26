@@ -1,0 +1,58 @@
+---
+name: video-generation
+description: Generates short video shots with any video model — animate a chosen still, one camera move, resolution by use, check every clip. Use for generated video, b-roll, an animated photo, a drone shot, image-to-video or text-to-video, or when a video model is named (Veo, Grok Imagine, Sora, Kling).
+---
+
+# Video generation
+
+The rules below hold for any video model. How to run each tool, its
+resolutions and its quirks are in [references/tools.md](references/tools.md).
+
+## Start from a still
+
+Text-to-video picks its own framing. Starting from a still keeps the
+composition and only moves the camera, so make and choose the still first
+(`image-generation` skill), then animate it. From this skill's directory, the
+pattern with the bundled Gemini Omni script:
+
+```bash
+python3 scripts/omni.py "slow drone push forward along the windrows, mist drifting, no text" -o shot.mp4 --image still.png
+scripts/contact-sheet.sh check.jpg still.png shot.mp4
+```
+
+## Prompts
+
+- Describe the motion only; the still already holds the scene.
+- One camera move per shot, with its framing: "medium shot, slow push
+  forward".
+- Sound on its own line ("Audio: light wind, distant birds"). Write dialogue
+  after a colon, not in quotes, which some models render as on-screen text.
+- Write in English, and keep text out of the frame. Where the model has no
+  negative prompt, say "no text, no people" in the prompt itself.
+
+## Resolution and cost
+
+- Pick the resolution by how the shot is shown: full screen needs native 1080p;
+  a blurred background, a small card or a Reels backdrop is fine at 480–720p.
+- Generate at the resolution you need, or let the vendor upscale it. Do not
+  upscale a low-resolution clip yourself frame by frame: it takes tens of
+  minutes per clip and invents detail.
+- Draft with the cheap model, then run the same prompt on the premium one. The
+  premium model can reinvent the geometry: compare it with the draft.
+
+## Check before the timeline
+
+- Watch every clip in full. Errors appear mid-clip, not on the first frame.
+- `scripts/contact-sheet.sh` puts 4 frames of each video on one sheet beside
+  the still.
+
+## Fitting it into the piece
+
+- Generated shots are short (2–4 s) and supporting: atmosphere around real
+  footage, never in place of the proof (product, dashboard, report).
+- Give generated and real footage the same color treatment.
+- A blurred low-resolution clip (`filter: blur(6px) brightness(.6)`) can sit
+  behind Reels typography.
+- Never generate the product, logos or real people (`image-generation` skill).
+- Generated video carries provenance (watermarks such as SynthID, C2PA
+  metadata); Instagram shows "AI info" when it finds the metadata.
