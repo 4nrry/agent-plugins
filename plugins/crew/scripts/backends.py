@@ -355,10 +355,9 @@ SPECS = {
                      efforts=EFFORTS, models=OPENCODE_MODELS,
                      read_only="OPENCODE_CONFIG_CONTENT denies edit, bash, execute, task"),
     "grok": dict(web=True, native_schema=True, vendor="xai", bins=("grok",), build=b_grok, parse=p_grok,
-                 # grok-4.7-build-fast left the catalog while the account changed plan and came back
-                 # with the new login (2026-10-25); grok-4.7 is the only model on every plan.
-                 tiers={"cheap": ("grok-4.7-build-fast", "low"), "mid": ("grok-4.7", "medium"),
-                        "top": ("grok-4.7", "xhigh")},
+                 # The user's choice (2026-10-26): Grok runs as grok-4.7 at xhigh, never a fast
+                 # variant; --effort lowers it. Its 500k window comes from ~/.grok/config.toml.
+                 tiers={t: ("grok-4.7", "xhigh") for t in TIERS},
                  efforts=("low", "medium", "high", "xhigh"),
                  read_only="--permission-mode plan, no MCP, no subagents"),
     "codex": dict(web=True, native_schema=False, vendor="openai", bins=("codex",), build=b_codex, parse=p_codex,
@@ -367,8 +366,8 @@ SPECS = {
                   efforts=("low", "medium", "high", "xhigh", "max", "ultra"),
                   read_only="sandbox_mode read-only, on every turn"),
     "hermes": dict(web=True, native_schema=False, vendor="nous", bins=("hermes",), build=b_hermes, parse=p_hermes,
-                   tiers={"cheap": ("xai-oauth:grok-4.7-build-fast", "low"),
-                          "mid": ("xai-oauth:grok-4.7", "medium"), "top": ("xai-oauth:grok-4.7", "high")},
+                   # grok-4.7 at xhigh, as for grok; Hermes reads its 500k window from api.x.ai.
+                   tiers={t: ("xai-oauth:grok-4.7", "xhigh") for t in TIERS},
                    efforts=EFFORTS,
                    read_only="-t web: no file or terminal tools, so put the code in the prompt"),
     "copilot": dict(web=False, native_schema=False, vendor="github", bins=("~/.local/bin/copilot", "copilot"), build=b_copilot,
@@ -376,7 +375,8 @@ SPECS = {
                     efforts=("none", "minimal", "low", "medium", "high", "xhigh", "max"),
                     read_only="headless denies tools needing approval; write tools excluded"),
     "cursor": dict(web=False, native_schema=False, vendor="cursor", bins=("cursor-agent",), build=b_cursor, parse=p_generic,
-                   tiers={t: ("auto", None) for t in TIERS}, efforts=EFFORTS,
+                   # Grok 4.7 at xhigh with its 500k window, as a full variant (see cursor_model).
+                   tiers={t: ("grok-4.7[context=500k,reasoning_effort=xhigh,fast=false]", None) for t in TIERS}, efforts=EFFORTS,
                    read_only="--mode ask"),
     "muse": dict(web=False, native_schema=False, vendor="muse", bins=("muse",), build=b_muse, parse=p_generic,
                  tiers={"cheap": ("muse-spark-1.3", "low"), "mid": ("muse-spark-1.3", "medium"),
