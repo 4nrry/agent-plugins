@@ -6,11 +6,15 @@ skill's directory.
 
 | Tool | Script | Good for | Notes |
 |---|---|---|---|
-| Gemini Omni (`gemini-omni-1.1-flash`), Gemini API | `python3 scripts/omni.py "<motion>" -o shot.mp4 --image still.png` | shots from a still, 720p native | 360p or 720p native; 1080p and 4k are upscaled by Google; 16:9 or 9:16; no negative prompt and no duration setting: clips come back at 10 s, 24 fps, with an audio track (trim in the edit) |
+| Gemini Omni (`gemini-omni-1.1-flash`), Gemini API | `python3 scripts/omni.py "<motion>" -o shot.mp4 --image still.png` | shots from a still, between a first and a last frame (`--last`), or of a subject from references (`--ref`); extending a clip (up to 40 s in total) and editing it in turns, through the API only | 360p or 720p native; 1080p and 4k are upscaled by Google; 16:9 or 9:16; no negative prompt and no duration setting: clips come back at 10 s, 24 fps, with an audio track (trim in the edit) |
 | Grok Imagine video, through Grok Build | `scripts/grok-video.sh "<motion>" out.mp4 --image still.png` | backgrounds, small cards, Reels backdrops | 480p by default, `--res 720p` at most: on the subscription, both Grok Build's video tools and Hermes's refuse 1080p ("resolution_name must be one of: 480p, 720p"); 6 s clips with audio |
 | Grok Imagine API (`grok-imagine-video-1.5`, `-1.5-lite`) | none bundled | native 1080p, 1–15 s, reference images | priced per second; needs an xAI API key |
 | Veo 3.1 GA (`veo-3.1-generate-001`, `-fast-`) | none bundled | premium shots | only on Google's enterprise platform (Vertex), us-central1 |
 | ElevenLabs canvas (MCP) | `audio` skill | upscaling a clip (Topaz) | video models there cost a large share of a month's credits per clip |
+
+`--last` and `--ref` follow the Omni docs (two images for first and last
+frame; task `reference_to_video` for references) and have not been run yet:
+the first live call hit the project's spend cap.
 
 The Veo 3.1 preview in the Gemini API, which the old `veo.py` used, was shut
 down on 2026-10-22.
