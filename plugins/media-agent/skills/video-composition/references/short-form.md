@@ -16,6 +16,27 @@ At 1080x1920, Meta's margins are 269 px top, 672 px bottom and 65 px a side.
 Organic posts carry a shorter caption and no call-to-action button, so they
 cover less; designing to the ad margins fits both.
 
+## Declaring AI
+
+Each platform asks whoever posts to declare realistic AI content at upload;
+metadata (C2PA) only adds a label on top.
+
+| Platform | What must be declared | If not |
+|---|---|---|
+| Meta (Instagram, Facebook) | photorealistic video or realistic-sounding audio, digitally created or altered | Meta "may apply penalties" |
+| TikTok | realistic images, audio and video (label encouraged for any fully generated content) | removed, restricted or labeled by TikTok; labeling itself does not cut distribution |
+| YouTube | a realistic person, place or event that was altered or never happened, or AI music that is the video's focus; not animation, fantasy or color fixes | manual label, removal, or suspension from the Partner Program for repeat failures |
+
+## Testing and series
+
+- Instagram's trial reels go to non-followers first, show metrics after about
+  24 h, and can be shared to followers later; a professional account is
+  required.
+- YouTube does not monetize "inauthentic content": template-made or
+  repetitive videos, such as the same music and AI imagery over an AI-read
+  script. Meta deprioritizes accounts that post mostly unoriginal content and
+  may make them non-recommendable.
+
 ## Delivery
 
 YouTube's upload recommendations, as an MP4 the other two also take: H.264 High
@@ -39,3 +60,9 @@ skill.
   (answer 16041697).
 - Meta Ads Guide, Instagram Reels video and image ad specs.
 - TikTok Ads Help, "TikTok Auction In-Feed Ads".
+- Meta, "Our approach to labeling AI-generated content" (2024).
+- TikTok Help, "AI-generated content".
+- YouTube Help, "Disclosing use of altered or synthetic content" (answer
+  14328491) and "YouTube channel monetization policies" (answer 1311392).
+- Instagram for Creators, "Trial reels".
+- Meta, "Rewarding original creators on Facebook" (2026).

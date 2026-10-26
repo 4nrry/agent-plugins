@@ -42,6 +42,18 @@ is in [references/tools.md](references/tools.md).
   invented; titles go on later in the brand's type.
 - **Real people, or people who could pass for staff or customers.**
 
+## A subject or place that recurs
+
+- **A character** in a series: draw a reference sheet first (front, profile,
+  three-quarter) with a fixed palette, and pass it to every later image and
+  clip. Keep it clearly stylized (illustrated, cartoon 3D), never near-photoreal:
+  in one study, semirealistic film characters read as eerier than cartoon
+  ones or real actors.
+- **A set or camera move** that returns: block it once in 3D (Blender, as in
+  the `3d-turntable` skill), render a rough frame per shot, and restyle each
+  render with an editing model. The layout stays put; regenerating from text
+  moves the walls.
+
 ## Fitting it into the piece
 
 - Generated images are atmosphere around real material, never the proof
@@ -54,7 +66,10 @@ is in [references/tools.md](references/tools.md).
 
 - Check the model's terms for commercial use before the final still, not after.
 - Generators embed provenance: an invisible watermark (SynthID on Google's
-  models) and often C2PA metadata, from which Instagram shows "AI info".
+  models) and often C2PA metadata, from which platforms add an AI label.
   Removing a visible mark does not remove them and can break the tool's terms.
+- A realistic generated image is declared at upload as AI-made: Meta, TikTok and YouTube require it of whoever posts,
+  whatever the metadata says (`video-composition` skill,
+  `references/short-form.md`).
 - Look at every final image at 100%: hands, edges and repeated textures fail
   where the thumbnail looks fine.

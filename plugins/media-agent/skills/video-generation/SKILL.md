@@ -20,6 +20,19 @@ python3 scripts/omni.py "slow drone push forward along the windrows, mist drifti
 scripts/contact-sheet.sh check.jpg still.png shot.mp4
 ```
 
+When the shot must land on an exact frame (a match cut, a loop back to the
+opening, room left for the product composite), give the last frame too:
+`--last end.png`, and describe the move between them.
+
+## A subject across shots
+
+- Pass the subject's reference images (`--ref`, repeatable; the sheet from the
+  `image-generation` skill) and name the subject in the prompt.
+- To continue a shot, extend the clip rather than generating a new one: the
+  model keeps the subject, the motion and the sound.
+- To fix one thing in a clip, edit it ("change only the sky") where the model
+  edits video; a new generation changes everything else too.
+
 ## Prompts
 
 - Describe the motion only; the still already holds the scene.
@@ -42,7 +55,9 @@ scripts/contact-sheet.sh check.jpg still.png shot.mp4
 
 ## Check before the timeline
 
-- Watch every clip in full. Errors appear mid-clip, not on the first frame.
+- Watch every clip in full. Errors appear mid-clip, not on the first frame:
+  hands, any text on screen, lip sync, and clothes or props that change
+  between shots. Regenerate a failed shot; do not ship the almost.
 - `scripts/contact-sheet.sh` puts 4 frames of each video on one sheet beside
   the still.
 
@@ -50,9 +65,13 @@ scripts/contact-sheet.sh check.jpg still.png shot.mp4
 
 - Generated shots are short (2–4 s) and supporting: atmosphere around real
   footage, never in place of the proof (product, dashboard, report).
-- Give generated and real footage the same color treatment.
+- Give generated and real footage the same color treatment and the same
+  grain: generated footage reads as too smooth beside real footage.
 - A blurred low-resolution clip (`filter: blur(6px) brightness(.6)`) can sit
   behind Reels typography.
 - Never generate the product, logos or real people (`image-generation` skill).
 - Generated video carries provenance (watermarks such as SynthID, C2PA
-  metadata); Instagram shows "AI info" when it finds the metadata.
+  metadata), from which platforms add an AI label. A realistic generated shot
+  is declared at upload as AI-made: Meta, TikTok and YouTube require it of whoever posts,
+  whatever the metadata says (`video-composition` skill,
+  `references/short-form.md`).

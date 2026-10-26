@@ -54,6 +54,14 @@ unless they record it or authorize it. First-person on-screen text with their
 photo works; if they want narration, they record it and the same pipeline
 applies.
 
+## Disclosure and series
+
+- A realistic synthetic voice is "realistic-sounding audio" to Meta: declare
+  the post as AI-made at upload (`video-composition` skill,
+  `references/short-form.md`).
+- A recurring character keeps one voice and one set of settings across
+  episodes; record them beside the voice JSON.
+
 ## API keys
 
 Keys come from the environment, never from a repo file or the command line

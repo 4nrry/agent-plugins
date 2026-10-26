@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """Generate a clip with Gemini Omni through the Gemini API's Interactions API. Stdlib only.
 
-  omni.py "motion prompt" -o clip.mp4 [--image frame.png] [--res 360p|720p|1080p|4k] [--aspect 16:9|9:16]
+  omni.py "motion prompt" -o clip.mp4 [--image first.png [--last last.png]] [--ref subject.png ...]
+          [--res 360p|720p|1080p|4k] [--aspect 16:9|9:16]
+
+--image starts the clip on that frame; with --last too, the clip moves from
+one to the other (describe the transition). --ref (repeatable) shows a subject
+to keep across clips; name it in the prompt. References do not combine with
+--image.
 
 Gemini Omni replaced the Veo 3.1 preview in the Gemini API (shut down 2026-10-22).
 It has no negative-prompt field and no duration setting: say "no text, no people"
@@ -37,29 +43,38 @@ def video_part(resp):
     return None
 
 
+def image_part(path):
+    mime = mimetypes.guess_type(path)[0] or "image/png"
+    return {"type": "image", "data": base64.b64encode(open(path, "rb").read()).decode(), "mime_type": mime}
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("prompt")
     p.add_argument("-o", "--out", required=True)
     p.add_argument("--image", help="first frame (png/jpg)")
+    p.add_argument("--last", help="last frame; needs --image")
+    p.add_argument("--ref", action="append", default=[], help="subject reference image (repeatable)")
     p.add_argument("--model", default="gemini-omni-1.1-flash")
     p.add_argument("--res", default="720p", choices=["360p", "720p", "1080p", "4k"])
     p.add_argument("--aspect", default="16:9", choices=["16:9", "9:16"])
     a = p.parse_args()
+    if a.last and not a.image:
+        p.error("--last needs --image")
+    if a.ref and a.image:
+        p.error("--ref does not combine with --image")
     key = os.environ.get("GEMINI_API_KEY") or sys.exit("GEMINI_API_KEY is missing (inject it via your secrets manager)")
 
-    parts = []
-    if a.image:
-        mime = mimetypes.guess_type(a.image)[0] or "image/png"
-        parts.append({"type": "image", "data": base64.b64encode(open(a.image, "rb").read()).decode(), "mime_type": mime})
+    parts = [image_part(f) for f in [a.image, a.last, *a.ref] if f]
     parts.append({"type": "text", "text": a.prompt})
     fmt = {"type": "video", "aspect_ratio": a.aspect, "resolution": a.res}
     if a.res in URI_RESOLUTIONS:
         fmt["delivery"] = "uri"
     body = {"model": a.model, "input": parts, "response_format": fmt,
             "background": False, "store": False, "stream": False}
-    if a.image:
-        body["generation_config"] = {"video_config": {"task": "image_to_video"}}
+    if a.image or a.ref:
+        task = "image_to_video" if a.image else "reference_to_video"
+        body["generation_config"] = {"video_config": {"task": task}}
 
     t0 = time.time()
     resp = call("POST", f"{API}/interactions", key, body, timeout=1800)
