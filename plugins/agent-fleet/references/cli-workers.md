@@ -19,8 +19,11 @@ python3 scripts/fleet_worker.py extract --backend opencode --question Q --source
 
 `angles.json` is `[{"label", "query", "rationale"}]`. `extract` reads
 `search`'s output directly. Each backend runs crew's `--tier` (default
-`cheap`); `--model` overrides it, as `backend=model[,backend=model]` with
-several backends, and `--effort` sets the effort.
+`cheap`) at **low** effort, since both phases are long tool loops: crew's own
+grok and hermes tiers are xhigh, for general work. A backend whose tier sets no
+effort (opencode) gets none. `--model` overrides the model, as
+`backend=model[,backend=model]` with several backends, and keeps that model's
+own effort; `--effort` sets one effort for every backend.
 
 ## Choosing backends
 
