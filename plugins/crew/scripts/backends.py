@@ -21,7 +21,7 @@ EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 
 # Versions on which a two-turn ask (new, then resumed) returned the right reply.
 LIVE = {"claude": "2.1.310", "agy": "1.4.7", "opencode": "2.1.4", "grok": "1.0.70",
-        "codex": "0.164.0", "hermes": "0.22.4", "copilot": "1.0.103", "cursor": "2026.10.22-27dcf5f"}
+        "codex": "0.164.0", "hermes": "0.22.5", "copilot": "1.0.103", "cursor": "2026.10.22-27dcf5f"}
 
 OPENCODE_MODELS = ("opencode/minimax-m3.1-flash-free", "opencode/deepseek-v4.1-flash-free",
                    "opencode/glm-5.3-flash-free", "opencode/mimo-v2.6-flash-free",
@@ -293,8 +293,21 @@ def b_copilot(s, prompt, model, effort, session, cwd, opts=None):
     return argv, {}, preset
 
 
+def cursor_model(model, effort):
+    """cursor-agent's --model: a flat id carries the effort as a suffix
+    (grok-4.7-xhigh); a bracket variant must be the full string, every
+    parameter in the CLI's order (grok-4.7[context=500k,reasoning_effort=xhigh,
+    fast=false]), so it is passed as given. Partial brackets are refused
+    (forum, 2026-09-21; lab 2026-10-25)."""
+    if not effort or not model or model == "auto":
+        return model
+    if "[" in model:
+        raise ValueError("cursor: put the effort inside the full bracket variant, not in --effort")
+    return f"{model}-{effort}"
+
+
 def b_cursor(s, prompt, model, effort, session, cwd, opts=None):
-    m = f"{model}[effort={effort}]" if model and effort else model
+    m = cursor_model(model, effort)
     # Headless, cursor-agent refuses an untrusted folder; --trust marks it trusted for good.
     argv = [s["bin"], "-p", prompt, "--output-format", "json", "--mode", "ask", "--trust"]
     argv += ["--model", m] if m else []
@@ -342,9 +355,10 @@ SPECS = {
                      efforts=EFFORTS, models=OPENCODE_MODELS,
                      read_only="OPENCODE_CONFIG_CONTENT denies edit, bash, execute, task"),
     "grok": dict(web=True, native_schema=True, vendor="xai", bins=("grok",), build=b_grok, parse=p_grok,
-                 # grok-4.7-build-fast left the catalog in 1.0.70 (2026-10-25): grok-4.7 is the only model.
-                 tiers={"cheap": ("grok-4.7", "low"), "mid": ("grok-4.7", "medium"),
-                        "top": ("grok-4.7", "high")},
+                 # grok-4.7-build-fast left the catalog while the account changed plan and came back
+                 # with the new login (2026-10-25); grok-4.7 is the only model on every plan.
+                 tiers={"cheap": ("grok-4.7-build-fast", "low"), "mid": ("grok-4.7", "medium"),
+                        "top": ("grok-4.7", "xhigh")},
                  efforts=("low", "medium", "high", "xhigh"),
                  read_only="--permission-mode plan, no MCP, no subagents"),
     "codex": dict(web=True, native_schema=False, vendor="openai", bins=("codex",), build=b_codex, parse=p_codex,
@@ -353,7 +367,7 @@ SPECS = {
                   efforts=("low", "medium", "high", "xhigh", "max", "ultra"),
                   read_only="sandbox_mode read-only, on every turn"),
     "hermes": dict(web=True, native_schema=False, vendor="nous", bins=("hermes",), build=b_hermes, parse=p_hermes,
-                   tiers={"cheap": ("xai-oauth:grok-4.7", "low"),
+                   tiers={"cheap": ("xai-oauth:grok-4.7-build-fast", "low"),
                           "mid": ("xai-oauth:grok-4.7", "medium"), "top": ("xai-oauth:grok-4.7", "high")},
                    efforts=EFFORTS,
                    read_only="-t web: no file or terminal tools, so put the code in the prompt"),
@@ -488,7 +502,15 @@ def self_test() -> int:
        "hermes provider:model")
     argv, _, preset = b_copilot(fake, "q", "auto", None, None, "/r")
     ok("--session-id" in argv and "apply_patch" in argv and "--allow-all-tools" not in argv, "copilot")
-    ok(b_cursor(fake, "q", "gpt-5.2", "high", None, "/r")[0][-1] == "gpt-5.2[effort=high]", "cursor")
+    ok(b_cursor(fake, "q", "grok-4.7", "xhigh", None, "/r")[0][-1] == "grok-4.7-xhigh", "cursor flat id + effort")
+    full = "grok-4.7[context=500k,reasoning_effort=xhigh,fast=false]"
+    ok(b_cursor(fake, "q", full, None, None, "/r")[0][-1] == full, "cursor full variant passed as given")
+    ok(cursor_model("auto", "high") == "auto", "cursor auto ignores effort")
+    try:
+        cursor_model(full, "high")
+        ok(False, "cursor bracket + effort refused")
+    except ValueError:
+        pass
     web = {"web": True}
     argv, _, _ = b_claude(fake, "q", None, None, None, "/r", dict(web, schema={"type": "object"}))
     ok(argv[argv.index("--tools") + 1] == "WebSearch,WebFetch" and "--json-schema" in argv, "claude web + schema")
