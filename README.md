@@ -49,9 +49,12 @@ into the tool's own folder; it runs the global plugins' `hooks/hooks.json` and
 |---|---|---|
 | opencode | `adapters/opencode/4nrry-bridge.js`, linked into `~/.config/opencode/plugins/` | the same bridge |
 | Hermes | `adapters/hermes/4nrry-bridge/`, linked into `~/.hermes/plugins/`; once: `hermes plugins enable 4nrry-bridge` | once: `hermes mcp add kinocut --command python3 --args ~/.claude/plugins/marketplaces/4nrry/adapters/mcp_launch.py media-agent kinocut` |
+| Kimi Code | once, in `~/.kimi-code/config.toml`: a `[[hooks]]` entry each for `UserPromptSubmit` and `PreToolUse` running `python3 ~/.claude/plugins/marketplaces/4nrry/adapters/claude_hooks.py <event>` | once, in `~/.kimi-code/mcp.json`: `"kinocut": {"command": "python3", "args": ["~/.claude/plugins/marketplaces/4nrry/adapters/mcp_launch.py", "media-agent", "kinocut"]}` (absolute path) |
 
 `adapters/mcp_launch.py PLUGIN SERVER` starts a server from the plugin's
-`mcp.json`, so the version pin lives in one place. Both bridges do nothing
+`mcp.json`, so the version pin lives in one place. `adapters/claude_hooks.py EVENT`
+runs every matching hook for tools whose hooks already speak Claude Code's
+contract (stdin JSON, exit 2 blocks, stdout becomes context), as Kimi's do. Both bridges do nothing
 inside a crew worker run (`CREW_RUN`).
 
 Copilot, Codex and Cursor install the global plugins themselves: each ships an
