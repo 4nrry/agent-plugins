@@ -24,6 +24,10 @@ Tiers `cheap`, `mid` and `top` map to a model and an effort per backend in
 and the backend's CLI logged in. A run sends the prompt and what the worker
 reads to that vendor; the skill makes the host ask first.
 
+The skill lives in `skills/crew/` (paths below are relative to it, except
+`hooks/` at the plugin root), and an Agent Plugins `plugin.json` at the root
+lets Copilot, Codex and Cursor install the plugin.
+
 | Component | Path |
 |---|---|
 | Skill | `SKILL.md`: picking a backend and tier, `ask`, `review`, `delegate` |
@@ -69,7 +73,8 @@ No comparison with the host doing the same work exists, so no saving is claimed.
 
 Upgrading from 0.5.x: the skills `delegate`, `review`, `agy`, `opencode` and
 `copilot` became one skill, `crew`, with the backend notes under `references/`;
-`crew.py` moved to `scripts/` at the plugin root.
+`crew.py` moved to `scripts/`. From 0.13.0 the skill folder is `skills/crew/`
+(Agent Plugins layout); set `CREW_PY` again if you pinned the old path.
 
 Upgrading from `agy-worker` (≤ 0.3.x): run state moved from
 `$(git rev-parse --git-path agy-worker)` to `--git-path crew`, and

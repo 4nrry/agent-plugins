@@ -23,7 +23,7 @@ from pathlib import Path
 # this and a stale cache would score against a verifier the repo no longer has.
 # bench/plugins/agent-fleet/scripts/ -> up 4 to the repo root.
 REPO = pathlib.Path(__file__).resolve().parents[4]
-PLUGIN_SCRIPTS = Path(sys.argv[3]) if len(sys.argv) > 3 else REPO / "plugins" / "agent-fleet" / "scripts"
+PLUGIN_SCRIPTS = Path(sys.argv[3]) if len(sys.argv) > 3 else REPO / "plugins" / "agent-fleet" / "skills" / "agent-fleet" / "scripts"
 if not (PLUGIN_SCRIPTS / "verify_citations.py").is_file():
     sys.exit(f"verify_citations.py not found under {PLUGIN_SCRIPTS}")
 sys.path.insert(0, str(PLUGIN_SCRIPTS))
