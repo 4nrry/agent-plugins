@@ -2647,9 +2647,11 @@ def remove_cu_hooks(repo: str, created_dir: bool) -> None:
 
 
 def cursor_cmd(cu: str, msg: str, task: dict, chat) -> list:
-    model = task["model"]
-    if task.get("effort") and model != "auto":
-        model = f"{model}[effort={task['effort']}]"
+    import backends
+    try:
+        model = backends.cursor_model(task["model"], task.get("effort"))
+    except ValueError as exc:
+        raise Refusal(str(exc))
     return [cu, "-p", msg, "--output-format", "stream-json", "--force", "--trust", "--sandbox", "disabled",
             "--model", model, *(["--resume", chat] if chat else [])]
 
@@ -3191,7 +3193,10 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
         if not spec["native_schema"]:
             prompt += ("\n\nEnd your reply with ONE JSON object (no prose after it) matching this JSON "
                        f"schema: {json.dumps(schema, separators=(',', ':'))}")
-    argv, extra_env, preset = spec["build"](spec, prompt, r["model"], r["effort"], session, cwd, opts)
+    try:
+        argv, extra_env, preset = spec["build"](spec, prompt, r["model"], r["effort"], session, cwd, opts)
+    except ValueError as exc:
+        raise Refusal(str(exc))
     env.update(extra_env)
     env.update(WORKER_ENV)
     env[RUN_ENV] = run_id
@@ -3718,8 +3723,8 @@ def self_test() -> int:
                 ("Fetch", {"url": "https://x"}, "deny", "tool outside the allowlist"),
                 ("ReadLints", {}, "allow", "inert tool")):
             check(cu(tool, inp) == want, f"cursor {why}: expected {want}")
-        ucmd = cursor_cmd("cursor-agent", "P", dict(utask, model="gpt-5.2", effort="high"), "chat-1")
-        check(ucmd[ucmd.index("--model") + 1] == "gpt-5.2[effort=high]" and ucmd[-2:] == ["--resume", "chat-1"]
+        ucmd = cursor_cmd("cursor-agent", "P", dict(utask, model="grok-4.7", effort="xhigh"), "chat-1")
+        check(ucmd[ucmd.index("--model") + 1] == "grok-4.7-xhigh" and ucmd[-2:] == ["--resume", "chat-1"]
               and ucmd[ucmd.index("--sandbox") + 1] == "disabled", "cursor command")
         check(cursor_cmd("cursor-agent", "P", dict(utask, effort="high"), None)[-1] == "auto",
               "cursor: no effort suffix on auto")
