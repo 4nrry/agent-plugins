@@ -20,7 +20,7 @@ except `hooks/` and `workflows/` at the plugin root.
 | CLI workers | `references/cli-workers.md`, `scripts/fleet_worker.py` | Search and extract on another CLI through crew's `ask --web --schema`, read-only |
 | Verifier | `scripts/verify_citations.py` | Fetches each cited URL and string-checks the quote |
 | Workflow | `workflows/deep-research.js` | Claude Code's built-in deep research with per-phase `model:` overrides |
-| Injection hook | `hooks/inject.sh` | `UserPromptSubmit`: loads the skill when the prompt contains `deep-research` or `ultracode` |
+| Injection hook | `hooks/inject.sh` | `UserPromptSubmit`: loads the skill when the prompt names a fan-out (`ultracode`, deep research, dynamic workflow, `/dwf`, `/fleet`) or asks for "pesquisa" from many sources; says to search X only when the question is about posts or the user asks |
 | Routing hook | `hooks/check-routing.sh` | `PreToolUse` on `Workflow`: denies an unrouted script once, and the bare built-in name always |
 
 ## Why hooks
