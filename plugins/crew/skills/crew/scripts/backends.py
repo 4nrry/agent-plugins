@@ -23,9 +23,10 @@ EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 LIVE = {"claude": "2.1.310", "agy": "1.4.7", "opencode": "2.1.4", "grok": "1.0.70",
         "codex": "0.164.0", "hermes": "0.22.5", "copilot": "1.0.103", "cursor": "2026.10.22-27dcf5f"}
 
-OPENCODE_MODELS = ("opencode/minimax-m3.1-flash-free", "opencode/deepseek-v4.1-flash-free",
-                   "opencode/glm-5.3-flash-free", "opencode/mimo-v2.6-flash-free",
-                   "opencode/nemotron-3.5-lightning-free", "opencode/nemotron-3.5-super-vl-free")
+OPENCODE_MODELS = ("opencode/deepseek-v4.1-flash-free", "opencode/glm-5.3-flash-free",
+                   "opencode/beam-free", "opencode/nemotron-3.5-super-vl-free",
+                   "opencode/nemotron-3.5-lightning-free", "opencode/mimo-v2.6-flash-free",
+                   "opencode/flint-40b-free")
 OPENCODE_DENY = {"permission": {"edit": "deny", "bash": "deny", "execute": "deny",
                                 "task": "deny", "external_directory": "deny"}}
 # --web: the same denials, web fetch and search allowed (fleet_worker's research runs).
@@ -350,7 +351,7 @@ SPECS = {
                 read_only="--mode plan"),
     "opencode": dict(web=True, native_schema=False, vendor="opencode", bins=("opencode", "~/.opencode/bin/opencode"),
                      build=b_opencode, parse=p_opencode,
-                     # minimax (first) left Zen on 2026-10-22. top is the 1M-context
+                     # top is the 1M-context
                      # Nemotron, whose prompts NVIDIA logs: never for private material.
                      tiers={"cheap": ("opencode/deepseek-v4.1-flash-free", None),
                             "mid": ("opencode/glm-5.3-flash-free", None),

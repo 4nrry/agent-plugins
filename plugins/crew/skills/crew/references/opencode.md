@@ -12,20 +12,25 @@ Use it when agy's quota is gone, or for extra slices at no cost.
 
 ## Models and data
 
-Only these six are accepted. Zen rotates its free models: on 2026-10-22
-minimax left (`provider.no-route`), so the default and the `cheap` tier are
-deepseek, `mid` is glm, and `top` is Nemotron Super VL (1M context, but NVIDIA
-logs the prompts). Terms from the Zen docs; re-read them before relying on this
-table, they change:
+Only these seven are accepted. Zen rotates its free models, so check
+`opencode models` before relying on the list: the default and the `cheap` tier
+are deepseek, `mid` is glm, and `top` is Nemotron Super VL (1M context, but
+NVIDIA logs the prompts). Terms from the Zen docs, checked 2026-10-26; re-read
+them, they change:
 
 | Model | Data terms |
 |---|---|
-| `opencode/minimax-m3.1-flash-free` (unavailable since 2026-10-22) | zero retention, no training |
 | `opencode/deepseek-v4.1-flash-free` (default) | zero retention, no training |
 | `opencode/glm-5.3-flash-free` | zero retention, no training |
+| `opencode/beam-free` | no training; kept 30 days for safety |
 | `opencode/nemotron-3.5-super-vl-free` | logged by NVIDIA to improve its products: no personal or confidential data |
 | `opencode/nemotron-3.5-lightning-free` | same as Super VL |
-| `opencode/mimo-v2.6-flash-free` | prompts may be used to improve the model while free |
+| `opencode/mimo-v2.6-flash-free` | may be used to improve the model while free |
+| `opencode/flint-40b-free` | may be used to improve the model while free; kept 30 days |
+
+Private code goes only to the two zero-retention models. Not accepted:
+minimax (left Zen on 2026-10-22), and `nemotron-3-ultra-free`, which `opencode
+models` lists but which answered "Model is unavailable" on 2026-10-26.
 
 ## The guard is weaker — tell the user
 

@@ -117,13 +117,13 @@ WORKER_ENV = {"NX_DAEMON": "false"}
 BACKENDS = ("agy", "opencode", "copilot", "codex", "grok", "cursor", "claude")
 # review keeps crew's guard hooks on these; every other backend reviews through ask.
 REVIEW_GUARDED = ("agy", "opencode", "copilot")
-# minimax-m3.1-flash-free left Zen (provider.no-route, 2026-10-22); kept allowed should it return.
 OPENCODE_DEFAULT_MODEL = "opencode/deepseek-v4.1-flash-free"
-# The only opencode models a run may use (the user's choice, 2026-10-21); the
-# Zen data terms of each are in the opencode skill.
-OPENCODE_MODELS = ("opencode/minimax-m3.1-flash-free", "opencode/deepseek-v4.1-flash-free",
-                   "opencode/glm-5.3-flash-free", "opencode/nemotron-3.5-super-vl-free",
-                   "opencode/nemotron-3.5-lightning-free", "opencode/mimo-v2.6-flash-free")
+# The only opencode models a run may use: Zen's free list on 2026-10-26 (minimax
+# left on 2026-10-22). The Zen data terms of each are in references/opencode.md.
+OPENCODE_MODELS = ("opencode/deepseek-v4.1-flash-free", "opencode/glm-5.3-flash-free",
+                   "opencode/beam-free", "opencode/nemotron-3.5-super-vl-free",
+                   "opencode/nemotron-3.5-lightning-free", "opencode/mimo-v2.6-flash-free",
+                   "opencode/flint-40b-free")
 # opencode 2.x dropped `--dir` (the run uses cwd = repo) and by default attaches
 # to a shared background service, which would not see this process's
 # OPENCODE_CONFIG_CONTENT and so would run without the guard plugin.
