@@ -3,11 +3,12 @@
 
   claude_hooks.py EVENT < payload.json
 
-For tools whose own hooks speak Claude Code's contract (Kimi Code: snake_case
-JSON on stdin, exit 2 blocks with the reason on stderr, stdout becomes
-context): register one hook per event that runs this script, and it runs every
+For tools whose own hooks speak Claude Code's contract (Kimi Code, Muse, ZCode:
+snake_case JSON on stdin, exit 2 blocks with the reason on stderr, stdout
+becomes context): register one hook per event that runs this script, and it runs every
 matching command from the plugins' hooks/hooks.json in the marketplace clone,
-with CLAUDE_PLUGIN_ROOT set. Matchers are checked here against `tool_name`.
+with CLAUDE_PLUGIN_ROOT set. Matchers are checked here against `tool_name`,
+after mapping the tool's own name (bash, exec_command) to Claude's.
 Output: exit 2 and the reason on stderr when any hook blocks; otherwise the
 joined context on stdout. Inside a crew worker run (CREW_RUN) it does nothing.
 Stdlib only.
@@ -22,7 +23,10 @@ from pathlib import Path
 MARKETPLACE = Path(__file__).resolve().parent.parent
 HOOK_TIMEOUT_S = 30
 # Argument names other tools use where Claude Code's hook scripts read another.
-ALIASES = {"path": "file_path", "filePath": "file_path"}
+ALIASES = {"path": "file_path", "filePath": "file_path", "cmd": "command"}
+# Other tools' names (lowercased) for Claude Code's tools.
+TOOL_NAMES = {"bash": "Bash", "shell": "Bash", "exec_command": "Bash", "read": "Read", "read_file": "Read",
+              "write": "Write", "write_file": "Write", "edit": "Edit", "glob": "Glob", "grep": "Grep"}
 
 
 def plugins() -> list:
@@ -72,9 +76,14 @@ def run(command: str, root: Path, payload: dict) -> dict:
 
 def dispatch(event: str, payload: dict) -> tuple:
     """(exit code, stdout, stderr) for one event."""
+    tool = str(payload.get("tool_name", ""))
+    payload = dict(payload, tool_name=TOOL_NAMES.get(tool.lower(), tool))
     tool_input = payload.get("tool_input")
     if isinstance(tool_input, dict):
-        payload = dict(payload, tool_input={ALIASES.get(k, k): v for k, v in tool_input.items()})
+        tool_input = {ALIASES.get(k, k): v for k, v in tool_input.items()}
+        if isinstance(tool_input.get("command"), list):
+            tool_input["command"] = " ".join(map(str, tool_input["command"]))
+        payload["tool_input"] = tool_input
     payload.setdefault("hook_event_name", event)
     contexts = []
     for plugin in plugins():
@@ -93,6 +102,8 @@ def self_test() -> int:
     code, out, _ = dispatch("UserPromptSubmit", {"prompt": "ask grok and codex"})
     assert code == 0 and "crew skill may apply" in out, out
     code, out, _ = dispatch("PreToolUse", {"tool_name": "Bash", "tool_input": {"command": "vipsthumbnail a.jpg -o b.png"}})
+    assert code == 0 and "vipsthumbnail -o NAME" in out, out
+    code, out, _ = dispatch("PreToolUse", {"tool_name": "exec_command", "tool_input": {"cmd": "vipsthumbnail a.jpg -o b.png"}})
     assert code == 0 and "vipsthumbnail -o NAME" in out, out
     code, out, _ = dispatch("PreToolUse", {"tool_name": "Read", "tool_input": {"path": "x"}})
     assert code == 0 and out == "", out
