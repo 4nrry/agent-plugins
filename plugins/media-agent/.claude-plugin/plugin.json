@@ -1,11 +1,11 @@
 {
   "name": "media-agent",
   "displayName": "Media Agent",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "author": {
     "name": "4nrry",
     "url": "https://github.com/4nrry"
   },
   "license": "MIT",
-  "description": "Media production by an agent on a machine with an 8 GB GPU and commercial licensing: voice-over at -16 LUFS, music and stock media with per-item licenses, headless ComfyUI retouching with commercial models, generated images and video, a headless Blender turntable, video as code in Remotion, finished-video editing through the Kinocut MCP, and ElevenLabs beyond voice. One hook warns where vipsthumbnail -o really writes."
+  "description": "Media production by an agent on a machine with an 8 GB GPU and commercial licensing, one skill per modality with rules that hold for any model: image and video generation, image retouching, voice-over at -16 LUFS, music and sound with per-item licenses, video composed as code, editing finished video, and a 3D product turntable. One hook warns where vipsthumbnail -o really writes."
 }

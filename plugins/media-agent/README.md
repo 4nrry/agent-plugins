@@ -1,24 +1,25 @@
 # media-agent
 
 Media production by an agent on your own machine with an 8 GB GPU, where
-commercial licensing matters and tools fail without saying so: voice-over,
-music and stock media, retouching, generated images and video, a 3D product
-turntable, and the film rendered as code.
+commercial licensing matters and tools fail without saying so. One skill per
+modality: its rules hold for any model of that kind, and each tool's notes sit
+in the skill's `references/`, so a new model is a new reference file, not a
+new skill.
 
 ```
 /plugin install media-agent@4nrry
 ```
 
-| Skill | Does |
-|---|---|
-| `voice-over` | Local TTS or ElevenLabs, one sentence per file, -16 LUFS, a durations JSON that drives captions and ducking (`vo-normalize.sh`) |
-| `elevenlabs` | SFX, exact-length music, cleanup, word-timed transcription, dubbing, brand voice; REST vs MCP; credits (`eleven.py`) |
-| `music-and-stock` | ACE-Step 1.5 within 8 GB; Openverse, Freesound, Pexels, Pixabay with per-item licenses (`media-search.py`) |
-| `comfyui-retouching` | Headless ComfyUI with commercially licensed models: background, upscale, logo removal, inpaint, stills (`comfy-run.py`) |
-| `generative-media` | Which generator for which task, the still-to-video flow, prompts, what never to generate (grok, agy, Veo, Nano Banana wrappers) |
-| `turntable-blender` | 360° turntable of a `.glb` in headless Cycles, transparent PNGs (`turntable.py`) |
-| `video-remotion` | Video as code in Remotion or HTML + Chrome + ffmpeg, four formats and a carousel from one source |
-| `kinocut-editing` | Editing finished video through the Kinocut MCP server this plugin registers (`.mcp.json`) |
+| Skill | Rules for | Bundled tools |
+|---|---|---|
+| `image-generation` | explore, choose on a contact sheet, final still, what never to generate | Grok Imagine, Gemini (agy, API) wrappers; `contact-sheet.sh` |
+| `video-generation` | still-to-video, one camera move, resolution by use, checking every clip | Gemini Omni and Grok video wrappers |
+| `image-retouching` | weight licenses, removal vs inpainting, one GPU job at a time | headless ComfyUI (`comfy-run.py`) |
+| `voice` | one sentence per file, caption vs spoken text, -16 LUFS, the durations JSON | `vo-normalize.sh`; TTS engine notes |
+| `audio` | licenses and credits, exact-length music, SFX, fixing real recordings | ElevenLabs (`eleven.py`), ACE-Step, stock search (`media-search.py`) |
+| `video-composition` | video as code: frame-driven scenes, captions from the voice JSON, formats from one source | Remotion, HTML + Chrome + ffmpeg |
+| `video-editing` | re-render vs patch the mp4, checking the output | Kinocut, registered as an MCP server (`.mcp.json`) |
+| `3d-turntable` | a 360° product turn as transparent frames | headless Blender (`turntable.py`) |
 
 The hook `hooks/guard-vipsthumbnail.sh` (`PreToolUse` on `Bash(vipsthumbnail *)`)
 warns when `-o name` without a slash will write next to the input file. It

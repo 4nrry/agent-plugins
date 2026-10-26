@@ -1,0 +1,43 @@
+# Video tools
+
+Checked against the vendors' docs on 2026-10-26; model names, prices and
+quotas change monthly, so check again before a paid run. Commands run from the
+skill's directory.
+
+| Tool | Script | Good for | Notes |
+|---|---|---|---|
+| Gemini Omni (`gemini-omni-1.1-flash`), Gemini API | `python3 scripts/omni.py "<motion>" -o shot.mp4 --image still.png` | shots from a still, 720p native | 360p or 720p native; 1080p and 4k are upscaled by Google; 16:9 or 9:16; no negative prompt and no duration setting. Not run yet with this script |
+| Grok Imagine video, through Grok Build | `scripts/grok-video.sh "<motion>" out.mp4 --image still.png` | backgrounds, small cards, Reels backdrops | 480p by default, `--res 720p` when visible; follows the still, not the aspect ratio |
+| Grok Imagine API (`grok-imagine-video-1.5`, `-1.5-lite`) | none bundled | native 1080p, 1–15 s, reference images | priced per second; needs an xAI API key, not the SuperGrok login |
+| Veo 3.1 GA (`veo-3.1-generate-001`, `-fast-`) | none bundled | premium shots | only on Google's enterprise platform (Vertex), us-central1 |
+| ElevenLabs canvas (MCP) | `audio` skill | upscaling a clip (Topaz) | video models there cost a large share of a month's credits per clip |
+
+The Veo 3.1 preview in the Gemini API, which the old `veo.py` used, was shut
+down on 2026-10-22.
+
+## Setup
+
+Every billing step is the user's.
+
+**Gemini API (Omni).**
+
+1. A project linked to a billing account, and an API key created in AI Studio
+   under that project. Keep `GEMINI_API_KEY` in the secrets manager.
+2. Google AI Pro includes monthly Google Cloud credits through the Developer
+   Program; apply each one to the billing account.
+3. **Prepaid balance above zero in AI Studio.** New accounts are prepaid; at
+   zero the API answers HTTP 402, even with Cloud credits applied.
+4. A budget with spend-cap enforcement on the project's Gemini API service. It
+   measures list price and ignores credits, and it is not instantaneous.
+
+To test the key and balance without spending on video, make a 1-token text
+call.
+
+**Grok video.** Same `grok` login as for images (Grok Build's `/imagine-video`
+command; headless, the script asks the agent for it). With zero data retention
+(ZDR) on, the CLI returned "Video generation tools are unavailable under zero
+data retention". Either the user turns ZDR off (`/privacy`), or points Grok at
+their own S3-compatible bucket: `S3_ENDPOINT=... S3_BUCKET=...
+scripts/grok-zdr-bucket.sh` writes `[tools.zdr_video_output_s3]` to
+`~/.grok/managed_config.toml`. An R2 key can only be created in the Cloudflare
+dashboard.

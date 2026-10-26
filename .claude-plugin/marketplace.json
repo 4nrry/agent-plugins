@@ -84,8 +84,8 @@
         "audio",
         "images",
         "voice-over",
-        "comfyui",
-        "remotion"
+        "image-generation",
+        "video-generation"
       ]
     },
     {
