@@ -45,7 +45,7 @@ ComputerUse, shell stdin) is denied by the allowlist.
 
 | Field | Meaning |
 |---|---|
-| `model` | default `auto`; a flat id from `cursor-agent models` (`grok-4.7-xhigh`), or a full bracket variant with every parameter in the CLI's order (`grok-4.7[context=500k,reasoning_effort=xhigh,fast=false]` for Grok's 500k window) |
+| `model` | default `grok-4.7[context=500k,reasoning_effort=xhigh,fast=false]` (Grok 4.7, xhigh, 500k window); `auto`, a flat id from `cursor-agent models` (`grok-4.7-xhigh`), or a full bracket variant with every parameter in the CLI's order (`grok-4.7[context=500k,reasoning_effort=xhigh,fast=false]` for Grok's 500k window) |
 | `effort` | appended to a flat id (`grok-4.7` + `xhigh` = `grok-4.7-xhigh`); ignored with `auto`; refused with a bracket variant, which carries its own |
 | `scope` | must not cover `.cursor/hooks.json` |
 

@@ -152,6 +152,7 @@ CX_INERT_TOOLS = {"update_plan", "view_image"}
 # Under `--sandbox workspace` the worker cannot write ~/.grok/hooks.
 TESTED_GROK_VERSION = "1.0.70"
 GROK_DEFAULT_MODEL = "grok-4.7"
+GROK_DEFAULT_EFFORT = "xhigh"
 GROK_HOOK_DIR = os.path.expanduser("~/.grok/hooks")
 GROK_TOOLS = "run_terminal_command,read_file,search_replace,list_dir,grep,write,todo_write"
 GK_TOOLS = {
@@ -170,7 +171,7 @@ GK_INERT_TOOLS = {"todo_write"}
 # opencode. Its sandbox does not start on this machine (AppArmor), so the run
 # uses `--sandbox disabled` and the hooks are the only limit.
 TESTED_CURSOR_VERSION = "2026.10.22-27dcf5f"
-CURSOR_DEFAULT_MODEL = "auto"
+CURSOR_DEFAULT_MODEL = "grok-4.7[context=500k,reasoning_effort=xhigh,fast=false]"
 CURSOR_HOOK_FILE = ".cursor/hooks.json"
 CU_TOOLS = {
     "Read": ("view_file", {"file_path": "AbsolutePath"}),
@@ -2515,7 +2516,7 @@ def grok_cmd(gk: str, prompt: str, task: dict) -> list:
     cmd = [gk, "-p", prompt, "--output-format", "streaming-messages-json", "--sandbox", "workspace",
            "--permission-mode", "bypassPermissions", "--tools", GROK_TOOLS, "--no-subagents",
            "-m", task["model"]]
-    return cmd + (["--reasoning-effort", task["effort"]] if task.get("effort") else [])
+    return cmd + ["--reasoning-effort", task.get("effort") or GROK_DEFAULT_EFFORT]
 
 
 def evaluate_gk(rc, stdout: str, stderr: str):
@@ -3600,6 +3601,7 @@ def self_test() -> int:
         gcmd = grok_cmd("grok", "P", dict(gtask, effort="low"))
         check(gcmd[gcmd.index("--sandbox") + 1] == "workspace" and "--no-subagents" in gcmd
               and gcmd[gcmd.index("--tools") + 1] == GROK_TOOLS and gcmd[-1] == "low", "grok command")
+        check(grok_cmd("grok", "P", gtask)[-2:] == ["--reasoning-effort", GROK_DEFAULT_EFFORT], "grok default effort")
         gf, ginfo = evaluate_gk(0, '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"done"}]}}\n'
                                    '{"type":"result","session_id":"s","is_error":false,"usage":{}}', "")
         check(not gf and ginfo["text"] == "done" and ginfo["session_id"] == "s", "grok evaluation")
@@ -3726,7 +3728,7 @@ def self_test() -> int:
         ucmd = cursor_cmd("cursor-agent", "P", dict(utask, model="grok-4.7", effort="xhigh"), "chat-1")
         check(ucmd[ucmd.index("--model") + 1] == "grok-4.7-xhigh" and ucmd[-2:] == ["--resume", "chat-1"]
               and ucmd[ucmd.index("--sandbox") + 1] == "disabled", "cursor command")
-        check(cursor_cmd("cursor-agent", "P", dict(utask, effort="high"), None)[-1] == "auto",
+        check(cursor_cmd("cursor-agent", "P", dict(utask, model="auto", effort="high"), None)[-1] == "auto",
               "cursor: no effort suffix on auto")
         uf, uinfo = evaluate_cu(0, '{"type":"system","subtype":"init","session_id":"c1"}\n'
                                    '{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"c1"}', "")
