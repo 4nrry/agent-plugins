@@ -25,6 +25,8 @@ licenses).
 
 ## Music
 
+- Google Flow Music (Lyria 3.5) publishes no commercial terms yet: not for a
+  commercial piece.
 - Make it the length of the cut. Generate at that length, or generate 40 s and
   loop with a 2 s crossfade: long generations degrade toward the end.
 - For institutional pieces: instrumental, no drums, slow, minimal.

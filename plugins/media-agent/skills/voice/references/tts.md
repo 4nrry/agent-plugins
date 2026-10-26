@@ -10,7 +10,7 @@ key's budget belongs to something else.
 | Engine | Billed to | Runs on | License | Trap |
 |---|---|---|---|---|
 | ElevenLabs | ElevenLabs plan credits | cloud | paid plan for commercial use | best pt-BR by a margin among the paid APIs |
-| xAI TTS, voice `liora`, through Hermes | SuperGrok subscription | cloud, SuperGrok subscription | xAI's terms | `scripts/hermes-tts.sh "text" s1.mp3`; mp3 24 kHz mono at about -20 LUFS, so normalize it like the rest |
+| xAI TTS, voice `liora`, through Hermes | Grok subscription | cloud | xAI's terms | `scripts/hermes-tts.sh "text" s1.mp3`; mp3 24 kHz mono at about -20 LUFS, so normalize it like the rest |
 | Pocket TTS (Kyutai) | nothing (local) | CPU, `uv tool install pocket-tts` | code MIT, weights CC-BY-4.0 (credit) | without `--language portuguese` Portuguese comes out as accented English; larger `_24l` variants exist |
 | Kokoro-82M | nothing (local) | CPU | Apache-2.0 | pins Python below 3.13: `uv venv -p 3.12` |
 | Qwen3-TTS 1.7B | nothing (local) | 8 GB GPU | Apache-2.0 | Portuguese sounds European; `--instruct` does not fix it |

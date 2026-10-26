@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Generate a short clip headless with the official Grok Build CLI (`grok`), using
-# the SuperGrok quota, and check that the MP4 was written. With --image, animates
+# the Grok subscription's quota, and check that the MP4 was written. With --image, animates
 # an existing image as the first frame.
 #
 #   grok-video.sh "motion description" out.mp4 [--image frame.png] [--res 720p]
