@@ -13,7 +13,7 @@ in Claude Code's plugin copies, and `CREW_PY` overrides all of them.
 ```bash
 python3 scripts/fleet_worker.py check                       # crew's path and the web-capable backends
 python3 scripts/fleet_worker.py --self-test
-python3 scripts/fleet_worker.py search --backend grok,hermes,agy --question Q --angles angles.json -o search.json
+python3 scripts/fleet_worker.py search --backend grok,agy,opencode --question Q --angles angles.json -o search.json
 python3 scripts/fleet_worker.py extract --backend opencode --question Q --sources search.json -o claims.json
 ```
 
@@ -32,9 +32,13 @@ Claude), opencode.
 
 | Phase | Start with | Avoid |
 |---|---|---|
-| Search | several engines at once: `grok,hermes,agy` covers xAI and Google indexes; opencode adds Exa's index at no cost | — |
+| Search | several engines at once: `grok,agy,opencode` covers xAI's, Google's and Exa's indexes, opencode at no cost | grok and hermes together: on an xAI login they search the same index |
 | Search on X (posts, announcements, people, threads) | grok, hermes: the only engines here that read X | engines without X access, which return press coverage of a post instead of the post |
 | Extract | opencode (free model), grok, or hermes with a page reader | agy: its quotes were mostly not on the page |
+
+Spread a fan-out across vendors, not across CLIs. grok, hermes logged in to
+xAI, and cursor on a Grok model all draw one X Subscription pool, so splitting
+work among them adds no quota; agy, opencode and codex each spend their own.
 
 crew's warnings (a backend or version never run end to end) are carried into
 the output; treat them as a reason for a smoke run before trusting the result.
