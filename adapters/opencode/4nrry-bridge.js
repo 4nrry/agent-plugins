@@ -13,6 +13,8 @@
 //                        the next model call.
 //   Other events, and matchers for tools opencode lacks (Workflow), are skipped.
 //   mcp.json servers  -> ctx.mcp.transform, as local servers.
+// Inside a crew worker run (CREW_RUN set) the bridge does nothing, so the
+// worker stays isolated.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
@@ -73,6 +75,7 @@ function run(hook, payload) {
 export default {
   id: "4nrry-bridge",
   async setup(ctx) {
+    if (process.env.CREW_RUN) return;
     const plugins = portablePlugins();
     const pending = new Map(); // sessionID -> [context text]
     const add = (sessionID, text) => {

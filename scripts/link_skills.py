@@ -35,9 +35,9 @@ HOME = Path.home()
 # Claude Code reads neither and gets the plugins instead.
 USER_ROOTS = [HOME / ".agents/skills", HOME / ".gemini/config/skills"]
 # Adapters run the GLOBAL plugins' hooks and MCP servers in a tool without
-# plugin support: every file in adapters/<tool>/ is linked into that tool's
-# folder by `global`.
-ADAPTER_ROOTS = {"opencode": HOME / ".config/opencode/plugins"}
+# plugin support: every entry (file or folder) in adapters/<tool>/ is linked
+# into that tool's folder by `global`.
+ADAPTER_ROOTS = {"opencode": HOME / ".config/opencode/plugins", "hermes": HOME / ".hermes/plugins"}
 MARKETPLACE_CLONE = HOME / ".claude/plugins/marketplaces/4nrry"
 REPO = Path(__file__).resolve().parent.parent
 EXCLUDE_BEGIN = "# >>> link_skills.py (agent-plugins)"
@@ -133,7 +133,7 @@ def write_exclude(repo: Path, names: list, dry: bool) -> None:
 
 def adapters(source: Path, tool: str) -> dict:
     folder = source / "adapters" / tool
-    return {f.name: f for f in sorted(folder.iterdir()) if f.is_file()} if folder.is_dir() else {}
+    return {f.name: f for f in sorted(folder.iterdir())} if folder.is_dir() else {}
 
 
 def cmd_global(source, sources, roots, plugins, dry, adapter_roots=None) -> int:
@@ -199,9 +199,11 @@ def self_test() -> int:
 
         (src / "adapters/tool").mkdir(parents=True)
         (src / "adapters/tool/bridge.js").write_text("// adapter")
+        (src / "adapters/tool/pkg").mkdir()
         aroot = t / "home/.config/tool/plugins"
         mute(cmd_global, src, sources, roots, ["a", "b"], False, {"tool": aroot})
-        ok(os.readlink(aroot / "bridge.js") == str(src / "adapters/tool/bridge.js"), "adapter file linked")
+        ok(os.readlink(aroot / "bridge.js") == str(src / "adapters/tool/bridge.js")
+           and os.readlink(aroot / "pkg") == str(src / "adapters/tool/pkg"), "adapter file and folder linked")
         rc = mute(cmd_global, src, sources, roots, ["a", "b"], False, {})
         ok(rc == 1, "a real file in the way is a conflict")
         ok((roots[0] / "x").read_text() == "a real file", "a real file is never replaced")
