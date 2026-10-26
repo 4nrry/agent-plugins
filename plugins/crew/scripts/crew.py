@@ -98,7 +98,7 @@ DEFAULT_REVIEW_TIMEOUT = "15m"
 DEFAULT_GATE_TIMEOUT = 900
 DEFAULT_MAX_GATE_ATTEMPTS = 5
 DEFAULT_MIN_QUOTA = 0.05
-TESTED_AGY_VERSION = "1.4.4"       # every agy behaviour this script relies on was seen on this one
+TESTED_AGY_VERSION = "1.4.7"       # every agy behaviour this script relies on was seen on this one
 MAX_PROMPT_BYTES = 100_000          # one argv string is capped at 128 KiB on Linux
 MAX_DIFF_BYTES = 60_000
 TAIL_CHARS = 6000
@@ -129,7 +129,7 @@ OPENCODE_MODELS = ("opencode/minimax-m3.1-flash-free", "opencode/deepseek-v4.1-f
 # OPENCODE_CONFIG_CONTENT and so would run without the guard plugin.
 # `--standalone` starts a private server that ends with the run.
 OC_RUN_FLAGS = ["--standalone"]
-TESTED_OPENCODE_VERSION = "2.1.2"
+TESTED_OPENCODE_VERSION = "2.1.4"
 # opencode writes "$schema" into these, in the process cwd, on every run (seen
 # on 1.19.0 even with --dir); the driver restores their bytes after each run.
 OPENCODE_CONFIG_FILES = ("opencode.json", "opencode.jsonc")
@@ -141,7 +141,7 @@ TESTED_COPILOT_VERSION = "1.0.103"
 # Codex: hooks passed as `-c hooks.<Event>=...` for the run only (nothing in the
 # tree), `--dangerously-bypass-hook-trust` because they are new every run, and
 # the OS sandbox (`-s workspace-write`, no network) under them.
-TESTED_CODEX_VERSION = "0.163.0"
+TESTED_CODEX_VERSION = "0.164.0"
 CODEX_DEFAULT_MODEL = "gpt-6-luna"
 CODEX_REPORT_ASKS = 2
 CX_INERT_TOOLS = {"update_plan", "view_image"}
@@ -150,8 +150,8 @@ CX_INERT_TOOLS = {"update_plan", "view_image"}
 # hooks only in a folder it trusts, so the repo must be trusted first, and every
 # handler acts only when CREW_RUN is this run's: other Grok sessions see a no-op.
 # Under `--sandbox workspace` the worker cannot write ~/.grok/hooks.
-TESTED_GROK_VERSION = "1.0.67"
-GROK_DEFAULT_MODEL = "grok-4.7-build-fast"
+TESTED_GROK_VERSION = "1.0.70"
+GROK_DEFAULT_MODEL = "grok-4.7"
 GROK_HOOK_DIR = os.path.expanduser("~/.grok/hooks")
 GROK_TOOLS = "run_terminal_command,read_file,search_replace,list_dir,grep,write,todo_write"
 GK_TOOLS = {
@@ -169,7 +169,7 @@ GK_INERT_TOOLS = {"todo_write"}
 # `cursor-agent -p` (lab), so the gate is an outer loop resuming the chat, like
 # opencode. Its sandbox does not start on this machine (AppArmor), so the run
 # uses `--sandbox disabled` and the hooks are the only limit.
-TESTED_CURSOR_VERSION = "2026.10.19-6bbf2c4"
+TESTED_CURSOR_VERSION = "2026.10.22-27dcf5f"
 CURSOR_DEFAULT_MODEL = "auto"
 CURSOR_HOOK_FILE = ".cursor/hooks.json"
 CU_TOOLS = {

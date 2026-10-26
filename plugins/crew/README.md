@@ -14,7 +14,7 @@ Other tools get the skill through `just link-skills global` at the repo root.
 
 | Command | Backends | What it does |
 |---|---|---|
-| `ask` | agy, opencode, Codex, Grok, Hermes, Claude Code, Copilot; Cursor, Muse, Kimi built from `--help`, untested | one read-only turn, or the next turn of a session (`--session`); `--web` for web search, `--schema` for a JSON object back |
+| `ask` | agy, opencode, Codex, Grok, Hermes, Claude Code, Copilot, Cursor; Muse, Kimi built from `--help`, untested | one read-only turn, or the next turn of a session (`--session`); `--web` for web search, `--schema` for a JSON object back |
 | `review` | every `ask` backend; agy, opencode and Copilot under crew's guard hooks | schema'd findings on a diff or files |
 | `delegate` | agy, opencode, Copilot, Codex, Grok, Cursor, Claude Code (from another host) | one coding slice under the worker CLI's own hooks and a gate |
 | `backends` | all | binary, tiers, effort values, read-only mechanism, last version tested |
