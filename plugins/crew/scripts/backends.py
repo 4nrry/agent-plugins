@@ -20,8 +20,8 @@ TIERS = ("cheap", "mid", "top")
 EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 
 # Versions on which a two-turn ask (new, then resumed) returned the right reply.
-LIVE = {"claude": "2.1.307", "agy": "1.4.4", "opencode": "2.1.4", "grok": "1.0.62",
-        "codex": "0.163.0", "hermes": "0.22.4", "copilot": "1.0.103"}
+LIVE = {"claude": "2.1.310", "agy": "1.4.7", "opencode": "2.1.4", "grok": "1.0.70",
+        "codex": "0.164.0", "hermes": "0.22.4", "copilot": "1.0.103", "cursor": "2026.10.22-27dcf5f"}
 
 OPENCODE_MODELS = ("opencode/minimax-m3.1-flash-free", "opencode/deepseek-v4.1-flash-free",
                    "opencode/glm-5.3-flash-free", "opencode/mimo-v2.6-flash-free",
@@ -295,7 +295,8 @@ def b_copilot(s, prompt, model, effort, session, cwd, opts=None):
 
 def b_cursor(s, prompt, model, effort, session, cwd, opts=None):
     m = f"{model}[effort={effort}]" if model and effort else model
-    argv = [s["bin"], "-p", prompt, "--output-format", "json", "--mode", "ask"]
+    # Headless, cursor-agent refuses an untrusted folder; --trust marks it trusted for good.
+    argv = [s["bin"], "-p", prompt, "--output-format", "json", "--mode", "ask", "--trust"]
     argv += ["--model", m] if m else []
     argv += ["--resume", session] if session else []
     return argv, {}, None
@@ -341,7 +342,8 @@ SPECS = {
                      efforts=EFFORTS, models=OPENCODE_MODELS,
                      read_only="OPENCODE_CONFIG_CONTENT denies edit, bash, execute, task"),
     "grok": dict(web=True, native_schema=True, vendor="xai", bins=("grok",), build=b_grok, parse=p_grok,
-                 tiers={"cheap": ("grok-4.7-build-fast", "low"), "mid": ("grok-4.7", "medium"),
+                 # grok-4.7-build-fast left the catalog in 1.0.70 (2026-10-25): grok-4.7 is the only model.
+                 tiers={"cheap": ("grok-4.7", "low"), "mid": ("grok-4.7", "medium"),
                         "top": ("grok-4.7", "high")},
                  efforts=("low", "medium", "high", "xhigh"),
                  read_only="--permission-mode plan, no MCP, no subagents"),
@@ -351,7 +353,7 @@ SPECS = {
                   efforts=("low", "medium", "high", "xhigh", "max", "ultra"),
                   read_only="sandbox_mode read-only, on every turn"),
     "hermes": dict(web=True, native_schema=False, vendor="nous", bins=("hermes",), build=b_hermes, parse=p_hermes,
-                   tiers={"cheap": ("xai-oauth:grok-4.7-build-fast", "low"),
+                   tiers={"cheap": ("xai-oauth:grok-4.7", "low"),
                           "mid": ("xai-oauth:grok-4.7", "medium"), "top": ("xai-oauth:grok-4.7", "high")},
                    efforts=EFFORTS,
                    read_only="-t web: no file or terminal tools, so put the code in the prompt"),

@@ -62,5 +62,6 @@ They carry `CREW_RUN`, so crew stops them and lists them under `warnings`.
 
 ## Review
 
-`crew.py review --backend cursor` runs through `ask` in `--mode ask`, with no
-crew hooks. The generic parser is untested there.
+`crew.py ask cursor` and `crew.py review --backend cursor` run in `--mode ask`,
+with no crew hooks. They also pass `--trust`, so the folder stays trusted in
+Cursor. A two-turn ask passed on 2026.10.22.
