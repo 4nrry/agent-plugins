@@ -17,17 +17,18 @@ set -euo pipefail
 # Resolve the plugin root from the script's own location rather than
 # ${CLAUDE_PLUGIN_ROOT}: works identically when run by the hook runner,
 # by hand, or from a copied tree.
-PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The skill lives in skills/agent-fleet/ (the Agent Plugins layout).
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../skills/agent-fleet" && pwd)"
 
 prompt=$(jq -r '.prompt // empty' 2>/dev/null) || exit 0
 [[ -n "$prompt" ]] || exit 0
 
 printf '%s' "$prompt" | grep -qiE 'ultracode|deep[- ]research' || exit 0
 
-if [[ ! -f "$PLUGIN_ROOT/SKILL.md" ]]; then
-  echo "agent-fleet plugin hook: $PLUGIN_ROOT/SKILL.md not found — skill not injected" >&2
+if [[ ! -f "$SKILL_DIR/SKILL.md" ]]; then
+  echo "agent-fleet plugin hook: $SKILL_DIR/SKILL.md not found — skill not injected" >&2
   exit 1
 fi
 
-printf 'The agent-fleet skill applies to this request (matched: deep-research/ultracode). Follow it when orchestrating. Before dispatching any predefined workflow, read its script and check for model: overrides on the agent() calls — without them every agent inherits the session model, at fan-out scale; this is the rule most often skipped. Skill directory: %s (scripts/ and references/ paths below are relative to it).\n\n' "$PLUGIN_ROOT"
-cat "$PLUGIN_ROOT/SKILL.md"
+printf 'The agent-fleet skill applies to this request (matched: deep-research/ultracode). Follow it when orchestrating. Before dispatching any predefined workflow, read its script and check for model: overrides on the agent() calls — without them every agent inherits the session model, at fan-out scale; this is the rule most often skipped. Skill directory: %s (scripts/ and references/ paths below are relative to it).\n\n' "$SKILL_DIR"
+cat "$SKILL_DIR/SKILL.md"

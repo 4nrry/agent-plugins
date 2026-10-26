@@ -54,22 +54,27 @@ failed or cut runs. Judge from the event stream and a gate.
 
 ## Extensions: skills, plugins, hooks, MCP
 
-| Tool | Global skills | Project skills | Claude Code plugins | Hooks | Trust gate |
+| Tool | Global skills | Project skills | Plugins (checked 2026-10-26) | Hooks | Trust gate |
 |---|---|---|---|---|---|
-| Claude Code | `~/.claude/skills`, plugins | `.claude/skills` | native | settings `hooks`, plugin `hooks/hooks.json` | — |
-| Antigravity | `~/.gemini/config/skills` | `.agents/skills` | copies via `agy plugin import claude` | `.agents/hooks.json`, PascalCase events | — |
-| opencode | `~/.agents/skills`, `~/.claude/skills`, `~/.config/opencode/skills` | `.agents`, `.claude`, `.opencode` | no | only through a JS plugin | — |
-| Copilot CLI, desktop app, VS Code | `~/.agents/skills`, `~/.copilot/skills` | `.agents`, `.github`, `.claude` | installs Claude-format marketplaces into `~/.copilot` | `.github/hooks/` | folder trust per session |
-| Grok Build | `~/.agents`, `~/.claude`, `~/.cursor`, `~/.grok` skills | `.agents`, `.claude`, `.grok` | loads every plugin installed in Claude Code | reads Claude's format and settings | `grok --trust` per folder |
-| Hermes | `~/.hermes/skills`, `skills.external_dirs` | `.agents`, `.hermes`, after `hermes skills trust` | no | own `hooks:` in config, approved once | per repo |
-| Codex and the ChatGPT app | `~/.agents/skills` | `.agents/skills` | installs Claude-format marketplaces | `.codex/hooks` | — |
-| Cursor | `~/.agents`, `~/.cursor`, `~/.claude` skills | `.agents`, `.cursor`, `.claude` | CLI loads Claude's installed plugins | `hooks.json`, also Claude's | — |
-| Kimi Code | `~/.agents/skills`, `~/.kimi-code/skills` | `.agents`, `.kimi-code` | no | `[[hooks]]` in `config.toml` | TUI asks per folder; `-p` loaded project skills without it |
-| ZCode | `~/.agents/skills`, `~/.zcode/skills` | `.agents`, `.zcode` | installs Claude-format marketplaces | `~/.zcode/cli/config.json`, `hooks.enabled` | — |
-| Muse Code | `~/.agents/skills`, `~/.claude/skills` | `.agents/skills` | no | — | interactive, once per folder |
+| Claude Code | `~/.claude/skills`, plugins | `.claude/skills` | native (`.claude-plugin/`) | settings `hooks`, plugin `hooks/hooks.json` | — |
+| Antigravity | `~/.gemini/config/skills` | `.agents/skills` | own `plugin.json` at the root; reads Agent Plugins behind `enable-agent-plugins-spec`; `agy plugin import claude` copies | `.agents/hooks.json`, PascalCase events; a plugin's only at its root | — |
+| opencode | `~/.agents/skills`, `~/.claude/skills`, `~/.config/opencode/skills` | `.agents`, `.claude`, `.opencode` | own: JS/TS files or npm packages | only through a JS plugin | — |
+| Copilot CLI, desktop app, VS Code | `~/.agents/skills`, `~/.copilot/skills` | `.agents`, `.github`, `.claude` | Agent Plugins (root `plugin.json`), legacy `.claude-plugin/`; marketplaces from GitHub, URL or a local path; skills dedup by name, first found wins | `.github/hooks/` | folder trust per session |
+| Grok Build | `~/.agents`, `~/.claude`, `~/.cursor`, `~/.grok` skills | `.agents`, `.claude`, `.grok` | reads Claude Code's marketplaces and plugins on its own; also `grok plugin install` | reads Claude's format and settings | `grok --trust` per folder |
+| Hermes | `~/.hermes/skills`, `skills.external_dirs` | `.agents`, `.hermes`, after `hermes skills trust` | own (Python), `hermes plugins install owner/repo` | own `hooks:` in config, approved once | per repo |
+| Codex and the ChatGPT app | `~/.agents/skills` | `.agents/skills` | Agent Plugins (root `plugin.json`), `.codex-plugin/` fallback; GitHub marketplaces | `.codex/hooks` | — |
+| Cursor | `~/.agents`, `~/.cursor`, `~/.claude` skills | `.agents`, `.cursor`, `.claude` | Agent Plugins (root `plugin.json`: skills, MCP) or `.cursor-plugin/` (all components); expands `${CLAUDE_PLUGIN_ROOT}`; the CLI loads Claude's installed plugins | `hooks.json`, also Claude's | — |
+| Kimi Code | `~/.agents/skills`, `~/.kimi-code/skills` | `.agents`, `.kimi-code` | own `kimi.plugin.json`, `/plugins install <url>` | `[[hooks]]` in `config.toml` | TUI asks per folder; `-p` loaded project skills without it |
+| ZCode | `~/.agents/skills`, `~/.zcode/skills` | `.agents`, `.zcode` | own marketplaces (`zcode plugins marketplace add`); Claude format not confirmed | `~/.zcode/cli/config.json`, `hooks.enabled` | — |
+| Muse Code | `~/.agents/skills`, `~/.claude/skills` | `.agents/skills` | plugin bundles mentioned, no install documented | — | interactive, once per folder |
 
 `~/.agents/skills` is the one folder nearly every tool reads; `link_skills.py`
 at the repo root links this marketplace's skills there.
+
+Agent Plugins (agent-plugins.org, 1.0.0) is the open package format: a
+`plugin.json` at the plugin root, skills only in `skills/<name>/SKILL.md`, MCP
+only in `mcp.json`; hooks and agents are left to each client. This
+marketplace's global plugins ship it beside `.claude-plugin/`.
 
 ## Native multi-agent
 

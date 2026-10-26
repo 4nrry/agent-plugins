@@ -251,10 +251,11 @@ def find_crew():
     """crew.py: $CREW_PY, the sibling plugin (repo and marketplace layout), the
     global skill link other tools read, then Claude Code's plugin copies."""
     here = Path(__file__).resolve().parent
-    cands = [os.environ.get("CREW_PY"), here.parents[1] / "crew" / "scripts" / "crew.py",
+    # here = <plugins>/agent-fleet/skills/agent-fleet/scripts; crew sits in skills/crew/ of its plugin.
+    cands = [os.environ.get("CREW_PY"), here.parents[3] / "crew" / "skills" / "crew" / "scripts" / "crew.py",
              Path.home() / ".agents/skills/crew/scripts/crew.py",
-             *sorted(Path.home().glob(".claude/plugins/marketplaces/*/plugins/crew/scripts/crew.py")),
-             *sorted(Path.home().glob(".claude/plugins/cache/*/crew/*/scripts/crew.py"), reverse=True)]
+             *sorted(Path.home().glob(".claude/plugins/marketplaces/*/plugins/crew/skills/crew/scripts/crew.py")),
+             *sorted(Path.home().glob(".claude/plugins/cache/*/crew/*/skills/crew/scripts/crew.py"), reverse=True)]
     for c in cands:
         if c and Path(c).is_file():
             return str(c)

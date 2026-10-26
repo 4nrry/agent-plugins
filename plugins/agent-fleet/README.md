@@ -7,9 +7,11 @@ output schemas, and verifying what agents return.
 /plugin install agent-fleet@4nrry
 ```
 
-The plugin directory is also a skill folder (`SKILL.md` at the root), so it
-works copied into `.agents/skills/agent-fleet` for other harnesses; the hooks
-and the workflow are Claude Code only.
+The skill lives in `skills/agent-fleet/` and the plugin ships an Agent Plugins
+`plugin.json` at its root, so Copilot, Codex and Cursor can install it; other
+harnesses get the skill folder through `link_skills.py`. The hooks and the
+workflow are Claude Code only. Paths below are relative to the skill folder,
+except `hooks/` and `workflows/` at the plugin root.
 
 | Component | Path | Does |
 |---|---|---|
