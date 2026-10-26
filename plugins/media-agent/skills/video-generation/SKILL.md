@@ -20,6 +20,8 @@ scripts/grok-video.sh "slow drone push forward along the windrows, mist drifting
 scripts/contact-sheet.sh check.jpg still.png shot.mp4
 ```
 
+Google Flow runs Omni and Veo on the Google AI subscription's credits through a
+browser ([references/flow.md](references/flow.md)).
 `scripts/omni.py` takes the same prompt and still on the Gemini API key, which
 bills every call; [references/tools.md](references/tools.md) marks what each
 route bills.
