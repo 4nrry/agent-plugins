@@ -10,8 +10,9 @@ python3 scripts/crew.py delegate /path/TASK.json --backend copilot
 
 ## When to use
 
-Rarely, and knowing it costs: the Free plan has no free quota, so every run
-spends AI credits (well under one per small run). It fits a slice where a model
+Rarely, and knowing it costs: every run spends AI credits (well under one per
+small run) from the plan's monthly allowance, which Free and Student plans also
+get; GitHub does not publish its size. It fits a slice where a model
 from another family is wanted and **the whole gate runs without the worker**:
 it has no shell, so it cannot run tests, formatters or git. The brief must be
 enough without running anything.
@@ -26,8 +27,9 @@ plugins, MCP servers and hooks (the verdict warns about hooks it finds in
 
 ## Model and credits
 
-- Only `auto` is accepted. On a paid plan `"copilot_model_override": true`
-  allows another slug — an untested path; say so.
+- Only `auto` is accepted: on Free and Student plans GitHub offers only auto
+  model selection. On a paid plan `"copilot_model_override": true` allows
+  another slug — an untested path; say so.
 - `max_ai_credits`: default and minimum 30 (the CLI refuses less). A brake on a
   runaway run, not a budget.
 - **Report `copilot.usage.ai_credits` to the user** after every run.

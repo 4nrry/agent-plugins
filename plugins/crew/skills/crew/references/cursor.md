@@ -9,6 +9,9 @@ python3 scripts/crew.py delegate /path/TASK.json --backend cursor
 ```
 
 Use it to spend Cursor plan quota on a slice. Never from Cursor itself.
+With an X Subscription (Grok), the shared pool pays for Grok models in Cursor
+only: the default `grok-4.7` spends it, while another vendor's model bills
+Cursor's own plan.
 
 ## Before the first run
 
