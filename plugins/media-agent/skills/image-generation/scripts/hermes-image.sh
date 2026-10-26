@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Generate ONE image with the image model Hermes is configured for (here xAI's
-# grok-imagine-image-2.0, on the SuperGrok subscription) and download it to OUT.
+# grok-imagine-image-2.0, on the Grok subscription) and download it to OUT.
 # Runs the official hermes CLI and never touches its login.
 #
 #   hermes-image.sh "scene description" out.jpg [landscape|square|portrait]

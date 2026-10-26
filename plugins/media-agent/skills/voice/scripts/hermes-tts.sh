@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Speak ONE sentence with the TTS Hermes is configured for (here xAI, voice liora,
-# pt-BR, on the SuperGrok subscription) and copy the audio to OUT. Runs the
+# pt-BR, on the Grok subscription) and copy the audio to OUT. Runs the
 # official hermes CLI and never touches its login.
 #
 #   hermes-tts.sh "text to speak" out.mp3

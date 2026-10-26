@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Generate ONE image headless with the official Grok Build CLI (`grok`), using the
-# SuperGrok quota, and check that the file was written. Faster than agy: good for
+# Grok subscription's quota, and check that the file was written. Faster than agy: good for
 # exploring variations before picking a direction.
 #
 #   grok-image.sh "scene description" out.png
