@@ -43,9 +43,16 @@ just link-skills status ~/code/app
 Hooks and MCP servers do not travel with a linked skill. For tools without
 Claude-format plugins, `adapters/<tool>/` holds a bridge that `global` links
 into the tool's own folder; it runs the global plugins' `hooks/hooks.json` and
-`mcp.json` from the marketplace clone, so there is no second copy. Today:
-`adapters/opencode/4nrry-bridge.js` in `~/.config/opencode/plugins/`
-(UserPromptSubmit and PreToolUse hooks, and the MCP servers).
+`mcp.json` from the marketplace clone, so there is no second copy:
+
+| Tool | Hooks | MCP servers |
+|---|---|---|
+| opencode | `adapters/opencode/4nrry-bridge.js`, linked into `~/.config/opencode/plugins/` | the same bridge |
+| Hermes | `adapters/hermes/4nrry-bridge/`, linked into `~/.hermes/plugins/`; once: `hermes plugins enable 4nrry-bridge` | once: `hermes mcp add kinocut --command python3 --args ~/.claude/plugins/marketplaces/4nrry/adapters/mcp_launch.py media-agent kinocut` |
+
+`adapters/mcp_launch.py PLUGIN SERVER` starts a server from the plugin's
+`mcp.json`, so the version pin lives in one place. Both bridges do nothing
+inside a crew worker run (`CREW_RUN`).
 
 Copilot, Codex and Cursor install the global plugins themselves: each ships an
 Agent Plugins `plugin.json`. Copilot can load them live from Claude Code's

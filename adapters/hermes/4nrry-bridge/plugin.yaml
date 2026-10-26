@@ -1,0 +1,6 @@
+name: 4nrry-bridge
+version: 1.0.0
+description: >-
+  Runs the Claude Code hooks of the 4nrry marketplace's portable plugins (crew,
+  agent-fleet, media-agent) inside Hermes, from the marketplace clone. MCP servers
+  are registered separately with adapters/mcp_launch.py.
