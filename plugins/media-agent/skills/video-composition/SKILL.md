@@ -1,6 +1,6 @@
 ---
 name: video-composition
-description: Builds a marketing video as code — frame-driven scenes, captions from the voice JSON, b-roll, ducked music, 3D, and 16:9, 1:1, 9:16, 4:5 plus a carousel from one source. Use for an institutional video, motion graphics, burned-in captions, Reels or LinkedIn formats, or Remotion.
+description: Builds a marketing video as code — frame-driven scenes, captions from the voice JSON, b-roll, ducked music, 3D, and 16:9, 1:1, 9:16, 4:5 plus a carousel from one source. Use for an institutional video, a short vertical video (Reels, Shorts, TikTok), motion graphics, burned-in captions, LinkedIn formats, or Remotion.
 ---
 
 # Video composition as code
@@ -41,11 +41,37 @@ route has no license cost and loses the interactive preview.
 - Scale layout by the frame: heights by `h/1920`, fonts by `sqrt(h/1920)`, and
   stack side-by-side elements into a column for 4:5 and 9:16.
 - 1:1 for LinkedIn: the 16:9 scaled into the square with brand-color bars.
-- Reels 9:16: Instagram's UI covers the top and especially the bottom; keep
-  text within 250 px of the top and 420 px of the bottom at 1080x1920 (a
-  working margin, not an official number).
+- 9:16: each platform's buttons and caption cover the edges, the bottom most
+  and the right side on all of them. Keep text and logos inside the safe zone
+  in [references/short-form.md](references/short-form.md) (Meta's Reels ads:
+  14% top, 35% bottom, 6% each side).
 - Carousel: one composition whose frame `i` is slide `i`, rendered as stills
   and joined into a PDF for LinkedIn.
+
+## Short vertical video (Reels, Shorts, TikTok)
+
+The feed decides in the first seconds, and many viewers start with the sound
+off.
+
+- **Opening.** Frame 0 is the strongest frame: no fade from black, no logo
+  intro. The hook is on screen as text from that frame, not only spoken. Open
+  one question in the first 3 seconds and answer it before the end; two hooks
+  weaken each other. When it fits, end on the opening image so a replay flows.
+- **Pacing.** The first visual change lands within about a second, on a strong
+  word. Lists and demos cut every 1–2 s, one item per shot on its spoken word;
+  an argument holds its proof (screen, report, number) as long as the voice is
+  on it, often 4–8 s.
+- **Everything moves.** A still enters as the first frame of a generated clip,
+  a slow pan or a card that builds, never held static. Fill time with story,
+  not idle loops (breathing, floating): pause at any second and something is
+  arriving, moving or counting. Leave 0.3–0.75 s of stillness between an
+  action and its result.
+- **Cuts.** Two or three transition types per piece, repeated. A clip shorter
+  than its slot holds its last frame instead of looping. Reject stock clips
+  with their own captions or kinetic text: their words flash on screen.
+- **Captions.** They carry the voice; emphasis (an accent color, a box) is rare:
+  the product name or the one number, never two at once. Never over a mouth or
+  chin, and never under the platform's buttons.
 
 ## Before delivery
 
@@ -53,3 +79,7 @@ route has no license cost and loses the interactive preview.
   text that a scaled-down preview hides.
 - Check fps, duration and resolution with `ffprobe`, and -16 LUFS with
   `ffmpeg -af ebur128`.
+- Look at frame 0 on its own, at phone size: it is what the feed shows.
+- Encode H.264 High, `yuv420p`, AAC at 48 kHz, `-movflags +faststart`, at the
+  frame rate the piece was made in, and check the platform's length cap
+  (`references/short-form.md`).
