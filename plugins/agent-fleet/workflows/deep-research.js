@@ -1,6 +1,6 @@
 export const meta = {
   name: 'deep-research',
-  description: 'Deep research harness with model routing — the built-in deep-research script verbatim, plus per-phase model overrides: search/fetch on haiku, adversarial verification on sonnet, scope/synthesis on the session model.',
+  description: 'Deep research harness with model routing — the built-in deep-research script verbatim, plus per-phase model overrides: search/fetch on haiku at low effort, adversarial verification on sonnet, scope/synthesis on the session model.',
   whenToUse: 'When the user wants a deep, multi-source, fact-checked research report on any topic. BEFORE invoking, check if the question is specific enough to research directly — if underspecified (e.g., "what car to buy" without budget/use-case/region), ask 2-3 clarifying questions to narrow scope. Then pass the refined question as args, weaving the answers in. Invoke ONLY as Workflow({name: "agent-fleet:deep-research", args: "<question>"}) — plugin workflows register prefixed; the bare name "deep-research" dispatches the UNROUTED built-in. After dispatch, the tool result names the persisted script (workflows/scripts/<run>.js in the session directory): grep it for "model:" before letting the run proceed — zero matches means the unrouted built-in is running; stop it and resume with overrides on every unfinished stage, re-passing args (resume does not carry them).',
   phases: [{"title":"Scope","detail":"Decompose question (from args) into 5 search angles"},{"title":"Search","detail":"5 parallel WebSearch agents, one per angle","model":"haiku"},{"title":"Fetch","detail":"URL-dedup, fetch top 15 sources, extract falsifiable claims","model":"haiku"},{"title":"Verify","detail":"3-vote adversarial verification per claim (need 2/3 refutes to kill)","model":"sonnet"},{"title":"Synthesize","detail":"Merge semantic dupes, rank by confidence, cite sources"}],
 }
@@ -11,8 +11,10 @@ export const meta = {
 // from the "// deep-research:" line, before the edits below, sha256
 // 9e4d765da7facd69da2d0775d44d458332a92c4692f4287b8972c33d4d6ecf46).
 // Every prompt, schema, cap, quorum rule and web-text sanitizer is unchanged;
-// the only additions are model: overrides at the agent() call sites, the
-// comments beside them, this header, and invocation texts (meta, the comment
+// the only additions are model: and effort: overrides at the agent() call
+// sites, the comments beside them, this header, a `confirmed` list (claim,
+// source, quote) in the final return so verify_citations.py --claims can check
+// the report's quotes, and invocation texts (meta, the comment
 // below, the empty-args guard) naming the plugin-prefixed name: plugin
 // workflows register as agent-fleet:deep-research, and the bare name
 // dispatches the unrouted built-in (measured 2026-08-28: a full run inherited
@@ -239,7 +241,9 @@ const searchResults = await pipeline(
     label: "search:" + angle.label, phase: "Search", schema: SEARCH_SCHEMA,
     // Long tool loop, closed schema: the cheapest tier holds breadth (bench/
     // batch 2026-08-07-breadth-tier: no fidelity difference vs mid tier).
-    model: "haiku"
+    // Low effort for the same reason; unset, it inherits the session's.
+    model: "haiku",
+    effort: "low",
   }).then(r => {
     if (!r) return null
     log(angle.label + ": " + r.results.length + " results")
@@ -291,6 +295,7 @@ const searchResults = await pipeline(
           // Same rule as search: fetch-and-extract is a long tool loop with a
           // closed schema; quotes are string-checked downstream.
           model: "haiku",
+          effort: "low",
         }).then(ext => {
           // User-skip → null; drop it (filtered by searchResults.flat().filter(Boolean))
           // rather than throwing into .catch() and mislabeling it "unreliable".
@@ -343,6 +348,8 @@ const voted = (await parallel(
           // The adversarial pass is where depth pays, and paired runs put the
           // mid tier even with the top model at contesting (18/20 vs 17/20).
           // This is also the bulk of the fleet: up to 25 claims x 3 votes.
+          // Effort inherits the session's on purpose: no run has measured
+          // contesting at a lower level, and this is where depth pays.
           model: "sonnet",
         })
       )
@@ -452,6 +459,8 @@ if (!report) {
 return {
   question: QUESTION,
   ...report,
+  // The findings carry no quotes; these do, for verify_citations.py --claims.
+  confirmed: confirmed.map(c => ({ claim: webText(c.claim), source: webText(c.sourceUrl), quote: webText(c.quote) })),
   refuted: killed.map(toRefuted),
   unverified: unverified.map(toUnverified),
   sources: allSources.map(s => ({ url: webText(s.url), quality: s.sourceQuality, angle: s.angle, claimCount: s.claims.length })),
