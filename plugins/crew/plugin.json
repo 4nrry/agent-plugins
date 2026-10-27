@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "crew",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Another vendor's agent CLI as an isolated subagent, from any host: ask a read-only question or hold a multi-turn conversation (agy, opencode, Codex, Grok, Hermes, Copilot, Cursor, Muse, Kimi, or Claude Code from another host), get a second opinion on a diff, or delegate one coding slice to agy, opencode, Copilot, Codex, Grok or Cursor under the worker CLI's own hooks and a mechanical gate. Tiers (cheap, mid, top) map to a model and effort per backend. The verdict never reads the CLI's exit 0 as success.",
   "author": {
     "name": "4nrry",

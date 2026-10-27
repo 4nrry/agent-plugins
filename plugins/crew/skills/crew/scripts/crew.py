@@ -152,7 +152,7 @@ CX_INERT_TOOLS = {"update_plan", "view_image"}
 # Under `--sandbox workspace` the worker cannot write ~/.grok/hooks.
 TESTED_GROK_VERSION = "1.0.70"
 GROK_DEFAULT_MODEL = "grok-4.7"
-GROK_DEFAULT_EFFORT = "xhigh"
+GROK_DEFAULT_EFFORT = "medium"
 GROK_HOOK_DIR = os.path.expanduser("~/.grok/hooks")
 GROK_TOOLS = "run_terminal_command,read_file,search_replace,list_dir,grep,write,todo_write"
 GK_TOOLS = {
@@ -171,7 +171,7 @@ GK_INERT_TOOLS = {"todo_write"}
 # opencode. Its sandbox does not start on this machine (AppArmor), so the run
 # uses `--sandbox disabled` and the hooks are the only limit.
 TESTED_CURSOR_VERSION = "2026.10.22-27dcf5f"
-CURSOR_DEFAULT_MODEL = "grok-4.7[context=500k,reasoning_effort=xhigh,fast=false]"
+CURSOR_DEFAULT_MODEL = "grok-4.7[context=500k,reasoning_effort=medium,fast=false]"
 CURSOR_HOOK_FILE = ".cursor/hooks.json"
 CU_TOOLS = {
     "Read": ("view_file", {"file_path": "AbsolutePath"}),
