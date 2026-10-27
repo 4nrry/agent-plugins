@@ -47,7 +47,7 @@ and, with `"effort"` in the task, `--reasoning-effort`.
 | Field | Meaning |
 |---|---|
 | `model` | default `grok-4.7`; `grok models` lists the others |
-| `effort` | default `xhigh`; `low` to `xhigh`, as the model offers |
+| `effort` | default `medium`; `low` to `xhigh`, as the model offers |
 
 **Long context.** Grok Build has no flag for its 500k window (the TUI's
 `/context-window`). `[model."grok-4.7"]` with `context_window = 500000` in
