@@ -11,9 +11,10 @@
 # denied EVERY time — this plugin ships the routed fork, registered as
 # 'agent-fleet:deep-research', so the bare name can only mean the unrouted
 # built-in — and 'agent-fleet:deep-research' passes silently, because its
-# script carries the per-phase overrides. Resume calls, scripts with model:
-# overrides, and scripts with no agent() calls pass silently. Any parse
-# failure passes silently — a broken check must never block work.
+# script carries the per-phase overrides. Resume calls, scripts with a
+# model: override per agent() call, and scripts with no agent() calls pass
+# silently. Any parse failure passes silently — a broken check must never
+# block work.
 set -euo pipefail
 
 input=$(cat)
@@ -40,14 +41,20 @@ if [[ -z "$script" ]]; then
 fi
 
 if [[ -n "$script" ]]; then
-  agents=$(grep -c 'agent(' <<<"$script" || true)
-  [[ "$agents" -eq 0 ]] && exit 0
-  grep -q 'model:' <<<"$script" && exit 0
+  # Count call sites against overrides, with // comments stripped: one routed
+  # call used to let a whole unrouted fan-out through, and so did the word
+  # "model:" in a comment. An override on its own line still counts, since
+  # agent() options are often split across lines.
+  code=$(sed -E 's#(^|[[:space:]])//.*##' <<<"$script")
+  count() { { grep -oE -- "$1" <<<"$code" || true; } | wc -l; }
+  agents=$(count '(^|[^[:alnum:]_.])agent\(')
+  models=$(count '(^|[^[:alnum:]_])model[[:space:]]*:')
+  [[ "$agents" -eq 0 || "$models" -ge "$agents" ]] && exit 0
   sha=$(LC_ALL=C sha256sum <<<"$script" | cut -d' ' -f1)
   marker="$DATA/ack-script-$sha"
   [[ -e "$marker" ]] && exit 0
   touch "$marker"
-  deny "agent-fleet routing check (fires once per script): this workflow script has $agents agent() call line(s) and no 'model:' override, so every agent inherits the session model, at fan-out scale. Read the script and add per-phase overrides — long tool loops on a small model, adversarial verification on a mid model — or, if inheritance is intended, re-invoke unchanged: this check will not fire again for this exact script."
+  deny "agent-fleet routing check (fires once per script): this workflow script has $agents agent() call(s) and $models 'model:' override(s), so at least $((agents - models)) agent call site(s) inherit the session model, at fan-out scale. Read the script and add per-phase overrides — long tool loops on a small model at low effort, adversarial verification on a mid model — or, if inheritance is intended (the orchestrator's own scope and synthesis steps), re-invoke unchanged: this check will not fire again for this exact script."
 fi
 
 name=$(jq -r '.name // empty' <<<"$tool_input")

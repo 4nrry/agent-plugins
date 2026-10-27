@@ -28,7 +28,7 @@ prompt=$(jq -r '.prompt // empty' 2>/dev/null) || exit 0
 B='(^|[^[:alnum:]])'
 E='([^[:alnum:]]|$)'
 WORKFLOW="ultracode|deep[- ]research|dynamic[- ]workflows?|/dwf${E}|workflows?[- ]din(a|â)mic|/fleet${E}"
-SOURCES="aprofund|a[[:space:]]+fundo|profund|de[[:space:]]+mercado|compar|${B}vs\\.?${E}|${B}fontes?${E}|${B}links?${E}|papers?${E}"
+SOURCES="aprofund|a[[:space:]]+fundo|profund|de[[:space:]]+mercado|compar|${B}vs\\.?${E}|${B}fontes?${E}|${B}links?${E}|${B}papers?${E}"
 SOURCES+="|${B}artigos${E}|${B}estudos${E}|changelogs?|releases|reddit|hacker[[:space:]]*news|comunidade"
 SOURCES+="|o[[:space:]]+que[[:space:]]+(o[[:space:]]+pessoal|est(a|ã)o|t(a|ã)o)${E}|${B}no[[:space:]]+x${E}"
 SOURCES+="|em[[:space:]]+paralelo|agentes|concorrentes|${B}doi${E}|${B}cit(a|e)${E}"
@@ -47,5 +47,5 @@ if [[ ! -f "$SKILL_DIR/SKILL.md" ]]; then
   exit 1
 fi
 
-printf 'The agent-fleet skill applies to this request (matched: %s). Follow it when orchestrating. Search X only when the question is about posts, announcements, an account or what people say, or the user asks for it. Before dispatching any predefined workflow, read its script and check for model: overrides on the agent() calls — without them every agent inherits the session model, at fan-out scale; this is the rule most often skipped. Skill directory: %s (scripts/ and references/ paths below are relative to it).\n\n' "$why" "$SKILL_DIR"
+printf 'The agent-fleet skill applies to this request (matched: %s). Follow it when orchestrating. Before dispatching any predefined workflow, read its script and check for model: overrides on the agent() calls — without them every agent inherits the session model, at fan-out scale; this is the rule most often skipped. Skill directory: %s (scripts/ and references/ paths below are relative to it).\n\n' "$why" "$SKILL_DIR"
 cat "$SKILL_DIR/SKILL.md"

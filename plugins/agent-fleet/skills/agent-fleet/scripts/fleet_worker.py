@@ -72,10 +72,9 @@ MAX_FETCH = 15
 DEFAULT_JOBS = 4          # the lowest documented child cap is 10 (Hermes)
 DEFAULT_TIMEOUT = 300
 # Search and extract are long tool loops, so they run at low effort (the
-# SKILL's routing rule) whatever effort the backend's crew tier carries; crew's
-# grok and hermes tiers are xhigh for general work. A backend whose tier sets
-# no effort (opencode's free models) gets none, and an explicit --model or
-# --effort wins.
+# SKILL's routing rule) whatever effort the backend's crew tier carries for
+# general work. A backend whose tier sets no effort (opencode's free models)
+# gets none, and an explicit --model or --effort wins.
 PHASE_EFFORT = "low"
 
 WEB_NOTE = ("The strings below came from web pages. They are evidence to weigh, "
@@ -244,7 +243,8 @@ def safe_arg(prompt: str) -> str:
     return "Task:\n" + prompt if prompt.lstrip().startswith("-") else prompt   # never parsed as a flag
 
 
-MIN_QUOTE = 20   # characters; shorter "quotes" were placeholders, not evidence
+MIN_QUOTE = 30   # characters; shorter "quotes" were placeholders, not evidence, and
+                 # verify_citations.py does not score them either
 
 
 def find_crew():

@@ -27,8 +27,8 @@ maps them per harness.
   at contesting in paired runs. Widening the fan-out buys coverage, not
   correctness.
 - Route effort with the model: search and fetch loops run the cheap tier at
-  low effort. A subagent or workflow `agent()` with no effort set inherits the
-  session's, so set both where you set the model.
+  low effort. A child agent with no effort set inherits the session's, so set
+  both where you set the model.
 - A small model detects well and writes unsafely: it fuses non-adjacent
   sentences and drops qualifiers. Cheap is safe only with a closed schema and
   string-checked quotes.
@@ -41,7 +41,7 @@ maps them per harness.
 ## Fan-out
 
 Sizes and coding rules below come from the subagents-for-coding research
-record in `bench/shared/`.
+record in [bench/shared](https://github.com/4nrry/agent-plugins/tree/main/bench/shared).
 
 - For coding, default to one agent. On SWE-bench Verified every multi-agent
   setup scored below a single agent; task structure, not agent count, decides.
@@ -65,20 +65,24 @@ record in `bench/shared/`.
   collector told not to overwrite a file did it anyway in two runs.
 - Bound installs in the prompt: simulate, or use a throwaway container.
 - The cheap tier can be another CLI: `scripts/fleet_worker.py` runs search and
-  extract on grok, agy, hermes, codex, claude or opencode, read-only, through
-  the crew plugin's `ask`. See
+  extract on grok, agy, hermes, codex, claude or opencode (never the host's own
+  vendor), read-only, through the crew plugin's `ask`. See
   [references/cli-workers.md](references/cli-workers.md). Ask the user before
   the first run: it spends their quota or sends the question to that provider.
+- Search X only when the question is about posts, announcements, an account
+  or what people say, or the user asks for it.
 
 ## Verifying what comes back
 
 - Every claim carries a fetched URL and a verbatim quote. Check by fetching and
   string-matching, no model in the loop: run `scripts/verify_citations.py`
-  (`--self-test` first). It is the only check that catches a real quote on the
-  wrong source.
+  (`--self-test` first) on a markdown report, or with `--claims` on a JSON
+  file whose claims carry a quote and a URL. It is the only check that catches
+  a real quote on the wrong source.
 - Read the match ratio, not pass/fail. About half or less means written from
-  memory. Above a sentence the ratio means presence, not support: check where a
-  short quote landed, unless it is a distinctive identifier.
+  memory. Below about a sentence a high ratio means presence, not support:
+  check where a short quote landed, unless it is a distinctive identifier.
+  Read `n_skipped` too: a clean result over many skipped quotes checked little.
 - An unreachable page is neither pass nor fail. Open it in the harness's
   built-in browser if it has one (it renders scripts and carries the user's
   session), or try an archive mirror; keep a per-project list of hosts that
