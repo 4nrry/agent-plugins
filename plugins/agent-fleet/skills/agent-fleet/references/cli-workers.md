@@ -19,8 +19,8 @@ python3 scripts/fleet_worker.py extract --backend opencode --question Q --source
 
 `angles.json` is `[{"label", "query", "rationale"}]`. `extract` reads
 `search`'s output directly. Each backend runs crew's `--tier` (default
-`cheap`) at **low** effort, since both phases are long tool loops: crew's own
-grok and hermes tiers are xhigh, for general work. A backend whose tier sets no
+`cheap`) at **low** effort, since both phases are long tool loops, whatever
+effort crew's tier carries for general work. A backend whose tier sets no
 effort (opencode) gets none. `--model` overrides the model, as
 `backend=model[,backend=model]` with several backends, and keeps that model's
 own effort; `--effort` sets one effort for every backend.
@@ -45,8 +45,9 @@ the output; treat them as a reason for a smoke run before trusting the result.
 
 ## What the script enforces
 
-- Schemas are closed; arrays are cut to their limit; a quote under 20
-  characters fails the item.
+- Schemas are closed; arrays are cut to their limit; a quote under 30
+  characters fails the item, the length below which `verify_citations.py`
+  does not score a quote.
 - Control, format and bidi code points are stripped from every string a page
   produced.
 - A worker whose crew verdict fails, or that returns no object, is reported per
@@ -63,5 +64,8 @@ the output; treat them as a reason for a smoke run before trusting the result.
 - opencode's free models rotate in Zen; crew's `cheap` tier for opencode names
   the one to use, and `crew.py backends` shows it.
 
-Measurements behind these choices: `bench/plugins/agent-fleet/results/` in the
-source repository.
+Check what `extract` returns with `python3 scripts/verify_citations.py --claims
+claims.json`: it scores each quote against its own `sourceUrl`.
+
+Measurements behind these choices:
+[bench/plugins/agent-fleet/results/](https://github.com/4nrry/agent-plugins/tree/main/bench/plugins/agent-fleet/results).

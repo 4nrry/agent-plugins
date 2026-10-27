@@ -46,17 +46,34 @@ Ratios only carry information above roughly a sentence. Three tokens will match
 somewhere on almost any page, including the paragraph that does not support the
 verdict, so a high ratio on a short quote proves presence, not anchoring.
 
+INPUTS
+------
+A markdown report: quotes are blockquotes or passages in quotation marks, and
+each is scored against the URLs in its own section. Report prose in quotation
+marks and quotes under 30 characters are skipped, and `n_skipped` counts them.
+
+A claims file (--claims): JSON whose claims carry their own quote and URL —
+fleet_worker.py's extract output (`claims`, with `sourceUrl`) or the routed
+deep-research workflow's result (`confirmed`, with `source`). Each quote is
+scored against its own URL, in any language; nothing is guessed from layout.
+
+Only http and https URLs are fetched, and loopback, private and link-local
+addresses are skipped: a report is built from web text, and a planted
+`file://` or intranet citation would otherwise make this script read it.
+
 USAGE
 -----
     python3 verify_citations.py REPORT.md -o result.json
+    python3 verify_citations.py --claims claims.json -o result.json
     python3 verify_citations.py --self-test
 
-Run the self-test first. It takes two seconds and proves both ends: a true
-quote broken across five lines scores 1.0, and an invented one stays below 0.4.
+Run the self-test first. It takes two seconds, needs no network, and checks the
+cases listed in self_test().
 """
 
 import argparse
 import gzip
+import ipaddress
 import json
 import re
 import sys
@@ -223,12 +240,11 @@ def fetch(url: str) -> dict:
 
 # ----------------------------------------------------------------- extraction
 
-# file:// is accepted only so --self-test can run without a network.
 # The backtick must be excluded: reports write `https://example.com/page` in
 # code spans, and a captured trailing backtick turns a live page into a dead
 # URL. Two measured runs hit this and worked around it by reformatting the
 # report rather than the check being fixed.
-_URL_RE = re.compile(r"(?:https?|file)://[^\s<>\"'`\])}]+")
+_URL_RE = re.compile(r"https?://[^\s<>\"'`\])}]+")
 
 # URLs that appear INSIDE configuration examples rather than as a source. A
 # report about nginx quotes `proxy_pass http://127.0.0.1/;`; counting that as a
@@ -236,6 +252,18 @@ _URL_RE = re.compile(r"(?:https?|file)://[^\s<>\"'`\])}]+")
 _NON_SOURCE_HOST = re.compile(
     r"^(?:https?)://(?:127\.0\.0\.1|localhost|0\.0\.0\.0|\[?::1\]?|"
     r"[^/]*\bexample\.(?:com|org|net)\b)", re.I)
+
+
+def public_host(url: str) -> bool:
+    """False for a URL whose host is an IP literal that is not public:
+    loopback, private, link-local (cloud metadata) or reserved. Hostnames pass;
+    resolving them here would cost a lookup per URL for a rare case."""
+    host = url.split("//", 1)[-1].split("/", 1)[0].rsplit("@", 1)[-1]
+    host = host[1:].split("]", 1)[0] if host.startswith("[") else host.split(":", 1)[0]
+    try:
+        return ipaddress.ip_address(host).is_global
+    except ValueError:
+        return True
 
 
 def extract_urls(report: str):
@@ -252,12 +280,15 @@ def extract_urls(report: str):
         host = u.split("//", 1)[-1].split("/", 1)[0].split(":", 1)[0]
         if host and "." not in host:
             continue
+        if not public_host(u):
+            continue
         out.append((m.start(), u))
     return out
 
 
-def extract_quotes(report: str):
-    """Return [(position, text)] of candidate quotations.
+def extract_quotes(report: str, skipped=None):
+    """Return [(position, text)] of candidate quotations. When `skipped` is a
+    dict, count what was dropped there, by reason.
 
     Two forms cover what reports actually produce: markdown blockquotes and
     passages in quotation marks inside prose. Quotes under 30 characters are
@@ -269,12 +300,18 @@ def extract_quotes(report: str):
     report entered as though they were sources.
     """
     quotes = []
+    skipped = {} if skipped is None else skipped
+
+    def skip(reason):
+        skipped[reason] = skipped.get(reason, 0) + 1
 
     # blockquotes, consecutive lines joined into one block
     for m in re.finditer(r"(?:^[ \t]*>[^\n]*\n?)+", report, re.M):
         body = clean_quote(m.group(0))
         if len(body) >= 30:
             quotes.append((m.start(), body))
+        elif body:
+            skip("under_30_chars")
 
     # straight and typographic quotation marks
     for m in re.finditer(r"[\"“]([^\"“”]{30,600})[\"”]", report):
@@ -292,6 +329,7 @@ def extract_quotes(report: str):
         # measuring it against the page would fail the agent for writing in the
         # language the user asked for.
         if not looks_like_source_quote(q):
+            skip("not_english_source_prose")
             continue
         # An unclosed quotation mark makes the regex run to the next one far
         # below and swallow whole section headers. A passage containing `## ` or
@@ -430,53 +468,59 @@ def match_ratio(quote_norm: str, page_norm: str) -> float:
 
 # ---------------------------------------------------------------------- main
 
-def run(report_path: Path, out_path, fetch_fn=fetch) -> dict:
-    report = report_path.read_text(encoding="utf-8", errors="replace")
-    urls = extract_urls(report)
-    quotes = extract_quotes(report)
+MIN_QUOTE = 30   # characters; shorter quotes match by accident (see extract_quotes)
 
-    unique_urls = sorted({u for _, u in urls})
+
+def fetch_all(urls, fetch_fn) -> dict:
     pages = {}
-    for u in unique_urls:
+    for u in sorted(set(urls)):
         pages[u] = fetch_fn(u)
         mark = pages[u]["error"] or pages[u]["status"] or "ok"
         print(f"  fetch {str(mark):>4}  {u}", file=sys.stderr)
+    return pages
 
-    results = []
-    for pos, q in quotes:
-        cands = candidate_urls(report, pos, urls)
-        qn = normalize(q)
-        detail = {u: match_detail(qn, p["text"]) for u, p in pages.items()}
-        scored = {u: d[0] for u, d in detail.items()}
-        best_url = max(scored, key=scored.get) if scored else None
-        # Best among the URLs the section itself offers: the fair test of
-        # "does the source printed next to this quote support it?"
-        in_section = {u: scored.get(u, 0.0) for u in cands}
-        best_section = max(in_section, key=in_section.get) if in_section else None
-        ratio_section = in_section.get(best_section, 0.0) if best_section else 0.0
-        contig = detail.get(best_url, (0.0, 0.0))[1] if best_url else 0.0
-        results.append({
-            "quote": q[:300],
-            "attributed_url": best_section,
-            "section_url_count": len(cands),
-            "ratio_on_attributed": round(ratio_section, 3),
-            "best_url": best_url,
-            "best_ratio": round(scored.get(best_url, 0.0), 3) if best_url else 0.0,
-            "contiguity": round(contig, 3),
-            # Every piece present, the passage not: the quote welds together
-            # parts of the page that are not adjacent there.
-            "fusion_suspected": bool(
-                best_url and scored[best_url] >= 0.8 and contig < 0.6),
-            # A genuinely wrong source: the quote exists on some page the
-            # report cites, but on none of the ones its own section offers.
-            "wrong_source": bool(
-                best_url and scored[best_url] >= 0.8 and ratio_section < 0.5),
-        })
 
+def score(q: str, cands, pages) -> dict:
+    """Score one quote against every fetched page, and against `cands`, the
+    URLs its own report section or claim offers."""
+    qn = normalize(q)
+    detail = {u: match_detail(qn, p["text"]) for u, p in pages.items()}
+    scored = {u: d[0] for u, d in detail.items()}
+    best_url = max(scored, key=scored.get) if scored else None
+    # Best among the URLs the section itself offers: the fair test of
+    # "does the source printed next to this quote support it?"
+    in_section = {u: scored.get(u, 0.0) for u in cands}
+    best_section = max(in_section, key=in_section.get) if in_section else None
+    ratio_section = in_section.get(best_section, 0.0) if best_section else 0.0
+    contig = detail.get(best_url, (0.0, 0.0))[1] if best_url else 0.0
+    return {
+        "quote": q[:300],
+        "attributed_url": best_section,
+        "section_url_count": len(cands),
+        "ratio_on_attributed": round(ratio_section, 3),
+        "best_url": best_url,
+        "best_ratio": round(scored.get(best_url, 0.0), 3) if best_url else 0.0,
+        "contiguity": round(contig, 3),
+        # Every piece present, the passage not: the quote welds together
+        # parts of the page that are not adjacent there.
+        "fusion_suspected": bool(
+            best_url and scored[best_url] >= 0.8 and contig < 0.6),
+        # A genuinely wrong source: the quote exists on some page the
+        # report cites, but on none of the ones its own section offers.
+        "wrong_source": bool(
+            best_url and scored[best_url] >= 0.8 and ratio_section < 0.5),
+    }
+
+
+def summarize(source: Path, pages: dict, results: list, skipped: dict, out_path) -> dict:
     summary = {
-        "report": str(report_path),
-        "n_urls": len(unique_urls),
+        "report": str(source),
+        "n_urls": len(pages),
         "n_quotes": len(results),
+        # Quotes that were never scored. "All found" over a large skip count
+        # means little was checked, not that everything holds.
+        "n_skipped": sum(skipped.values()),
+        "skipped": skipped,
         "urls_dead": sorted(u for u, p in pages.items()
                             if p["error"] or (p["status"] or 0) >= 400),
         "quotes_found": sum(1 for r in results if r["ratio_on_attributed"] >= 0.8),
@@ -495,71 +539,156 @@ def run(report_path: Path, out_path, fetch_fn=fetch) -> dict:
     return summary
 
 
+def run(report_path: Path, out_path, fetch_fn=fetch) -> dict:
+    report = report_path.read_text(encoding="utf-8", errors="replace")
+    urls = extract_urls(report)
+    skipped = {}
+    quotes = extract_quotes(report, skipped)
+    pages = fetch_all((u for _, u in urls), fetch_fn)
+    results = [score(q, candidate_urls(report, pos, urls), pages)
+               for pos, q in quotes]
+    return summarize(report_path, pages, results, skipped, out_path)
+
+
+def load_claims(data):
+    """[(quote, url)] from fleet_worker's `claims` (sourceUrl) or the routed
+    workflow's `confirmed` (source); a bare list of either shape also works."""
+    if isinstance(data, dict):
+        data = data.get("claims") or data.get("confirmed") or []
+    out = []
+    for c in data if isinstance(data, list) else []:
+        if isinstance(c, dict):
+            out.append((str(c.get("quote") or "").strip(),
+                        str(c.get("sourceUrl") or c.get("source") or "").strip()))
+    return out
+
+
+def run_claims(claims_path: Path, out_path, fetch_fn=fetch) -> dict:
+    data = json.loads(claims_path.read_text(encoding="utf-8"))
+    skipped, items = {}, []
+
+    def skip(reason):
+        skipped[reason] = skipped.get(reason, 0) + 1
+
+    for quote, url in load_claims(data):
+        clean = quote.strip('"“”').strip()
+        if not clean:
+            skip("no_quote")
+        elif len(clean) < MIN_QUOTE:
+            skip("under_30_chars")
+        elif not (url.startswith(("http://", "https://")) and public_host(url)):
+            skip("url_not_fetchable")
+        else:
+            items.append((clean, url))
+    pages = fetch_all((u for _, u in items), fetch_fn)
+    results = [score(q, [u], pages) for q, u in items]
+    return summarize(claims_path, pages, results, skipped, out_path)
+
+
 def self_test() -> int:
-    """Prove all four ends before trusting any number this tool produces:
+    """Prove each end before trusting any number this tool produces:
 
     1. a true quote wrapped across lines still scores 1.0
     2. an invented quote stays below 0.4
     3. a quote fusing two non-adjacent sentences is flagged, even though its
        ratio stays high — every piece is real, the passage is not
     4. a URL written inside a code span is still fetched, not reported dead
+    5. file:// and private-address citations are never fetched
+    6. a claims file is scored quote by quote, a Portuguese quote included,
+       and what it cannot score is counted, not dropped
+
+    Pages are served by a stub fetcher, so no network is used.
     """
     import tempfile
-    d = Path(tempfile.mkdtemp())
-    page = d / "doc.html"
-    page.write_text(
-        "<html><body><p>The\n  <code>--fail-with-body</code>\n  option makes\n"
-        "  curl return the body\n  even on HTTP errors.</p>"
-        "<p>The first sentence of the passage states the rule plainly. "
-        "An intervening sentence qualifies it in a way that changes the "
-        "meaning entirely. The third sentence closes the passage off.</p>"
-        "</body></html>",
-        encoding="utf-8")
-    url = page.as_uri()
-    report = d / "report.md"
-    report.write_text(
-        f"### 1. curl\nVerdict: holds. Source: {url}\n\n"
-        "> The `--fail-with-body` option makes curl return the body even on "
-        "HTTP errors.\n\n"
-        "### 2. invented\n"
-        f"Source: {url}\n\n"
-        "> This sentence appears nowhere on that page whatsoever, truly.\n\n"
-        "### 3. fused\n"
-        f"Source: {url}\n\n"
-        "> The first sentence of the passage states the rule plainly. "
-        "The third sentence closes the passage off.\n\n"
-        f"### 4. url in a code span\nSource: `{url}`\n\n"
-        "> An intervening sentence qualifies it in a way that changes the "
-        "meaning entirely.\n",
-        encoding="utf-8")
+    url, pt_url = "https://docs.selftest.invalid/doc", "https://docs.selftest.invalid/pt"
+    html = {
+        url: "<html><body><p>The\n  <code>--fail-with-body</code>\n  option makes\n"
+             "  curl return the body\n  even on HTTP errors.</p>"
+             "<p>The first sentence of the passage states the rule plainly. "
+             "An intervening sentence qualifies it in a way that changes the "
+             "meaning entirely. The third sentence closes the passage off.</p>"
+             "</body></html>",
+        pt_url: "<p>O servidor apaga a configuração quando é desligado sem salvar antes.</p>",
+    }
+    fetched = []
 
-    s = run(report, None)
+    def stub(u):
+        fetched.append(u)
+        if u in html:
+            return {"status": 200, "text": normalize(html_to_text(html[u])),
+                    "error": None, "final_url": u}
+        return {"status": 404, "text": "", "error": "HTTP 404", "final_url": u}
+
     ok = True
 
-    def find(frag):
-        return next(r for r in s["citations"] if frag in r["quote"])
+    def fail(msg):
+        nonlocal ok
+        print("FAILED " + msg)
+        ok = False
 
-    real, fake = find("fail-with-body"), find("nowhere")
-    fused, span = find("third sentence closes"), find("intervening sentence qualifies")
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        report = d / "report.md"
+        report.write_text(
+            f"### 1. curl\nVerdict: holds. Source: {url}\n\n"
+            "> The `--fail-with-body` option makes curl return the body even on "
+            "HTTP errors.\n\n"
+            "### 2. invented\n"
+            f"Source: {url}\n\n"
+            "> This sentence appears nowhere on that page whatsoever, truly.\n\n"
+            "### 3. fused\n"
+            f"Source: {url}\n\n"
+            "> The first sentence of the passage states the rule plainly. "
+            "The third sentence closes the passage off.\n\n"
+            f"### 4. url in a code span\nSource: `{url}`\n\n"
+            "> An intervening sentence qualifies it in a way that changes the "
+            "meaning entirely.\n\n"
+            "### 5. local and private\n"
+            "Sources: file:///etc/hostname, http://169.254.169.254/latest/meta-data/ "
+            "and http://10.0.0.7/admin\n",
+            encoding="utf-8")
+        s = run(report, None, fetch_fn=stub)
 
-    if real["ratio_on_attributed"] != 1.0:
-        print(f"FAILED (1): true quote wrapped across 5 lines scored "
-              f"{real['ratio_on_attributed']}, expected 1.0"); ok = False
-    if fake["ratio_on_attributed"] >= 0.4:
-        print(f"FAILED (2): invented quote scored "
-              f"{fake['ratio_on_attributed']}, expected < 0.4"); ok = False
-    if not fused["fusion_suspected"]:
-        print(f"FAILED (3): fused quote not flagged — ratio "
-              f"{fused['best_ratio']}, contiguity {fused['contiguity']}"); ok = False
-    if s["urls_dead"]:
-        print(f"FAILED (4): URL in a code span reported dead: "
-              f"{s['urls_dead']}"); ok = False
-    if span["ratio_on_attributed"] < 0.9:
-        print(f"FAILED (4): quote under a code-span URL scored "
-              f"{span['ratio_on_attributed']}, expected >= 0.9"); ok = False
+        def find(frag):
+            return next(r for r in s["citations"] if frag in r["quote"])
+
+        real, fake = find("fail-with-body"), find("nowhere")
+        fused, span = find("third sentence closes"), find("intervening sentence qualifies")
+        if real["ratio_on_attributed"] != 1.0:
+            fail(f"(1): true quote wrapped across 5 lines scored "
+                 f"{real['ratio_on_attributed']}, expected 1.0")
+        if fake["ratio_on_attributed"] >= 0.4:
+            fail(f"(2): invented quote scored {fake['ratio_on_attributed']}, expected < 0.4")
+        if not fused["fusion_suspected"]:
+            fail(f"(3): fused quote not flagged — ratio {fused['best_ratio']}, "
+                 f"contiguity {fused['contiguity']}")
+        if s["urls_dead"]:
+            fail(f"(4): URL in a code span reported dead: {s['urls_dead']}")
+        if span["ratio_on_attributed"] < 0.9:
+            fail(f"(4): quote under a code-span URL scored "
+                 f"{span['ratio_on_attributed']}, expected >= 0.9")
+        if fetched != [url]:
+            fail(f"(5): fetched {fetched}, expected only {url}")
+
+        claims = d / "claims.json"
+        claims.write_text(json.dumps({"claims": [
+            {"claim": "c1", "quote": "The `--fail-with-body` option makes curl return the body",
+             "sourceUrl": url},
+            {"claim": "c2", "quote": "O servidor apaga a configuração quando é desligado",
+             "sourceUrl": pt_url},
+            {"claim": "c3", "quote": "too short", "sourceUrl": url},
+            {"claim": "c4", "quote": "A quote long enough, pointing at a local file",
+             "sourceUrl": "file:///etc/passwd"},
+        ]}), encoding="utf-8")
+        c = run_claims(claims, None, fetch_fn=stub)
+        if c["quotes_found"] != 2 or c["n_quotes"] != 2:
+            fail(f"(6): claims file scored {c['quotes_found']} of {c['n_quotes']}, expected 2 of 2")
+        if c["skipped"] != {"under_30_chars": 1, "url_not_fetchable": 1}:
+            fail(f"(6): skipped {c['skipped']}, expected one short quote and one local URL")
 
     print("self-test OK — line wrapping survives, invention fails, fusion is "
-          "caught, and a URL in backticks is still fetched"
+          "caught, a URL in backticks is still fetched, local URLs are not, "
+          "and claims files are scored and counted"
           if ok else "self-test FAILED")
     return 0 if ok else 1
 
@@ -569,16 +698,18 @@ if __name__ == "__main__":
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("report", nargs="?", type=Path)
+    ap.add_argument("--claims", type=Path,
+                    help="a JSON claims file instead of a markdown report")
     ap.add_argument("-o", "--out", type=Path)
     ap.add_argument("--self-test", action="store_true")
     a = ap.parse_args()
 
     if a.self_test:
         sys.exit(self_test())
-    if not a.report:
-        ap.error("pass a report, or use --self-test")
+    if bool(a.report) == bool(a.claims):
+        ap.error("pass a report or --claims FILE, or use --self-test")
 
-    s = run(a.report, a.out)
+    s = run_claims(a.claims, a.out) if a.claims else run(a.report, a.out)
     print(json.dumps({k: v for k, v in s.items()
                       if k not in ("citations", "url_status")},
                      indent=2, ensure_ascii=False))
