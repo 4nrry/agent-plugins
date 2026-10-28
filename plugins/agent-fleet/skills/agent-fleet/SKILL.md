@@ -87,9 +87,12 @@ record in [bench/shared](https://github.com/4nrry/agent-plugins/tree/main/bench/
   fetch from <host>" means the host was never contacted, so every page there
   will fail the same way; an HTTP status (404, 403) means the host answered
   about that one page. After one block, send no more fetch agents to that
-  host. Open it in the harness's built-in browser if it has one (it renders
-  scripts and carries the user's session), or try an archive mirror; keep a
-  per-project list of blocked hosts.
+  host. A browser tool (the harness's built-in one, or the user's own through
+  an extension) renders scripts and carries the user's session, but may refuse
+  the same host: on 2026-10-28 reddit.com was refused everywhere, while
+  stackoverflow.com opened only in the user's Chrome. Past that, use the
+  site's official API, an archive mirror, or ask the user to read the page.
+  Keep a per-project list of blocked hosts and the route that worked.
 - A vendor is interested in comparisons and authoritative on its own
   published terms. For prices, plan limits, licence text and support windows,
   the vendor's own page is the required source and a third-party summary the
