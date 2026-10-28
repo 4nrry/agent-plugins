@@ -13,7 +13,8 @@ HERE = Path(__file__).resolve().parent
 HOOK = Path(sys.argv[1]) if len(sys.argv) > 1 else HERE.parents[4] / "plugins/agent-fleet/hooks/inject.sh"
 if not HOOK.is_file():
     sys.exit(f"hook not found: {HOOK}")
-SETS = ["dev.json", "blind-1.json", "blind-2.json", "aug-2026-08-06.json"]
+SETS = ["dev.json", "blind-1.json", "blind-2.json", "aug-2026-08-06.json", "subagents-2026-10-28.json",
+        "agent-business-nearmiss-2026-10-28.json"]
 
 def fires(prompt: str) -> bool:
     p = subprocess.run(["bash", str(HOOK)], input=json.dumps({"prompt": prompt}),

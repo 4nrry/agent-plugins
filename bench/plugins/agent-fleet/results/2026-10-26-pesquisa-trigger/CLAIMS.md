@@ -33,6 +33,25 @@ the rule knows. A one-sided rule ("pesquisa" alone) fired on 9 of 13 dev
 near-misses: code search, a survey form, a search box, Gmail, ripgrep, a
 Postgres index, a typo fix, a pasted article, a TCC section.
 
+## Several agents at once (2026-10-28)
+
+A headless `claude -p` run (sonnet) of "roda 5 subagentes do claude em
+paralelo, um por pasta, pra achar TODOs" loaded `workflow-authoring` and no
+fleet rules: the hook only knew fan-out words and "pesquisa". A third arm
+now fires on subagent(e)s with a parallel word, each or one-per; on a count
+right before agent(e)s; on agent(e)s with a parallel word; and on fan-out.
+
+- `logs/subagents-2026-10-28.json`, written blind by a subagent after the
+  rule: 14 of 20 should-trigger, 0 of 20 near-misses. The six misses say
+  "team of agents", "swarm" or "one agent per X".
+- Adding those forms took the set to 20/20 but fired on all five
+  business-sense phrasings in `logs/agent-business-nearmiss-2026-10-28.json`
+  (support, sales, community health agents); they were dropped.
+- The earlier sets did not regress; `aug-2026-08-06.json` went from 4/10
+  to 7/10, with 0 near-misses in every set.
+- Re-run end to end: the same prompt now injects the skill (matched:
+  several agents at once); the model also loaded `workflow-authoring`.
+
 ## Other agents
 
 The same `inject.sh` runs through `adapters/claude_hooks.py` (Kimi, ZCode,

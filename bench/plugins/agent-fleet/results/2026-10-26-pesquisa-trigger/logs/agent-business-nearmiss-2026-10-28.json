@@ -1,0 +1,22 @@
+[
+{
+"query": "pra cada cliente um agente de suporte responde no zendesk, configura isso",
+"should_trigger": false
+},
+{
+"query": "each ticket gets an agent assigned by round robin, write the SQL",
+"should_trigger": false
+},
+{
+"query": "o time de agentes de vendas bateu a meta, faz o grafico",
+"should_trigger": false
+},
+{
+"query": "nosso squad de agentes comunitarios precisa de um app offline",
+"should_trigger": false
+},
+{
+"query": "one agent per user is the licensing model, compare the plans",
+"should_trigger": false
+}
+]
