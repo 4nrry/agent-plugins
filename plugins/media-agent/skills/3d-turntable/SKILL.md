@@ -1,6 +1,6 @@
 ---
 name: 3d-turntable
-description: Renders a 360-degree turntable of a .glb or .gltf product model as transparent PNG frames for video, in headless Blender with Cycles on the GPU. Use for a pre-rendered product spin, a device turntable, headless Blender, Cycles, CUDA or OptiX, or Blender segfaulting on devices. Real-time 3D in the composition is in video-composition.
+description: Renders a 360-degree turntable of a .glb or .gltf product model as transparent PNG frames for video, in headless Blender with Cycles on the GPU. Use for a pre-rendered product spin, a device turntable, headless Blender, Cycles, CUDA or OptiX, or Blender segfaulting on devices. Scripted scenes with characters are in 3d-scenes; real-time 3D in the composition is in video-composition.
 ---
 
 # Turntable of a .glb in headless Blender
