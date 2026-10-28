@@ -80,7 +80,7 @@ crew run sets `CREW_RUN`, and crew refuses to start a worker inside one.
 | [game-facts](plugins/game-facts/) | Pins the installed game's version before the agent answers from training memory. A UserPromptSubmit hook reads Steam appmanifests and injects appid, buildid and update date — so the version never has to be typed into the prompt. |
 | [homelab](plugins/homelab/) | Software you maintain yourself on a Linux box, where the official docs stop: a Palworld dedicated server (the config it erases on shutdown), WireGuard through NetworkManager (the IPv6 leak that passes the IP test), and tarball installs (one versioned layout, and why a self-updating app must not live in /opt). Machine state stays out of the repo. |
 | [media-agent](plugins/media-agent/) | Media production by an agent on a machine with an 8 GB GPU and commercial licensing, one skill per modality with rules that hold for any model: image and video generation, image retouching, voice-over at -16 LUFS, music and sound with per-item licenses, video composed as code, editing finished video, and a 3D product turntable. One hook warns where vipsthumbnail -o really writes. |
-| [mobile-agent](plugins/mobile-agent/) | What breaks silently in a mobile app: the device layer (adb, emulator, UI dumps) and the bundler layer (Expo, Metro, prebuild). Six narrow PreToolUse guards that warn and never block. |
+| [mobile-agent](plugins/mobile-agent/) | What breaks silently in a mobile app: the device layer (adb, emulator, UI dumps) and the bundler layer (Expo, Metro, prebuild). Six narrow PreToolUse guards that warn and never block, and the Maestro MCP server for UI flows. |
 
 Each plugin's own README carries its components, its measurements, and what
 those measurements do not establish.
