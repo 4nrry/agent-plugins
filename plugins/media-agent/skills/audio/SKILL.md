@@ -1,6 +1,6 @@
 ---
 name: audio
-description: Gets music, sound effects and audio fixes for video under commercial licenses — exact-length music, SFX, stock audio with credits, noise removal, transcription of real speech, dubbing. Use for a soundtrack, royalty-free music, SFX, CC0 or CC-BY credits, or a named source (ElevenLabs, ACE-Step, Freesound).
+description: Gets music, sound effects, stock media and audio fixes for video under commercial licenses — exact-length music, SFX, stock audio, footage and photos with credits, noise removal, captions from real speech. Use for a soundtrack, royalty-free music, SFX, stock footage or photos, CC0 or CC-BY credits, subtitles for a real recording, or a named source (ElevenLabs, ACE-Step, Freesound, Pexels, Pixabay).
 ---
 
 # Audio for video
@@ -8,10 +8,10 @@ description: Gets music, sound effects and audio fixes for video under commercia
 Voice-over is in the `voice` skill. The rules below hold for any provider; how
 to run each one is in `references/`:
 [elevenlabs.md](references/elevenlabs.md) (SFX, music, cleanup,
-transcription, dubbing), [xai.md](references/xai.md) (transcription),
+transcription, dubbing, untested), [xai.md](references/xai.md) (transcription),
 [local-music.md](references/local-music.md) (music on
-your own GPU) and [stock.md](references/stock.md) (libraries and their
-licenses).
+your own GPU) and [stock.md](references/stock.md) (audio, footage and photo
+libraries, their licenses, and `scripts/media-search.py`).
 
 ## Licenses
 
@@ -25,8 +25,8 @@ licenses).
 
 ## Music
 
-- Google Flow Music (Lyria 3.5) publishes no commercial terms yet: not for a
-  commercial piece.
+- Use a music generator only where its terms allow commercial use;
+  [references/stock.md](references/stock.md) records the ones checked.
 - Make it the length of the cut. Generate at that length, or generate 40 s and
   loop with a 2 s crossfade: long generations degrade toward the end.
 - For institutional pieces: instrumental, no drums, slow, minimal.

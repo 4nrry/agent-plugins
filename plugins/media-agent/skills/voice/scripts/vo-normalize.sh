@@ -7,6 +7,7 @@
 # Output: OUTDIR/<name>.wav (48 kHz, same channels) and the JSON [{"id","file","duration","lufs"}].
 # Needs ffmpeg, ffprobe and jq.
 set -euo pipefail
+export LC_ALL=C  # printf and awk read and write 1.23, never 1,23
 
 target=-16
 tp=-1.5

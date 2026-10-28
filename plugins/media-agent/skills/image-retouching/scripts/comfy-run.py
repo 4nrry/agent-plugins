@@ -66,6 +66,8 @@ def run(server, wf, out):
         hist = get(server, f"/history/{pid}")
         if pid in hist:
             break
+        if time.time() - t0 > 3600:
+            sys.exit(f"ComfyUI has not finished prompt {pid} after 60 min")
         time.sleep(0.5)
     status = hist[pid].get("status", {})
     if status.get("status_str") == "error":

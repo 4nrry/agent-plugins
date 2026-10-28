@@ -31,4 +31,4 @@ and keys come from environment variables (`COMFY_HOME`, `*_API_KEY`).
 
 **Evidence:** behavior checks from one real production, not effect
 measurements —
-[`bench/plugins/media-agent/results/2026-10-13-production-checks-CLAIMS.md`](../../bench/plugins/media-agent/results/2026-10-13-production-checks-CLAIMS.md).
+[`bench/plugins/media-agent/results/2026-10-13-production-checks-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-10-13-production-checks-CLAIMS.md).

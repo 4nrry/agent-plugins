@@ -1,6 +1,6 @@
 ---
 name: image-generation
-description: Generates images for a marketing piece with any image model — explore, choose on a contact sheet, final still, edits, and what never to generate. Use for a generated image, scene, still, cover, moodboard or storyboard frame, or when an image model is named (Grok Imagine, Gemini, Nano Banana, FLUX).
+description: Generates images for a marketing piece with any image model — explore, choose on a contact sheet, final still, prompted edits, and what never to generate. Use for a generated image, scene, still, cover, moodboard, storyboard frame or character sheet, or when an image model is named (Grok Imagine, Gemini, Nano Banana).
 ---
 
 # Image generation
@@ -68,8 +68,8 @@ is in [references/tools.md](references/tools.md).
 - Generators embed provenance: an invisible watermark (SynthID on Google's
   models) and often C2PA metadata, from which platforms add an AI label.
   Removing a visible mark does not remove them and can break the tool's terms.
-- A realistic generated image is declared at upload as AI-made: Meta, TikTok and YouTube require it of whoever posts,
-  whatever the metadata says (`video-composition` skill,
-  `references/short-form.md`).
+- Declare a realistic generated image as AI-made at upload, whatever the
+  metadata says; what each platform asks is in the `video-composition`
+  skill, `references/short-form.md`.
 - Look at every final image at 100%: hands, edges and repeated textures fail
   where the thumbnail looks fine.
