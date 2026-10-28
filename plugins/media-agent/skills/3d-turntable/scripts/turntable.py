@@ -32,6 +32,7 @@ for o in objs:
         mins = Vector(map(min, mins, w)); maxs = Vector(map(max, maxs, w))
 center = (mins + maxs) / 2; size = max(maxs - mins)
 pivot = bpy.data.objects.new("Pivot", None); scene.collection.objects.link(pivot); pivot.location = center
+bpy.context.view_layer.update()  # matrix_world stays identity until the scene re-evaluates
 for o in bpy.context.scene.objects:
     if o.parent is None and o is not pivot and o.type in {"MESH", "EMPTY"}:
         o.parent = pivot; o.matrix_parent_inverse = pivot.matrix_world.inverted()

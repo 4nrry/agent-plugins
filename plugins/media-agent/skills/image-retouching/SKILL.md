@@ -1,6 +1,6 @@
 ---
 name: image-retouching
-description: Retouches images on your own GPU with commercially licensed models — background removal, upscaling, logo or object removal, inpainting, local stills. Use for a transparent PNG, upscale, watermark removal, inpainting, ComfyUI or VRAM limits, or a model like FLUX, RMBG, BiRefNet or LaMa.
+description: Retouches images on your own GPU with commercially licensed models — background removal, upscaling, removing a logo or object, masked inpainting, stills generated locally. Use for a transparent PNG, upscale, removing an overlay from your own image, inpainting with a mask, ComfyUI or VRAM limits, or a model like FLUX, Z-Image, RMBG, BiRefNet or LaMa.
 ---
 
 # Image retouching

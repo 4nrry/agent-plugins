@@ -1,6 +1,6 @@
 ---
 name: video-generation
-description: Generates short video shots with any video model — animate a chosen still, one camera move, resolution by use, check every clip. Use for generated video, b-roll, an animated photo, a drone shot, image-to-video or text-to-video, or when a video model is named (Veo, Grok Imagine, Sora, Kling).
+description: Generates short AI video shots with any video model — animate a chosen still, one camera move, resolution by use, check every clip. Use for a generated clip or generated b-roll, an animated photo, image-to-video or text-to-video, or when a video model or route is named (Veo, Omni, Google Flow, Grok Imagine, Sora, Kling). Stock footage is in the audio skill.
 ---
 
 # Video generation
@@ -12,31 +12,29 @@ resolutions and its quirks are in [references/tools.md](references/tools.md).
 
 Text-to-video picks its own framing. Starting from a still keeps the
 composition and only moves the camera, so make and choose the still first
-(`image-generation` skill), then animate it. From this skill's directory, the
-pattern on a subscription (Grok Build), which bills no API key:
+(`image-generation` skill), then animate it. From this skill's directory:
 
 ```bash
 scripts/grok-video.sh "slow drone push forward along the windrows, mist drifting, no text" shot.mp4 --image still.png --res 720p
 scripts/contact-sheet.sh check.jpg still.png shot.mp4
 ```
 
-Google Flow runs Omni and Veo on the Google AI subscription's credits through a
-browser ([references/flow.md](references/flow.md)), and grok.com's Imagine makes
-1080p on the Grok subscription ([references/grok-web.md](references/grok-web.md)).
-`scripts/omni.py` takes the same prompt and still on the Gemini API key, which
-bills every call; [references/tools.md](references/tools.md) marks what each
-route bills.
+Other routes take the same prompt and still: `scripts/omni.py`, Google Flow
+([references/flow.md](references/flow.md)) and grok.com
+([references/grok-web.md](references/grok-web.md)). Some bill an API key per
+call and some spend a subscription; [references/tools.md](references/tools.md)
+says which, with each route's resolutions.
 
 When the shot must land on an exact frame (a match cut, a loop back to the
 opening, room left for the product composite), give the last frame too where
-the model takes one (`omni.py --last end.png`), and describe the move between
-them.
+the model takes one (`omni.py --last end.png`, not yet run live), and describe
+the move between them.
 
 ## A subject across shots
 
 - Pass the subject's reference images where the model takes them
-  (`omni.py --ref`, repeatable; the sheet from the `image-generation` skill)
-  and name the subject in the prompt.
+  (`omni.py --ref`, repeatable, not with `--image`, not yet run live; the
+  sheet from the `image-generation` skill) and name the subject in the prompt.
 - To continue a shot, extend the clip rather than generating a new one: the
   model keeps the subject, the motion and the sound.
 - To fix one thing in a clip, edit it ("change only the sky") where the model
@@ -80,7 +78,6 @@ them.
   behind Reels typography.
 - Never generate the product, logos or real people (`image-generation` skill).
 - Generated video carries provenance (watermarks such as SynthID, C2PA
-  metadata), from which platforms add an AI label. A realistic generated shot
-  is declared at upload as AI-made: Meta, TikTok and YouTube require it of whoever posts,
-  whatever the metadata says (`video-composition` skill,
-  `references/short-form.md`).
+  metadata), from which platforms add an AI label. Declare a realistic
+  generated shot as AI-made at upload anyway; what each platform asks is in
+  the `video-composition` skill, `references/short-form.md`.

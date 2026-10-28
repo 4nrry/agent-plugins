@@ -1,6 +1,6 @@
 ---
 name: voice
-description: Produces edit-ready voice-over with any TTS — one sentence per file, spoken text apart from captions, -16 LUFS, a durations JSON for captions and ducking. Use for narration, TTS, pt-BR speech, loudnorm, synced captions, a quiet or mispronounced voice, or a named TTS (ElevenLabs, Kokoro).
+description: Produces edit-ready voice-over with any TTS — one sentence per file, spoken text apart from captions, -16 LUFS, a durations JSON for captions and ducking. Use for narration, TTS, pt-BR speech, loudnorm, captions timed from the voice JSON, translating a voice-over, a quiet or mispronounced voice, or a named TTS (ElevenLabs, Kokoro).
 ---
 
 # Voice-over
@@ -56,9 +56,9 @@ applies.
 
 ## Disclosure and series
 
-- A realistic synthetic voice is "realistic-sounding audio" to Meta: declare
-  the post as AI-made at upload (`video-composition` skill,
-  `references/short-form.md`).
+- Declare a post with a realistic synthetic voice as AI-made at upload; what
+  each platform asks is in the `video-composition` skill,
+  `references/short-form.md`.
 - A recurring character keeps one voice and one set of settings across
   episodes; record them beside the voice JSON.
 
