@@ -66,10 +66,41 @@ matching deep link) over killing a process that may be another session's.
 
 In a worktree or checkout without its own `node_modules`, `npx expo`, `tsc`
 and `jest` resolve upward and pass; Metro returns 404 for the bundle with an
-unresolved module. A symlink to another checkout's `node_modules` runs the
-app but must not produce a build: Metro does not follow symlinks outside
-`watchFolders`, and the artifact compiles against the other branch's
-dependencies.
+unresolved module.
+
+Do not symlink another checkout's `node_modules`. With expo-router, routes
+resolve through the real path, so the worktree's Metro serves the *other*
+checkout's `app/` directory: the device shows a stale screen, or "Welcome to
+Expo", and no error. Copy it as hardlinks instead, which takes seconds and no
+extra disk on the same filesystem:
+
+```bash
+cp -al <main-checkout>/node_modules node_modules
+```
+
+Either way the copy runs the app but must not produce a build: it holds the
+other branch's dependencies. With pnpm, `pnpm install` in the worktree is
+already fast and links from the store.
+
+## Metro belongs to the session
+
+With agents moving between worktrees, a Metro left running in one terminal
+serves whichever checkout started it. Start Metro from the worktree being
+changed, on its own port, and stop it when the task ends:
+
+- Run it as a background task or a harness-managed dev server, never in a
+  terminal someone has to watch. Watch the log for the ready line and for
+  `Bundling failed`, not by polling.
+- Pass the port explicitly (`--port $PORT`) and use the same port in
+  `adb reverse tcp:$PORT tcp:$PORT` and in the dev-client deep link. A launch
+  config with automatic ports only helps if the command reads the assigned
+  `PORT`; a hardcoded `--port 8081` in its arguments defeats it.
+- Gitignored env files (`.env.local` with bench logins) are not in a new
+  worktree. Copy them, or list them in the harness's worktree include file.
+- One phone talks to one Metro. Before taking the device, check who owns the
+  bundler ports and tunnels (`/mobile-agent:preflight`).
+- Prove the worktree's code reached the device: change a visible string only
+  in the worktree and read it back from the screen.
 
 ## Fast Refresh can stick
 
