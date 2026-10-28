@@ -1,5 +1,5 @@
 {
-  "description": "One narrow guard that warns and never blocks. The `if` holds exactly one permission rule, as in mobile-agent: one handler per condition.",
+  "description": "Two narrow hooks that warn and never block. The `if` holds exactly one permission rule, as in mobile-agent: one handler per condition.",
   "hooks": {
     "PreToolUse": [
       {
@@ -9,6 +9,15 @@
             "type": "command",
             "if": "Bash(vipsthumbnail *)",
             "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/guard-vipsthumbnail.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__plugin_media-agent_kinocut__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/skill-before-kinocut.sh"
           }
         ]
       }

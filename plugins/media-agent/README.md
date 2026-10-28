@@ -21,9 +21,13 @@ new skill.
 | `video-editing` | re-render vs patch the mp4, checking the output | Kinocut, registered as an MCP server (`.mcp.json`) |
 | `3d-turntable` | a 360° product turn as transparent frames | headless Blender (`turntable.py`) |
 
-The hook `hooks/guard-vipsthumbnail.sh` (`PreToolUse` on `Bash(vipsthumbnail *)`)
-warns when `-o name` without a slash will write next to the input file. It
-never blocks.
+Two hooks warn and never block:
+
+- `hooks/guard-vipsthumbnail.sh` (`PreToolUse` on `Bash(vipsthumbnail *)`)
+  warns when `-o name` without a slash will write next to the input file.
+- `hooks/skill-before-kinocut.sh` (`PreToolUse` on the Kinocut MCP tools)
+  asks the agent to load the matching skill when it calls Kinocut before any
+  media-agent skill, once per session. The first call still runs.
 
 The plugin does not decide licenses for you (Remotion's employee limit,
 ElevenLabs' free tier): the skills state the rule and the user decides. Paths
