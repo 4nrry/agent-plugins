@@ -2,7 +2,7 @@ export const meta = {
   name: 'deep-research',
   description: 'Deep research harness with model routing — the built-in deep-research script verbatim, plus per-phase model overrides: search/fetch on haiku at low effort, adversarial verification on sonnet, scope/synthesis on the session model.',
   whenToUse: 'When the user wants a deep, multi-source, fact-checked research report on any topic. BEFORE invoking, check if the question is specific enough to research directly — if underspecified (e.g., "what car to buy" without budget/use-case/region), ask 2-3 clarifying questions to narrow scope. Then pass the refined question as args, weaving the answers in. Invoke ONLY as Workflow({name: "agent-fleet:deep-research", args: "<question>"}) — plugin workflows register prefixed; the bare name "deep-research" dispatches the UNROUTED built-in. After dispatch, the tool result names the persisted script (workflows/scripts/<run>.js in the session directory): grep it for "model:" before letting the run proceed — zero matches means the unrouted built-in is running; stop it and resume with overrides on every unfinished stage, re-passing args (resume does not carry them).',
-  phases: [{"title":"Scope","detail":"Decompose question (from args) into 5 search angles"},{"title":"Search","detail":"5 parallel WebSearch agents, one per angle","model":"haiku"},{"title":"Fetch","detail":"URL-dedup, fetch top 15 sources, extract falsifiable claims","model":"haiku"},{"title":"Verify","detail":"3-vote adversarial verification per claim (need 2/3 refutes to kill)","model":"sonnet"},{"title":"Synthesize","detail":"Merge semantic dupes, rank by confidence, cite sources"}],
+  phases: [{"title":"Scope","detail":"Decompose question (from args) into 5 search angles"},{"title":"Search","detail":"5 parallel WebSearch agents, one per angle","model":"haiku"},{"title":"Fetch","detail":"URL-dedup, fetch up to 15 sources plus every result rated high relevance, extract falsifiable claims","model":"haiku"},{"title":"Verify","detail":"3-vote adversarial verification per claim (need 2/3 refutes to kill)","model":"sonnet"},{"title":"Synthesize","detail":"Merge semantic dupes, rank by confidence, cite sources"}],
 }
 
 // PROVENANCE (agent-fleet plugin): this file is the built-in deep-research
@@ -15,7 +15,10 @@ export const meta = {
 // sites, the comments beside them, this header, a `confirmed` list (claim,
 // source, quote) in the final return so verify_citations.py --claims can check
 // the report's quotes, and invocation texts (meta, the comment
-// below, the empty-args guard) naming the plugin-prefixed name: plugin
+// below, the empty-args guard) naming the plugin-prefixed name, and the Fetch
+// phase text, which the built-in words as "top 15 sources" while its budget
+// check skips results rated high relevance, so a run can fetch every search
+// result (same code in 2.1.312; issue #2 in the repository below). Plugin
 // workflows register as agent-fleet:deep-research, and the bare name
 // dispatches the unrouted built-in (measured 2026-08-28: a full run inherited
 // the session model). Routing rationale and the paired-run records behind it:
