@@ -89,9 +89,12 @@ def main():
     else:
         uri = part.get("uri") or sys.exit("video part has neither data nor uri")
         name = uri.split("/v1beta/", 1)[1].split(":", 1)[0]          # files/<id>
+        deadline = time.time() + 1800
         while (state := call("GET", f"{API}/{name}", key).get("state")) != "ACTIVE":
             if state == "FAILED":
                 sys.exit(f"the video file {name} failed to process")
+            if time.time() > deadline:
+                sys.exit(f"the video file {name} is still {state} after 30 min")
             time.sleep(5)
         data = call("GET", uri, key, raw=True, timeout=600)
     with open(a.out, "wb") as f:

@@ -26,7 +26,7 @@ src=$(jq -r 'select(.type == "tool_result" and .name == "image_generate") | .out
 [ -n "$src" ] || { echo "hermes produced no image; last events:" >&2; tail -c 800 "$log" >&2; exit 1; }
 mkdir -p "$(dirname "$out")"
 case $src in
-  http*) curl -fsS -o "$out" "$src" ;;
+  http*) curl -fsS --connect-timeout 15 --max-time 300 -o "$out" "$src" ;;
   *)     cp "$src" "$out" ;;
 esac
 [ -s "$out" ] || { echo "download failed: $src" >&2; exit 1; }

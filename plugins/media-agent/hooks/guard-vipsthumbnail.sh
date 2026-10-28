@@ -13,7 +13,9 @@ cmd=$(jq -r '.tool_input.command // empty' <<<"$input" 2>/dev/null) || exit 0
 
 # Only `-o`/`--output` values without a slash matter; a value with a slash is an
 # explicit path and does what it looks like.
-grep -qE '(^|[;&|[:space:]])vipsthumbnail[[:space:]].*(-o|--output)[[:space:]=]+[^/[:space:]"'"'"']+([[:space:]]|$)' <<<"$cmd" || exit 0
+# The value may be quoted, and the match stops at ; & | so a later command's
+# -o does not count.
+grep -qE '(^|[;&|[:space:]])vipsthumbnail[[:space:]][^;&|]*(-o|--output)[[:space:]=]+["'"'"']?[^/[:space:]"'"'"']+["'"'"']?([[:space:]]|$)' <<<"$cmd" || exit 0
 
 jq -n '{
   hookSpecificOutput: {
