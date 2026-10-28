@@ -17,7 +17,7 @@ p.add_argument("-o", "--out", required=True)
 p.add_argument("--image")
 p.add_argument("--aspect", default="16:9")
 a = p.parse_args()
-key = os.environ["GEMINI_API_KEY"]
+key = os.environ.get("GEMINI_API_KEY") or sys.exit("GEMINI_API_KEY is not in the environment")
 parts = [{"text": a.prompt}]
 if a.image:
     mime = mimetypes.guess_type(a.image)[0] or "image/png"

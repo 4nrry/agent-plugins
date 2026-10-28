@@ -1,6 +1,6 @@
 ---
 name: video-composition
-description: Builds a marketing video as code — frame-driven scenes, captions from the voice JSON, b-roll, ducked music, 3D, and 16:9, 1:1, 9:16, 4:5 plus a carousel from one source. Use for an institutional video, a short vertical video (Reels, Shorts, TikTok), motion graphics, burned-in captions, LinkedIn formats, or Remotion.
+description: Builds a marketing video as code from its source project — frame-driven scenes, captions from the voice JSON, b-roll placement, ducked music, real-time 3D, and 16:9, 1:1, 9:16, 4:5 plus a carousel from one source. Use for an institutional video, a short vertical video (Reels, Shorts, TikTok), code-drawn motion graphics, LinkedIn formats, declaring AI at upload, Remotion, Three.js, or HTML rendered to video.
 ---
 
 # Video composition as code
@@ -43,8 +43,7 @@ route has no license cost and loses the interactive preview.
 - 1:1 for LinkedIn: the 16:9 scaled into the square with brand-color bars.
 - 9:16: each platform's buttons and caption cover the edges, the bottom most
   and the right side on all of them. Keep text and logos inside the safe zone
-  in [references/short-form.md](references/short-form.md) (Meta's Reels ads:
-  14% top, 35% bottom, 6% each side).
+  in [references/short-form.md](references/short-form.md).
 - Carousel: one composition whose frame `i` is slide `i`, rendered as stills
   and joined into a PDF for LinkedIn.
 

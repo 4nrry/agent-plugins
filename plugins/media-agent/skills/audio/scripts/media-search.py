@@ -59,9 +59,9 @@ def openverse(a):
 FS_LIC = {"cc0": 'license:"Creative Commons 0"', "by": 'license:"Attribution"'}
 def freesound(a):
     tok = key("FREESOUND_API_KEY")
-    data = get("https://freesound.org/apiv2/search/text/", params={
+    data = get("https://freesound.org/apiv2/search/text/", headers={"Authorization": f"Token {tok}"}, params={
         "query": a.query, "filter": FS_LIC[a.license], "page_size": a.n,
-        "fields": "id,name,license,username,duration,previews,url,download", "token": tok})
+        "fields": "id,name,license,username,duration,previews,url,download"})
     out = [{"id": r["id"], "name": r["name"], "license": r["license"], "creator": r["username"], "duration_s": r["duration"],
             "preview": r["previews"]["preview-hq-mp3"], "page": r["url"]} for r in data.get("results", [])]
     row(out)
@@ -76,6 +76,8 @@ def pexels(a):
         data = get("https://api.pexels.com/videos/search", headers={"Authorization": k}, params={"query": a.query, "per_page": a.n, "orientation": a.orientation})
         out = []
         for v in data.get("videos", []):
+            if not v.get("video_files"):
+                continue
             best = max(v["video_files"], key=lambda f: (f.get("width") or 0))
             out.append({"id": v["id"], "creator": v["user"]["name"], "duration_s": v["duration"], "w": best.get("width"), "h": best.get("height"),
                         "file": best["link"], "page": v["url"], "license": "Pexels License (commercial use, attribution not required)"})
@@ -97,6 +99,8 @@ def pixabay(a):
         out = []
         for v in data.get("hits", []):
             best = v["videos"].get("large") or v["videos"].get("medium")
+            if not best or not best.get("url"):
+                continue
             out.append({"id": v["id"], "creator": v["user"], "duration_s": v["duration"], "w": best["width"], "h": best["height"],
                         "file": best["url"], "page": v["pageURL"], "license": "Pixabay Content License (commercial use; no standalone resale)"})
     else:
