@@ -12,8 +12,9 @@ catalog does (`android skills list`).
 | Component | Path | Does |
 |---|---|---|
 | Skill | `skills/android-device/` | UI dumps, GL surfaces, screenshots, input, tunnels, other sessions' processes; bundles `adb-ui.sh`, `adb_ui.py` and `verify_tool_facts.py` |
-| Skill | `skills/expo-metro/` | Silent prebuild, Metro port, missing `node_modules`, native modules, `EXPO_PUBLIC_`, SDK in non-interactive shells |
+| Skill | `skills/expo-metro/` | Silent prebuild, Metro per worktree and port, missing `node_modules` (hardlinks, not symlinks), native modules, `EXPO_PUBLIC_`, SDK in non-interactive shells |
 | Skill | `skills/android-mirror/` | scrcpy over wireless debugging without a second adb |
+| Skill | `skills/maestro/` | Writing and running Maestro flows: selectors, env defaults, `clearState`, dev client, debug artifacts |
 | Skill | `skills/preflight/` | `/mobile-agent:preflight`: what is already running, and which checkout owns it |
 | Hooks | `hooks/` | Twelve narrow `PreToolUse` guards, one permission rule each; they warn and never block |
 | MCP | `.mcp.json` | Maestro's own server (`maestro mcp`): list devices, read the screen, run inline YAML or saved flows |
