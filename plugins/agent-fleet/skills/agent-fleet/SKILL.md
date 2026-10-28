@@ -83,10 +83,29 @@ record in [bench/shared](https://github.com/4nrry/agent-plugins/tree/main/bench/
   memory. Below about a sentence a high ratio means presence, not support:
   check where a short quote landed, unless it is a distinctive identifier.
   Read `n_skipped` too: a clean result over many skipped quotes checked little.
-- An unreachable page is neither pass nor fail. Open it in the harness's
-  built-in browser if it has one (it renders scripts and carries the user's
-  session), or try an archive mirror; keep a per-project list of hosts that
-  refuse scripts.
+- An unreachable page is neither pass nor fail. Read the error: "unable to
+  fetch from <host>" means the host was never contacted, so every page there
+  will fail the same way; an HTTP status (404, 403) means the host answered
+  about that one page. After one block, send no more fetch agents to that
+  host. A browser tool (the harness's built-in one, or the user's own through
+  an extension) renders scripts and carries the user's session, but may refuse
+  the same host: on 2026-10-28 reddit.com was refused everywhere, while
+  stackoverflow.com opened only in the user's Chrome. Past that, use the
+  site's official API, an archive mirror, or ask the user to read the page.
+  Keep a per-project list of blocked hosts and the route that worked.
+- A YouTube page fetched as a web page returns its chrome, not the words: do
+  not count it as fetched. `scripts/yt_captions.py URL [--lang pt]` returns the
+  caption text when yt-dlp is installed, and exits 3 when it is not: then the
+  video is unreachable; never install yt-dlp for it. Automatic captions are
+  speech recognition with no date or version attached: quote them as what was
+  said in the video, not as a fact. Gemini through agy did not watch a YouTube
+  URL (2026-10-28); it saw only the text.
+- A vendor is interested in comparisons and authoritative on its own
+  published terms. For prices, plan limits, licence text and support windows,
+  the vendor's own page is the required source and a third-party summary the
+  weaker one; for performance and comparison claims its material is demoted.
+  A price or limit carries its unit and billing period ("$9 per user/month,
+  billed annually"): without them the number is wrong, not just short.
 - Verify verdicts in both directions: the breadth tier under-marks uncertainty,
   an adversarial pass over-marks caveats. A contester's caveat is a claim to
   check, not a correction to accept.
