@@ -35,6 +35,9 @@ route has no license cost and loses the interactive preview.
 - **3D:** a pre-rendered turntable (`3d-turntable` skill) looks best for the
   product hero shot and takes minutes; a real-time Three.js scene takes seconds
   and suits supporting shots and reframing one move for several formats.
+  Scripted Blender sets with characters are the `3d-scenes` skill; their
+  plates come in here, and a tape look over them is in
+  [references/lofi-look.md](references/lofi-look.md).
 
 ## Formats from one source
 
@@ -84,6 +87,10 @@ off.
 
 - A 3x3 contact sheet of stills per format catches overlapping and clipped
   text that a scaled-down preview hides.
+- Measure every string with the font and size that will draw it, against
+  the safe zone, and fail the build when one spills; a longer headline in the
+  next episode is caught before rendering. Put one frame under a screenshot of
+  the platform's interface from a phone to see what the buttons cover.
 - Check fps, duration and resolution with `ffprobe`, and -16 LUFS with
   `ffmpeg -af ebur128`.
 - Look at frame 0 on its own, at phone size: it is what the feed shows.

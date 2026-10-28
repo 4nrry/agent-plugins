@@ -20,6 +20,8 @@ new skill.
 | `video-composition` | video as code: frame-driven scenes, captions from the voice JSON, formats from one source, short vertical video for Reels, Shorts and TikTok | Remotion, HTML + Chrome + ffmpeg |
 | `video-editing` | re-render vs patch the mp4, checking the output | Kinocut, registered as an MCP server (`.mcp.json`) |
 | `3d-turntable` | a 360° product turn as transparent frames | headless Blender (`turntable.py`) |
+| `3d-scenes` | scripted sets, rigged .glb figures that keep their rotation and pose, preview and final quality, frozen-frame check | `scene_kit.py`, `check_motion.py` (headless Blender) |
+| `sourced-video` | two opened sources per fact, what stays out, equal time for each side, sources on screen | `check_sources.py` (episode spec) |
 
 Two hooks warn and never block:
 

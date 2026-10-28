@@ -38,6 +38,15 @@ The script measures in two passes and adds a limiter pass, because the
 true-peak ceiling makes `loudnorm` land 1–2 LU short on short speech. Duck the
 music under the voice from 0.5 to about 0.16 with a ~0.35 s ramp.
 
+## Check each take
+
+- Transcribe every generated sentence (`audio` skill, speech-to-text) and
+  compare it with `say`: a model can drop a word, merge two sentences or read
+  a number differently, and the caption from `text` will no longer match.
+- A video model used for its voice, or a moderated TTS, can refuse a line
+  that names a politician. Do not reword it to get past the filter; generate
+  that line with another TTS and keep the text.
+
 ## Choosing the engine
 
 - Language first: a model can read Portuguese with an English or European

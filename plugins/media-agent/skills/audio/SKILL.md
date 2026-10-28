@@ -38,6 +38,10 @@ libraries, their licenses, and `scripts/media-search.py`).
   "a nice sound".
 - Normalize effects with the music, not louder than the voice.
 - Room, phone or radio effects are the last step.
+- **Synthesized** effects need no license: `scripts/sfx-synth.py list` shows
+  static, ticks, thuds, impacts, rain, wind, lamp hum, typing, a heartbeat
+  and a TV switching off, made with numpy from a seed (same seed, same file).
+  Abstract or lo-fi pieces can use them for every effect.
 
 ## Fixing real recordings
 
