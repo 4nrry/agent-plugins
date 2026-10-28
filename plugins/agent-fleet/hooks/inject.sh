@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # UserPromptSubmit hook: inject the bundled agent-fleet SKILL.md when the prompt
-# names a fan-out (ultracode, deep research, dynamic workflow, /dwf, /fleet) or
+# names a fan-out (ultracode, deep research, dynamic workflow, /dwf, /fleet), asks
+# for several subagents at once ("5 subagentes em paralelo", "one subagent per
+# folder"; added after a 2026-10-28 headless run where that prompt loaded no
+# fleet rules), or
 # asks for research from many sources: a form of "pesquisa" next to a sign of
 # several sources (fontes, links, artigos, estudos, compara, changelogs,
 # releases, Reddit, comunidade, "o que estão falando", no X, concorrentes,
@@ -32,10 +35,23 @@ SOURCES="aprofund|a[[:space:]]+fundo|profund|de[[:space:]]+mercado|compar|${B}vs
 SOURCES+="|${B}artigos${E}|${B}estudos${E}|changelogs?|releases|reddit|hacker[[:space:]]*news|comunidade"
 SOURCES+="|o[[:space:]]+que[[:space:]]+(o[[:space:]]+pessoal|est(a|ã)o|t(a|ã)o)${E}|${B}no[[:space:]]+x${E}"
 SOURCES+="|em[[:space:]]+paralelo|agentes|concorrentes|${B}doi${E}|${B}cit(a|e)${E}"
+# Several agents at once. "agente" alone is too common (a health agent, an
+# agent definition), so it needs a count right before it or a parallel word;
+# "each" and "one per" count only next to "subagent". "Team of agents" and
+# "one agent per X" were tried and dropped: they fire on support, sales and
+# health agents (logs/agent-business-nearmiss-2026-10-28.json).
+AGENT="(sub-?)?agent(e|s|es)?"
+TOGETHER="paralel|parallel|ao[[:space:]]+mesmo[[:space:]]+tempo|at[[:space:]]+once|simult"
+NUM="[0-9]+|dois|duas|tr(e|ê)s|quatro|cinco|seis|sete|oito|dez|v(a|á)ri(o|a)s|alguns|two|three|four|five|six|eight|ten|several|multiple|many"
+FANOUT="fan[- ]?out|${B}(${NUM})[[:space:]]+${AGENT}${E}"
 
 matches() { printf '%s' "$prompt" | grep -qiE -- "$1"; }
 if matches "$WORKFLOW"; then
   why="a fan-out or deep research"
+elif matches "$FANOUT" \
+  || { matches "${B}${AGENT}${E}" && matches "$TOGETHER"; } \
+  || { matches "sub-?agent" && matches "${B}(cada|each)${E}|um[[:space:]]+por|uma[[:space:]]+por|one[[:space:]]+per"; }; then
+  why="several agents at once"
 elif matches 'pesquis' && matches "$SOURCES"; then
   why="research from many sources"
 else
