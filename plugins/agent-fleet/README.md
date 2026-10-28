@@ -19,6 +19,7 @@ except `hooks/` and `workflows/` at the plugin root.
 | Harness map | `references/harnesses.md` | Tiers, model setting and read-only children per harness |
 | CLI workers | `references/cli-workers.md`, `scripts/fleet_worker.py` | Search and extract on another CLI through crew's `ask --web --schema`, read-only; needs the crew plugin installed |
 | Verifier | `scripts/verify_citations.py` | Fetches each cited URL and string-checks the quote, from a markdown report or a JSON claims file (`--claims`) |
+| YouTube captions | `scripts/yt_captions.py` | Caption text of a public video through yt-dlp when installed; exit 3 when it is not, never installs |
 | Workflow | `workflows/deep-research.js` | Claude Code's built-in deep research with per-phase `model:` and `effort:` overrides, returning its confirmed quotes for `--claims` |
 | Injection hook | `hooks/inject.sh` | `UserPromptSubmit`: loads the skill when the prompt names a fan-out (`ultracode`, deep research, dynamic workflow, `/dwf`, `/fleet`), asks for several subagents at once, or asks for "pesquisa" from many sources |
 | Routing hook | `hooks/check-routing.sh` | `PreToolUse` on `Workflow`: denies once a script with fewer `model:` overrides than `agent()` calls, and the bare built-in name always |
