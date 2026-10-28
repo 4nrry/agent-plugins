@@ -16,6 +16,16 @@ catalog does (`android skills list`).
 | Skill | `skills/android-mirror/` | scrcpy over wireless debugging without a second adb |
 | Skill | `skills/preflight/` | `/mobile-agent:preflight`: what is already running, and which checkout owns it |
 | Hooks | `hooks/` | Twelve narrow `PreToolUse` guards, one permission rule each; they warn and never block |
+| MCP | `.mcp.json` | Maestro's own server (`maestro mcp`): list devices, read the screen, run inline YAML or saved flows |
+
+## Maestro MCP
+
+The server ships inside the Maestro CLI, which the plugin does not install:
+`maestro` must be on the `PATH` the agent starts with (the installer puts it
+in `~/.maestro/bin`), with Java 17 or newer. The server runs wherever the
+plugin is enabled, so install the plugin in the app's own repository
+(`--scope local` or `project`), not for every project. Flows the agent
+writes belong in the app repository, under `.maestro/`.
 
 ## Guards
 
