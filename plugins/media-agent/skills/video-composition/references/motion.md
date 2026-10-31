@@ -98,11 +98,11 @@ Parameters as their sources give them; not yet tried in this series.
   5-frame slices so the rhythm is irregular
   ([PremiumBeat](https://www.premiumbeat.com/blog/glitch-effect-premiere-pro/)).
 - **RGB split:** three copies, one per channel, offset slightly, with
-  `wiggle(5,10)` on each position (After Effects: 5 changes a second, up to
-  10 px)
+  `wiggle(5,10)` on each position
   ([AEJuice](https://aejuice.com/blog/how-to-do-rgb-split-in-after-effects/)).
+  In After Effects `wiggle(5,10)` means 5 changes a second of up to 10 px.
   The tape look's chroma shift is the static version.
-- **Hormozi captions:** a bold condensed font, word by word, 3–5 key phrases
+- **Hormozi captions:** a heavy sans-serif (The Bold Font, Montserrat Black), word by word, 3–5 key phrases
   in yellow or green, white text with a 10–15 pt black stroke, and the
   highlight in sync with the speech
   ([Fluxnote](https://fluxnote.io/guides/how-to-make-alex-hormozi-style-captions)).
@@ -131,7 +131,8 @@ Stars and licences checked with `gh api repos/<owner>/<repo>` on 2026-10-30.
 videos under the AGPL: output is covered only where substantial parts of it
 are copied from the program's own text
 ([GPL FAQ](https://www.gnu.org/licenses/gpl-faq.html#GPLOutput)). Distributing
-a tool that contains its code, or running a modified copy that other people
-use over a network, obliges you to offer that tool's source under the AGPL
+a tool that contains its code obliges you to offer that tool's source under
+the AGPL, as with the GPL; so does running a modified copy that other people
+use over a network
 ([AGPL-3.0, section 13](https://www.gnu.org/licenses/agpl-3.0.html#section13)).
 Read its ideas; do not paste its code into a closed project.
