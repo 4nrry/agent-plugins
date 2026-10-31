@@ -89,7 +89,7 @@ record in [bench/shared](https://github.com/4nrry/agent-plugins/tree/main/bench/
   about that one page. After one block, send no more fetch agents to that
   host. A browser tool (the harness's built-in one, or the user's own through
   an extension) renders scripts and carries the user's session, but may refuse
-  the same host: on 2026-10-28 reddit.com was refused everywhere, while
+  the same host: reddit.com was refused by every route tried, while
   stackoverflow.com opened only in the user's Chrome. Past that, use the
   site's official API, an archive mirror, or ask the user to read the page.
   Keep a per-project list of blocked hosts and the route that worked.
@@ -99,7 +99,8 @@ record in [bench/shared](https://github.com/4nrry/agent-plugins/tree/main/bench/
   video is unreachable; never install yt-dlp for it. Automatic captions are
   speech recognition with no date or version attached: quote them as what was
   said in the video, not as a fact. Gemini through agy did not watch a YouTube
-  URL (2026-10-28); it saw only the text.
+  URL; it saw only the text. Both measurements are in the repository's
+  `bench/plugins/agent-fleet/results/`, the blocked-hosts-youtube record.
 - A vendor is interested in comparisons and authoritative on its own
   published terms. For prices, plan limits, licence text and support windows,
   the vendor's own page is the required source and a third-party summary the
