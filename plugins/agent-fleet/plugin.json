@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "agent-fleet",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Rules for multi-agent work: model routing per phase, fan-out sizing, closed output schemas and citation checks, with CLI workers for search and extract and hooks that load the rules and check routing at dispatch.",
   "author": {
     "name": "4nrry",
