@@ -68,7 +68,9 @@ off.
   not idle loops (breathing, floating): pause at any second and something is
   arriving, moving or counting. Leave 0.3–0.75 s of stillness between an
   action and its result.
-- **Cuts.** Two or three transition types per piece, repeated. A clip shorter
+- **Cuts.** Two or three transition types per piece, repeated.
+  [references/motion.md](references/motion.md) gives punch-ins, whips and
+  slammed text with their sounds, frame by frame. A clip shorter
   than its slot holds its last frame instead of looping. Reject stock clips
   with their own captions or kinetic text: their words flash on screen.
 - **Captions.** They carry the voice; emphasis (an accent color, a box) is rare:
