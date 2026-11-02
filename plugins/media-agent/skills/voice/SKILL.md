@@ -21,7 +21,9 @@ delivery. These rules hold for any TTS; the engines and their traps are in
 - `duration` comes from the generated file (`ffprobe`), never an estimate.
   Captions and music ducking derive from it.
 - Captions built from this JSON have no transcription errors. Use
-  speech-to-text only for audio you did not generate (`audio` skill).
+  speech-to-text only for audio you did not generate (`audio` skill). For
+  word-by-word captions, align each sentence's `say` to its file (`audio`
+  skill, local-stt.md).
 
 ## Loudness
 
