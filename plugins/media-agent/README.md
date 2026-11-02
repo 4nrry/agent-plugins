@@ -16,7 +16,7 @@ new skill.
 | `video-generation` | still-to-video, one camera move, resolution by use, checking every clip | Gemini Omni and Grok video wrappers |
 | `image-retouching` | weight licenses, removal vs inpainting, one GPU job at a time | headless ComfyUI (`comfy-run.py`) |
 | `voice` | one sentence per file, caption vs spoken text, -16 LUFS, the durations JSON | `vo-normalize.sh`, `hermes-tts.sh` (xAI voice); TTS engine notes |
-| `audio` | licenses and credits, exact-length music, SFX, fixing real recordings | ElevenLabs (`eleven.py`), ACE-Step, stock search (`media-search.py`) |
+| `audio` | licenses and credits, exact-length music, SFX, fixing real recordings, word times for captions | ElevenLabs (`eleven.py`), ACE-Step, stock search (`media-search.py`), WhisperX notes |
 | `video-composition` | video as code: frame-driven scenes, captions from the voice JSON, formats from one source, short vertical video for Reels, Shorts and TikTok, motion for cuts and text | Remotion, HTML + Chrome + ffmpeg |
 | `video-editing` | re-render vs patch the mp4, checking the output | Kinocut, registered as an MCP server (`.mcp.json`) |
 | `3d-turntable` | a 360° product turn as transparent frames | headless Blender (`turntable.py`) |

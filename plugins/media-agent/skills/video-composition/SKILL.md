@@ -24,7 +24,9 @@ route has no license cost and loses the interactive preview.
   render: disable it and draw the state at frame `t`.
 - **Captions come from the voice-over JSON** (`voice` skill), not from
   transcription. One table of sentence starts feeds the voice track, the
-  caption track and the music ducking.
+  caption track and the music ducking. Word-level times, for captions that
+  follow the voice word by word, come from aligning that text to the audio
+  (`audio` skill).
 - **Audio levels:** each sentence at -16 LUFS before assembly, music ducked
   under the voice, and `loudnorm` at -16 LUFS on the final file; the render
   does not normalize.
