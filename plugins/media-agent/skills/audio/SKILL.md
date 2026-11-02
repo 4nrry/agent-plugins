@@ -1,6 +1,6 @@
 ---
 name: audio
-description: Gets music, sound effects, stock media and audio fixes for video under commercial licenses — exact-length music, SFX, stock audio, footage and photos with credits, noise removal, captions from real speech. Use for a soundtrack, royalty-free music, SFX, stock footage or photos, CC0 or CC-BY credits, subtitles for a real recording, or a named source (ElevenLabs, ACE-Step, Freesound, Pexels, Pixabay).
+description: Gets music, sound effects, stock media and audio fixes for video under commercial licenses — exact-length music, SFX, stock audio, footage and photos with credits, noise removal, captions from real speech, word times for a voice-over. Use for a soundtrack, royalty-free music, SFX, stock footage or photos, CC0 or CC-BY credits, subtitles for a real recording, word-by-word captions, or a named source (ElevenLabs, ACE-Step, Freesound, Pexels, Pixabay, WhisperX).
 ---
 
 # Audio for video
@@ -9,7 +9,8 @@ Voice-over is in the `voice` skill. The rules below hold for any provider; how
 to run each one is in `references/`:
 [elevenlabs.md](references/elevenlabs.md) (SFX, music, cleanup,
 transcription, dubbing, untested), [xai.md](references/xai.md) (transcription),
-[local-music.md](references/local-music.md) (music on
+[local-stt.md](references/local-stt.md) (transcription and word alignment on
+your own GPU), [local-music.md](references/local-music.md) (music on
 your own GPU) and [stock.md](references/stock.md) (audio, footage and photo
 libraries, their licenses, and `scripts/media-search.py`).
 
@@ -50,6 +51,10 @@ libraries, their licenses, and `scripts/media-search.py`).
 - **Captions:** speech-to-text with word timings, for audio you did not
   generate. It rewrites numbers and currency and can drop a leading
   conjunction: review before burning in.
+- **Word times for known text:** a voice-over's words are already known;
+  align that text to the audio instead of transcribing it
+  ([local-stt.md](references/local-stt.md)). Captions that light the spoken
+  word need these times.
 - **Another language:** for a generated voice-over, translate the voice JSON
   and generate the TTS again (captions stay exact). Dub only real speech that
   cannot be re-recorded.
