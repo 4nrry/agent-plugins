@@ -174,6 +174,7 @@ def check_marketplace(plugin_dirs: dict) -> None:
 
 def check_plugins() -> dict:
     """2. plugin.json parses, is named after its directory, and has a version.
+    A root plugin.json beside it (the open manifest) carries the same version.
     7. Any bench/ path cited in its description exists."""
     global checks_run
     found = {}
@@ -188,6 +189,13 @@ def check_plugins() -> dict:
             fail(rel(manifest), f"name {name!r} != directory {plugin_dir.name!r}")
         if not d.get("version"):
             fail(rel(manifest), "no version")
+        root_manifest = plugin_dir / "plugin.json"
+        if root_manifest.is_file():
+            checks_run += 1
+            other = load_json(root_manifest)
+            if other is not None and other.get("version") != d.get("version"):
+                fail(rel(manifest), f"version {d.get('version')!r} != {rel(root_manifest)} "
+                                    f"{other.get('version')!r}; Claude Code reads this one")
         found[name] = plugin_dir
 
         for cited in re.findall(r"bench/[A-Za-z0-9._/-]+", d.get("description", "")):
