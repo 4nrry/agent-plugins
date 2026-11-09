@@ -32,6 +32,9 @@ Stdlib only. State lives in `$(git rev-parse --git-path crew)` (`agy-worker`
 before 0.4.0), so a run
 never dirties the work tree; the only file written into the tree is
 `.agents/hooks.json`, for the duration of the run, and it is removed after.
+When that git path is outside the work tree (a linked worktree, a submodule),
+state goes to `/tmp/crew-state-<uid>/<hash>/crew` instead, mode 0700: Grok's
+sandbox, which its hooks inherit, cannot write the git dir there.
 
 Second backend, `"backend": "opencode"` in the task (opencode 1.19.0): the
 guard is an opencode plugin generated in the run dir and loaded only through
@@ -85,6 +88,7 @@ import re
 import shlex
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -92,6 +96,15 @@ import time
 
 HOOK_FILE = ".agents/hooks.json"
 STATE_NAME = "crew"
+# Where state goes when `git rev-parse --git-path crew` is outside the work tree:
+# a linked worktree (every Claude Code desktop session runs in one), a
+# submodule, a separate git dir. Grok's `--sandbox workspace`, which its hooks
+# inherit, writes only in the work tree, ~/.grok, /tmp and /var/tmp, so there
+# the hooks could not log and denied every call (crew 0.15.1, 2026-11-09).
+# Codex runs its hooks outside its sandbox (probed the same day) and no other
+# backend's sandbox starts, but one rule for every backend is simpler. /tmp is
+# shared, so the directory is this user's, mode 0700, checked on every run.
+STATE_TMP_ROOT = "/tmp"
 DEFAULT_MODEL = "gemini-3.8-flash-high"
 DEFAULT_TIMEOUT = "30m"
 DEFAULT_REVIEW_TIMEOUT = "15m"
@@ -429,7 +442,34 @@ def repo_root(start: str) -> str:
 
 
 def state_base(repo: str) -> str:
-    return git(repo, "rev-parse", "--path-format=absolute", "--git-path", STATE_NAME).strip()
+    """`$(git rev-parse --git-path crew)` when it is inside the work tree, as in
+    a plain checkout; otherwise `/tmp/crew-state-<uid>/<hash>/crew`, one per
+    git path, since a sandboxed worker's hooks cannot write the git dir."""
+    base = git(repo, "rev-parse", "--path-format=absolute", "--git-path", STATE_NAME).strip()
+    real = os.path.realpath(base)
+    rel = os.path.relpath(real, os.path.realpath(repo))
+    if rel != os.pardir and not rel.startswith(os.pardir + os.sep):
+        return base
+    key = hashlib.sha256(real.encode()).hexdigest()[:12]
+    return os.path.join(private_tmp_dir(), key, STATE_NAME)
+
+
+def private_tmp_dir() -> str:
+    """`/tmp/crew-state-<uid>`, created with mode 0700. A link or another user's
+    directory in its place is refused, never written into; one of this user's
+    with wider modes (an older crew, a umask) is narrowed to 0700."""
+    top = os.path.join(STATE_TMP_ROOT, f"crew-state-{os.getuid()}")
+    try:
+        os.mkdir(top, 0o700)
+    except FileExistsError:
+        pass
+    st = os.lstat(top)
+    if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
+        raise Refusal(f"{top} is not a directory of this user (a link, a file, or someone else's): crew "
+                      "keeps the runs of linked worktrees there. Check what it is, move it away, and retry")
+    if stat.S_IMODE(st.st_mode) != 0o700:
+        os.chmod(top, 0o700)
+    return top
 
 
 def parse_duration(text) -> int:
@@ -3314,6 +3354,7 @@ def cmd_gate(a) -> int:
 # --------------------------------------------------------------------------
 
 def self_test() -> int:
+    global STATE_TMP_ROOT
     n = 0
 
     def check(cond, msg):
@@ -4306,6 +4347,52 @@ def self_test() -> int:
             check("left over from a crew run" in str(exc) and "rm " in str(exc), "recognizes its own leftover")
         remove_hooks(repo, created)
         check(not os.path.exists(os.path.join(repo, ".agents")), ".agents removed")
+
+        # state: the git dir in a plain checkout. In a linked worktree, laid out as
+        # Claude Code desktop does (inside the main checkout), the git path is
+        # outside the work tree and Grok's sandbox cannot write it, so state goes
+        # to a 0700 dir of this user under STATE_TMP_ROOT (here the test's own).
+        real_root, STATE_TMP_ROOT = STATE_TMP_ROOT, os.path.join(tmp, "tmproot")
+        os.makedirs(STATE_TMP_ROOT)
+        top = os.path.join(STATE_TMP_ROOT, f"crew-state-{os.getuid()}")
+        wts = [os.path.join(repo, ".claude", "worktrees", w) for w in ("wt1", "wt2")]
+        try:
+            check(os.path.realpath(state_base(repo)) == os.path.join(repo, ".git", STATE_NAME)
+                  and not os.path.lexists(top), "plain checkout: state in the git dir, nothing in /tmp")
+            for w in wts:
+                subprocess.run(g + ["worktree", "add", "-q", "-b", os.path.basename(w), w], check=True)
+            sb = state_base(wts[0])
+            check(os.path.dirname(os.path.dirname(sb)) == top and os.path.basename(sb) == STATE_NAME,
+                  f"linked worktree: state under {top}, not in the main checkout's .git: {sb}")
+            check(stat.S_IMODE(os.lstat(top).st_mode) == 0o700, "the /tmp state dir is created 0700")
+            check(state_base(wts[0]) == sb and state_base(wts[1]) not in (sb, state_base(repo)),
+                  "one state dir per worktree, the same on every run")
+            wrd = new_rundir(wts[0], "delegate")
+            check(os.path.isdir(wrd) and wrd.startswith(sb + os.sep), "the worktree's run dir is in its state")
+            wctx = base_ctx(wts[0], task, "delegate")
+            check(decide_pre({"toolCall": {"name": "write_to_file", "args": {
+                "TargetFile": os.path.join(wrd, "ctx.json"), "CodeContent": "{}"}}}, wctx)["decision"] == "deny"
+                  and decide_pre({"toolCall": {"name": "run_command", "args": {
+                      "CommandLine": f"cat {wrd}/ctx.json"}}}, wctx)["decision"] == "deny",
+                  "the worker may not touch its run dir in /tmp")
+            os.chmod(top, 0o775)
+            check(state_base(wts[0]) == sb and stat.S_IMODE(os.lstat(top).st_mode) == 0o700,
+                  "wider modes on the /tmp state dir (an older crew, a umask) are narrowed to 0700")
+            shutil.rmtree(top)
+            os.symlink(tmp, top)
+            try:
+                state_base(wts[0])
+                check(False, "a link in place of the /tmp state dir was followed")
+            except Refusal as exc:
+                check("not a directory of this user" in str(exc), "a link in place of the state dir is refused")
+            os.remove(top)
+        finally:
+            STATE_TMP_ROOT = real_root
+            for w in wts:
+                subprocess.run(g + ["worktree", "remove", "--force", w], capture_output=True)
+                subprocess.run(g + ["branch", "-q", "-D", os.path.basename(w)], capture_output=True)
+            shutil.rmtree(os.path.join(repo, ".claude"), ignore_errors=True)
+        check(changed_paths(repo) == [], "worktrees removed, the main checkout is clean again")
 
         # ask: a fake CLI that answers like `agy -p --output-format json`
         import backends

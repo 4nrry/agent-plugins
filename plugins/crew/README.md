@@ -56,6 +56,9 @@ Every worker carries `CREW_RUN`, and crew refuses to start a worker inside one.
    denials, the worker's report and usage.
 
 Run state lives in `$(git rev-parse --git-path crew)/runs/`, outside the tree.
+In a linked worktree or a submodule, where that path is outside the work tree,
+it lives in `/tmp/crew-state-<uid>/<hash>/crew/runs/` (mode 0700), since Grok
+runs crew's hooks in a sandbox that cannot write the main checkout's `.git`.
 Nothing is committed; on failure nothing is reverted.
 
 A hook points at the skill because, in this repo's agent-fleet eval, a skill
@@ -75,6 +78,10 @@ Upgrading from 0.5.x: the skills `delegate`, `review`, `agy`, `opencode` and
 `copilot` became one skill, `crew`, with the backend notes under `references/`;
 `crew.py` moved to `scripts/`. From 0.13.0 the skill folder is `skills/crew/`
 (Agent Plugins layout); set `CREW_PY` again if you pinned the old path.
+
+Upgrading to 0.15.2: in a linked worktree, new runs go to
+`/tmp/crew-state-<uid>/`; earlier ones stay in the main checkout's
+`.git/worktrees/<name>/crew/`.
 
 Upgrading from `agy-worker` (≤ 0.3.x): run state moved from
 `$(git rev-parse --git-path agy-worker)` to `--git-path crew`, and
