@@ -20,7 +20,7 @@ TIERS = ("cheap", "mid", "top")
 EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 
 # Versions on which a two-turn ask (new, then resumed) returned the right reply.
-LIVE = {"claude": "2.1.310", "agy": "1.4.7", "opencode": "2.1.4", "grok": "1.0.70",
+LIVE = {"claude": "2.1.310", "agy": "1.4.7", "opencode": "2.1.4", "grok": "1.0.77",
         "codex": "0.164.0", "hermes": "0.22.5", "copilot": "1.0.103", "cursor": "2026.10.22-27dcf5f"}
 
 OPENCODE_MODELS = ("opencode/deepseek-v4.1-flash-free", "opencode/glm-5.3-flash-free",
@@ -42,9 +42,18 @@ export default {
   },
 };
 """
-# The X tools (Grok Build 1.0.70) search posts, users and threads on X, which
-# other engines cannot read.
-GROK_WEB_TOOLS = "web_search,web_fetch,x_semantic_search,x_keyword_search,x_user_search,x_thread_fetch"
+# Grok's X search (posts, users, threads) is a backend tool that any `--tools`
+# allowlist drops, and no tool ID names it on the `grok -p` route. So --web removes
+# every other built-in by ID instead; the worker is offered web_search and web_fetch
+# (plus the MCP meta-tools, which `--deny mcp__*` blocks) and keeps X search.
+# Up to 0.15.0 crew passed x_* names in `--tools`; they name no tool, so Grok
+# dropped the allowlist and offered every tool (1.0.70 and 1.0.77).
+GROK_WEB_TOOLS = ("web_search", "web_fetch")
+GROK_META_TOOLS = ("search_tool", "use_tool")
+GROK_WEB_DENY = ("run_terminal_cmd,read_file,search_replace,list_dir,grep,write,todo_write,image_gen,"
+                 "image_edit,image_to_video,reference_to_video,workflow,monitor,scheduler_create,"
+                 "scheduler_delete,scheduler_list,get_task_output,kill_task,ask_user_question,"
+                 "send_feedback,enter_plan_mode,exit_plan_mode")
 # ~/.grok/rules/ still loads and no flag skips it; a rule demanding a tool the
 # run denies made the worker return placeholders (agent-fleet smoke 2026-10-21).
 GROK_WEB_RULE = ("You are an isolated, read-only research worker. Only web search, web fetch and the X "
@@ -136,6 +145,15 @@ def p_grok(out):
             if ev.get("is_error"):
                 err = str(ev.get("result") or ev.get("subtype"))[:500]
     return {"text": text, "session": session, "usage": usage, "error": err}
+
+
+def grok_offered(out):
+    """The tools Grok offered the model, from streaming-messages-json's init
+    event; None without one (the --json-schema envelope has none)."""
+    for ev in _jsonl(out):
+        if ev.get("type") == "system" and ev.get("subtype") == "init" and isinstance(ev.get("tools"), list):
+            return ev["tools"]
+    return None
 
 
 def p_codex(out):
@@ -251,7 +269,7 @@ def b_grok(s, prompt, model, effort, session, cwd, opts=None):
         ["--output-format", "streaming-messages-json"]
     argv = [s["bin"], "-p", prompt, *out_fmt, "--permission-mode", "plan", "--deny", "mcp__*",
             "--no-subagents", "--rules", GROK_WEB_RULE if opts.get("web") else ASK_RULE]
-    argv += ["--tools", GROK_WEB_TOOLS] if opts.get("web") else []
+    argv += ["--disallowed-tools", GROK_WEB_DENY] if opts.get("web") else []
     argv += ["-m", model] if model else []
     argv += ["--reasoning-effort", effort] if effort else []
     argv += ["--resume", session] if session else []
@@ -521,8 +539,15 @@ def self_test() -> int:
     argv, _, _ = b_claude(fake, "q", None, None, None, "/r", dict(web, schema={"type": "object"}))
     ok(argv[argv.index("--tools") + 1] == "WebSearch,WebFetch" and "--json-schema" in argv, "claude web + schema")
     argv, env, _ = b_grok(fake, "q", None, None, None, "/r", dict(web, schema={"type": "object"}))
-    ok(argv[argv.index("--tools") + 1] == GROK_WEB_TOOLS and env["GROK_WEB_FETCH"] == "1"
-       and "--json-schema" in argv and "streaming-messages-json" not in argv, "grok web + schema")
+    ok(argv[argv.index("--disallowed-tools") + 1] == GROK_WEB_DENY and "--tools" not in argv
+       and env["GROK_WEB_FETCH"] == "1" and "--json-schema" in argv and "streaming-messages-json" not in argv,
+       "grok web + schema")
+    denied = set(GROK_WEB_DENY.split(","))
+    ok(not denied & set(GROK_WEB_TOOLS) and {"run_terminal_cmd", "write", "image_gen"} <= denied,
+       "grok web denylist keeps only web tools")
+    init = '{"type":"system","subtype":"init","tools":["search_tool","web_search"]}\n{"type":"result"}'
+    ok(grok_offered(init) == ["search_tool", "web_search"] and grok_offered('{"text":"x"}') is None,
+       "grok offered tools from init")
     ok(b_codex(fake, "q", None, None, None, "/r", web)[0][:3] == ["/x", "--search", "exec"], "codex --search first")
     with tempfile.TemporaryDirectory() as rd:
         _, env, _ = b_opencode(fake, "q", None, None, None, "/r", dict(web, rundir=rd))
