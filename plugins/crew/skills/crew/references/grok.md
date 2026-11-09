@@ -10,13 +10,20 @@ python3 scripts/crew.py delegate /path/TASK.json --backend grok
 
 Use it to spend xAI quota on a slice. Never from Grok itself.
 
-## Before the first run
+## Folder trust
 
-**Trust the repo in Grok once:** `cd <repo> && grok --trust inspect`. Grok
-loads hooks only in a folder it trusts, so crew refuses an untrusted repo.
-Tell the user that trust also lets the repo's own hooks, MCP servers and
-instructions load in their Grok sessions. Run in a linked worktree, it records
-the main checkout's folder (1.0.77).
+**Not needed.** A headless run loads the user's own Grok hooks, crew's per-run
+file among them, whether or not Grok trusts the repo (measured on 1.0.70 and
+1.0.77). crew up to 0.15.2 refused an untrusted repo, read off `grok inspect`,
+which lists no user hook there; the headless run loads them all the same.
+
+Trust still gates the repo's own side. Without it the worker does not read the
+repo's `AGENTS.md`, `CLAUDE.md` or rules folders, and the repo's skills, MCP
+servers and hooks stay off. When such instruction files exist the verdict
+warns: put what the worker must follow in the brief, or trust the repo once
+with `cd <repo> && grok --trust inspect`. Ask the user first: trust also loads
+all of that in their own Grok sessions there. Run in a linked worktree, it
+records the main checkout's folder (1.0.77).
 
 ## The run
 
@@ -77,9 +84,8 @@ compact early (its changelog, `~/.grok/CHANGELOG.md`).
 
 | Failure | Why it exists |
 |---|---|
-| refused: repo not trusted | Grok would skip the hooks silently |
 | no `result` event, or `is_error` | the run was cut or failed; exit 0 says nothing |
-| hooks did not load (no SessionStart) | the run had only the sandbox; in a worktree with crew ≤ 0.15.1, see Worktrees |
+| hooks did not load (no SessionStart) | the run had only the sandbox; in a worktree with crew ≤ 0.15.1, see Worktrees; a Grok that stopped loading user hooks in an untrusted folder would land here too, and trusting the repo is the way back |
 
 ## Ask and review
 
