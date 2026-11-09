@@ -15,7 +15,8 @@ Use it to spend xAI quota on a slice. Never from Grok itself.
 **Trust the repo in Grok once:** `cd <repo> && grok --trust inspect`. Grok
 loads hooks only in a folder it trusts, so crew refuses an untrusted repo.
 Tell the user that trust also lets the repo's own hooks, MCP servers and
-instructions load in their Grok sessions.
+instructions load in their Grok sessions. Run in a linked worktree, it records
+the main checkout's folder (1.0.77).
 
 ## The run
 
@@ -36,6 +37,15 @@ and `--no-subagents`, plus `-m` and `--reasoning-effort`.
   `~/.grok/hooks/crew-<run>.json`, removed at the end. Each handler acts only
   when `CREW_RUN` is this run's, so the user's other Grok sessions see a no-op.
   A file left by a killed run is inert; delete it.
+- **Worktrees.** crew's hooks run inside that sandbox too. In a linked
+  worktree (every Claude Code desktop session runs in one), `git rev-parse
+  --git-path crew` is in the main checkout's `.git`, which the sandbox does not
+  let them write. crew up to 0.15.1 failed there: no SessionStart logged, every
+  call denied as `internal guard failure (PermissionError(13, 'Permission
+  denied'))`, the worker `blocked`. `--add-dir` is no way out: Grok refuses a
+  folder the profile cannot write. Since 0.15.2 the run state of a worktree is
+  in `/tmp/crew-state-<uid>/<hash>/crew`, mode 0700, which the sandbox writes;
+  the verdict's `run_dir` names it.
 
 ## Guard and gate
 
@@ -69,7 +79,7 @@ compact early (its changelog, `~/.grok/CHANGELOG.md`).
 |---|---|
 | refused: repo not trusted | Grok would skip the hooks silently |
 | no `result` event, or `is_error` | the run was cut or failed; exit 0 says nothing |
-| hooks did not load (no SessionStart) | the run had only the sandbox |
+| hooks did not load (no SessionStart) | the run had only the sandbox; in a worktree with crew ≤ 0.15.1, see Worktrees |
 
 ## Ask and review
 

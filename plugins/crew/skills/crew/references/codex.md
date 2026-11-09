@@ -22,7 +22,10 @@ root, plus `-m <model>` and, with `"effort"` in the task,
 - **crew's hooks.** They go in as `-c hooks.SessionStart|PreToolUse|Stop=...`
   for this run only, so nothing is written into the tree or `~/.codex`.
   `--dangerously-bypass-hook-trust` lets those per-run hooks run without a
-  trust entry. Your own hooks in `~/.codex/hooks.json` run too.
+  trust entry. Your own hooks in `~/.codex/hooks.json` run too. Codex runs
+  hooks outside the sandbox, so the gate's commands are not sandboxed either:
+  probed on 0.167.0 in a linked worktree, a SessionStart hook wrote into the
+  main checkout's `.git`, which the sandbox denies to the worker's commands.
 
 ## Guard and gate
 
