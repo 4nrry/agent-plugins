@@ -150,11 +150,15 @@ CX_INERT_TOOLS = {"update_plan", "view_image"}
 # hooks only in a folder it trusts, so the repo must be trusted first, and every
 # handler acts only when CREW_RUN is this run's: other Grok sessions see a no-op.
 # Under `--sandbox workspace` the worker cannot write ~/.grok/hooks.
-TESTED_GROK_VERSION = "1.0.70"
+TESTED_GROK_VERSION = "1.0.77"
 GROK_DEFAULT_MODEL = "grok-4.7"
 GROK_DEFAULT_EFFORT = "medium"
 GROK_HOOK_DIR = os.path.expanduser("~/.grok/hooks")
-GROK_TOOLS = "run_terminal_command,read_file,search_replace,list_dir,grep,write,todo_write"
+# `--tools` takes tool IDs: the shell is `run_terminal_cmd`, shown to the model
+# and to hooks as `run_terminal_command`. An entry that names no tool makes Grok
+# drop the whole allowlist (a stderr warning, every tool offered), which is what
+# `run_terminal_command` did here up to 0.15.0 (seen on 1.0.70 and 1.0.77).
+GROK_TOOLS = "run_terminal_cmd,read_file,search_replace,list_dir,grep,write,todo_write"
 GK_TOOLS = {
     "run_terminal_command": ("run_command", {"command": "CommandLine"}),
     "read_file": ("view_file", {"target_file": "AbsolutePath"}),
@@ -2519,6 +2523,19 @@ def grok_cmd(gk: str, prompt: str, task: dict) -> list:
     return cmd + ["--reasoning-effort", task.get("effort") or GROK_DEFAULT_EFFORT]
 
 
+def grok_tool_warnings(stderr: str, stdout: str, expected) -> list:
+    """Drift in the tools Grok offered: its stderr warning for a `--tools` or
+    `--disallowed-tools` entry that names no tool (for `--tools`, the whole
+    allowlist is dropped), and any tool in the init event beyond `expected` and
+    the MCP meta-tools. The guards still run; this says the CLI moved."""
+    import backends
+    warns = [f"grok: {ln.strip()}" for ln in (stderr or "").splitlines() if "tools" in ln and "no tool" in ln]
+    extra = sorted(set(backends.grok_offered(stdout) or []) - set(expected) - set(backends.GROK_META_TOOLS))
+    if extra:
+        warns.append(f"grok offered tools beyond crew's list: {', '.join(extra)}")
+    return warns
+
+
 def evaluate_gk(rc, stdout: str, stderr: str):
     """streaming-messages-json: the last assistant message, the session id, and
     the result event (missing = cut run; is_error = failed turn)."""
@@ -2852,7 +2869,7 @@ def cmd_delegate(a) -> int:
         fails += report_problems(report, task["report_schema"])
         if isinstance(report, dict) and report.get("status") in ("partial", "blocked"):
             fails.append(f"the worker declared itself {report['status']!r}")
-        warns = []
+        warns = grok_tool_warnings(stderr, stdout, set(GK_TOOLS) | GK_INERT_TOOLS)
         run_info = {"rc": rc, "wall_seconds": round(time.time() - started), **info}
     elif claude:
         n_cmds = len(ctx["gate"]["format"]) + len(ctx["gate"]["checks"]) + 1
@@ -3229,6 +3246,8 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
         with open(os.path.join(rundir, f"{name}.log"), "w", encoding="utf-8") as fh:
             fh.write(text)
     parsed = spec["parse"](out)
+    if backend == "grok" and web:      # a plain ask keeps Grok's tools, in plan mode
+        warnings += grok_tool_warnings(err, out, backends.GROK_WEB_TOOLS)
     if rc not in (0, None):
         failures.append(f"exit {rc}: {tail(err, 400).strip()}")
     if parsed.get("error"):
@@ -3602,6 +3621,16 @@ def self_test() -> int:
         check(gcmd[gcmd.index("--sandbox") + 1] == "workspace" and "--no-subagents" in gcmd
               and gcmd[gcmd.index("--tools") + 1] == GROK_TOOLS and gcmd[-1] == "low", "grok command")
         check(grok_cmd("grok", "P", gtask)[-2:] == ["--reasoning-effort", GROK_DEFAULT_EFFORT], "grok default effort")
+        # --tools takes tool IDs (the shell is run_terminal_cmd); hooks see the shown names
+        check("run_terminal_cmd" in GROK_TOOLS.split(",") and "run_terminal_command" not in GROK_TOOLS.split(",")
+              and "run_terminal_command" in GK_TOOLS, "grok --tools uses IDs, the guard shown names")
+        shown = set(GK_TOOLS) | GK_INERT_TOOLS
+        init = json.dumps({"type": "system", "subtype": "init", "tools": sorted(shown) + ["use_tool"]})
+        check(grok_tool_warnings("", init, shown) == [], "grok offered exactly crew's tools: no warning")
+        gw = grok_tool_warnings('warning: --tools "run_terminal_command" names no tool, so other tools stay '
+                                'available\n', json.dumps({"type": "system", "subtype": "init",
+                                                           "tools": sorted(shown) + ["image_gen"]}), shown)
+        check(len(gw) == 2 and "names no tool" in gw[0] and "image_gen" in gw[1], "grok tool drift warned")
         gf, ginfo = evaluate_gk(0, '{"type":"assistant","session_id":"s","message":{"content":[{"type":"text","text":"done"}]}}\n'
                                    '{"type":"result","session_id":"s","is_error":false,"usage":{}}', "")
         check(not gf and ginfo["text"] == "done" and ginfo["session_id"] == "s", "grok evaluation")
