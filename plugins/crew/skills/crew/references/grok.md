@@ -20,10 +20,15 @@ instructions load in their Grok sessions.
 ## The run
 
 `grok -p --sandbox workspace --permission-mode bypassPermissions` at the repo
-root, limited to `run_terminal_command`, `read_file`, `search_replace`,
-`list_dir`, `grep`, `write` and `todo_write`, with `--no-subagents`, plus `-m`
-and, with `"effort"` in the task, `--reasoning-effort`.
+root, with `--tools run_terminal_cmd,read_file,search_replace,list_dir,grep,write,todo_write`
+and `--no-subagents`, plus `-m` and `--reasoning-effort`.
 
+- **Tool IDs.** `--tools` takes IDs: the shell is `run_terminal_cmd`, shown to
+  the model and to hooks as `run_terminal_command`. An entry that names no tool
+  makes Grok drop the whole list (every tool is offered) with a stderr warning;
+  crew up to 0.15.0 passed `run_terminal_command` and hit this on 1.0.70 and
+  1.0.77. The verdict now warns on that line, and on any tool the init event
+  offers beyond the list.
 - **The sandbox.** `workspace` lets the worker write only in the repo and temp
   dirs, enforced by the kernel. It also keeps the worker from editing
   `~/.grok/hooks`.
@@ -47,14 +52,16 @@ and, with `"effort"` in the task, `--reasoning-effort`.
 | Field | Meaning |
 |---|---|
 | `model` | default `grok-4.7`; `grok models` lists the others |
-| `effort` | default `medium`; `low` to `xhigh`, as the model offers |
+| `effort` | default `medium`; grok-4.7 takes `low`, `medium`, `high`, `xhigh` (1.0.77 refuses any other: "unknown effort level") |
 
 **Long context.** Grok Build has no flag for its 500k window (the TUI's
 `/context-window`). `[model."grok-4.7"]` with `context_window = 500000` in
 `~/.grok/config.toml` sets it for every session, crew's included (set on this
 machine since 2026-10-26): on 2026-10-25 a 268,743-token request went through
 with it. The `GROK_CONFIG`
-overlay drops `model.*`, so crew cannot set it per run.
+overlay drops `model.*`, so crew cannot set it per run. Before 1.0.74 Grok could
+fall back to the smaller window after an idle spell or a failed request, and
+compact early (its changelog, `~/.grok/CHANGELOG.md`).
 
 ## Failures only grok has
 
@@ -64,7 +71,11 @@ overlay drops `model.*`, so crew cannot set it per run.
 | no `result` event, or `is_error` | the run was cut or failed; exit 0 says nothing |
 | hooks did not load (no SessionStart) | the run had only the sandbox |
 
-## Review
+## Ask and review
 
-`crew.py review --backend grok` runs through `ask`, in plan mode, with no crew
-hooks.
+`crew.py ask grok` and `review --backend grok` run in plan mode with
+MCP denied and no crew hooks. `ask --web` removes every other built-in by ID
+with `--disallowed-tools`, not `--tools`: Grok's X search is a backend tool
+that any allowlist drops and no ID names. The worker is offered `web_search`
+and `web_fetch` and still searches X (checked on 1.0.77); a tool beyond those
+is a warning.
