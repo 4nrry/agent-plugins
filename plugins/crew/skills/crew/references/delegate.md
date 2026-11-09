@@ -90,6 +90,12 @@ Runs can exceed 10 minutes: run in the background. **Do not edit that tree
 while it runs** — every change is attributed to the worker. One slice per
 worktree at a time.
 
+Each run gets a dir under `$(git rev-parse --git-path crew)/runs/`. In a linked
+worktree or a submodule, where that path is outside the work tree, it is under
+`/tmp/crew-state-<uid>/<hash>/crew/runs/` instead (mode 0700): crew's hooks log
+there, and Grok runs them in a sandbox that cannot write the main checkout's
+`.git`. The verdict's `run_dir` names it.
+
 ## The verdict
 
 Exit 0 = ok, 1 = the run failed, 2 = refused before running (nothing spent).
