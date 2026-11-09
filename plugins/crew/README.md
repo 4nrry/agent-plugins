@@ -83,6 +83,11 @@ Upgrading to 0.15.2: in a linked worktree, new runs go to
 `/tmp/crew-state-<uid>/`; earlier ones stay in the main checkout's
 `.git/worktrees/<name>/crew/`.
 
+Upgrading to 0.15.3: a Grok delegate no longer needs the repo trusted in Grok.
+A trust given only for crew can be withdrawn with `/hooks-untrust` in a Grok
+session there; the worker then stops reading the repo's `AGENTS.md` and
+`CLAUDE.md`, and the verdict says so.
+
 Upgrading from `agy-worker` (≤ 0.3.x): run state moved from
 `$(git rev-parse --git-path agy-worker)` to `--git-path crew`, and
 `AGY_WORKER_RUN` became `CREW_RUN`.

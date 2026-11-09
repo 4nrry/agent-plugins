@@ -60,8 +60,8 @@ an `apply_patch` touches into decide_pre's calls; `hook cx-stop` runs the gate.
 Fifth backend, `"backend": "grok"` (Grok Build 1.0.67): `grok -p --sandbox
 workspace`, with the same three hooks in a per-run ~/.grok/hooks/crew-<run>.json
 that acts only for this run's CREW_RUN (Grok refuses hooks in its GROK_CONFIG
-overlay, and loads global hooks only in a trusted folder, so the repo must be
-trusted first). `hook gk-pre` translates Grok's tools; `hook gk-stop` is cx-stop.
+overlay; a headless run loads the user's own hooks whether or not Grok trusts
+the repo). `hook gk-pre` translates Grok's tools; `hook gk-stop` is cx-stop.
 
 Sixth backend, `"backend": "cursor"` (cursor-agent 2026.10.19): `cursor-agent -p`
 with a failClosed preToolUse in a .cursor/hooks.json written for the run.
@@ -159,8 +159,9 @@ CODEX_DEFAULT_MODEL = "gpt-6-luna"
 CODEX_REPORT_ASKS = 2
 CX_INERT_TOOLS = {"update_plan", "view_image"}
 # Grok: hooks in a per-run ~/.grok/hooks/crew-<run>.json (the only per-run place
-# Grok reads hooks from; its GROK_CONFIG overlay refuses them). Grok loads global
-# hooks only in a folder it trusts, so the repo must be trusted first, and every
+# Grok reads hooks from; its GROK_CONFIG overlay refuses them). A headless run
+# loads them whether or not Grok trusts the repo (1.0.70 and 1.0.77; `grok
+# inspect` lists no user hook in an untrusted folder all the same), and every
 # handler acts only when CREW_RUN is this run's: other Grok sessions see a no-op.
 # Under `--sandbox workspace` the worker cannot write ~/.grok/hooks.
 TESTED_GROK_VERSION = "1.0.77"
@@ -182,6 +183,11 @@ GK_TOOLS = {
                                                 "new_string": "ReplacementContent"}),
 }
 GK_INERT_TOOLS = {"todo_write"}
+# What Grok reads at a repo's root as the project's own instructions, and loads
+# only in a folder it trusts (its project-rules guide, 1.0.77): in an untrusted
+# repo the worker runs without them.
+GROK_RULE_FILES = {"Agents.md", "Claude.md", "CLAUDE.md", "CLAUDE.local.md", "AGENT.md", "AGENTS.md"}
+GROK_RULE_DIRS = (".grok/rules", ".claude/rules", ".cursor/rules")
 # Cursor CLI: `preToolUse` from a .cursor/hooks.json written into the repo for
 # the run (like agy's .agents/hooks.json), failClosed. `stop` does not fire in
 # `cursor-agent -p` (lab), so the gate is an outer loop resuming the chat, like
@@ -2524,7 +2530,21 @@ def evaluate_cx(rc, stdout: str, stderr: str):
     return fails, {"text": text, "thread_id": thread, "usage": usage}
 
 
+def grok_project_rules(repo: str) -> list:
+    """The repo's own instruction files at its root, as Grok names them."""
+    def names(sub):
+        try:
+            return set(os.listdir(os.path.join(repo, sub)))
+        except OSError:
+            return set()
+    found = sorted(names("") & GROK_RULE_FILES)
+    found += [f".claude/{n}" for n in sorted(names(".claude") & {"CLAUDE.md", "CLAUDE.local.md"})]
+    return found + [f"{d}/" for d in GROK_RULE_DIRS if any(n.endswith(".md") for n in names(d))]
+
+
 def preflight_grok(repo: str) -> tuple:
+    """No folder trust needed: a headless run loads crew's hooks either way. An
+    untrusted repo's own instructions are what the worker misses, so say so."""
     gk = shutil.which("grok")
     if not gk:
         raise Refusal("grok not found on PATH")
@@ -2533,13 +2553,14 @@ def preflight_grok(repo: str) -> tuple:
                                         timeout=120).stdout or "{}")
     except (OSError, ValueError, subprocess.TimeoutExpired):
         ins = {}
-    if ins.get("projectTrusted") is not True:
-        raise Refusal("Grok loads hooks only in a folder it trusts, and this repo is not trusted: run "
-                      f"`cd {shlex.quote(repo)} && grok --trust inspect` once (that also lets the repo's own "
-                      "hooks, MCP servers and instructions load in Grok), then retry")
     warns = []
     if TESTED_GROK_VERSION not in str(ins.get("grokVersion", "")):
         warns.append(f"grok {ins.get('grokVersion')!r}: tested on {TESTED_GROK_VERSION}")
+    rules = [] if ins.get("projectTrusted") is True else grok_project_rules(repo)
+    if rules:
+        warns.append(f"Grok does not trust this repo, so the worker does not read its {', '.join(rules)} "
+                     "(crew's hooks load anyway): put what it must follow in the brief, or trust the repo "
+                     f"once with `cd {shlex.quote(repo)} && grok --trust inspect`")
     return gk, warns
 
 
@@ -3676,6 +3697,32 @@ def self_test() -> int:
                                    '{"type":"result","session_id":"s","is_error":false,"usage":{}}', "")
         check(not gf and ginfo["text"] == "done" and ginfo["session_id"] == "s", "grok evaluation")
         check(evaluate_gk(0, '{"type":"assistant","message":{"content":[]}}', "")[0], "grok cut run fails")
+        # preflight on a fake grok: an untrusted repo is no refusal (a headless run loads
+        # crew's hooks anyway); it warns only when Grok would skip the repo's instructions
+        gbin, grepo = os.path.join(tmp, "grok-bin"), os.path.join(tmp, "grok-repo")
+        os.makedirs(gbin)
+        os.makedirs(os.path.join(grepo, ".claude", "rules"))
+        with open(os.path.join(gbin, "grok"), "w") as fh:
+            fh.write(f"#!/bin/sh\ncat {shlex.quote(os.path.join(gbin, 'inspect.json'))}\n")
+        os.chmod(os.path.join(gbin, "grok"), 0o755)
+
+        def gk_pre(trusted, version=TESTED_GROK_VERSION):
+            write_json(os.path.join(gbin, "inspect.json"), {"grokVersion": version, "projectTrusted": trusted})
+            return preflight_grok(grepo)[1]
+        old_path = os.environ["PATH"]
+        os.environ["PATH"] = gbin + os.pathsep + old_path
+        try:
+            check(gk_pre(False) == [], "grok preflight: untrusted repo without instruction files, no warning")
+            for name in ("AGENTS.md", "CLAUDE.md", os.path.join(".claude", "rules", "style.md"), "notes.md"):
+                with open(os.path.join(grepo, name), "w") as fh:
+                    fh.write("x\n")
+            gw = gk_pre(False)
+            check(len(gw) == 1 and "its AGENTS.md, CLAUDE.md, .claude/rules/ (" in gw[0]
+                  and "grok --trust inspect" in gw[0], "grok preflight: untrusted repo names the skipped instructions")
+            check(gk_pre(True) == [], "grok preflight: trusted repo, no warning")
+            check(len(gk_pre(True, "1.0.99")) == 1, "grok preflight: untested version warned")
+        finally:
+            os.environ["PATH"] = old_path
         global GROK_HOOK_DIR
         saved_dir, GROK_HOOK_DIR = GROK_HOOK_DIR, os.path.join(tmp, "grok-hooks")
         try:
