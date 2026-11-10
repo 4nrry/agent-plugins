@@ -28,7 +28,7 @@ tools, with absolute paths:
 | Task | Tool | Note |
 |---|---|---|
 | Duration, size, fps, codecs | `video_info` | before any edit |
-| Cut a segment | `video_trim` | `start` plus `duration` or `end`; the cut starts at the nearest keyframe unless `accurate: true` |
+| Cut a segment | `video_trim` | `start` plus `duration` or `end`; add `accurate: true` when the cut must be frame-exact |
 | Join clips | `video_merge` | `clips` in order; the output takes the first clip's size |
 | Change size or ratio | `video_resize` | `aspect_ratio` pads with black bars, it does not crop: to fill the frame, `video_crop` first |
 | Crop | `video_crop` | `width` and `height`, centered unless `x` and `y` are given |
@@ -58,5 +58,6 @@ a human table):
 kino="uvx --from kinocut==<version from .mcp.json> kino"
 $kino --format json info video.mp4
 $kino --format json trim video.mp4 -s 0 -d 15 -o teaser.mp4
+$kino --format json normalize-audio video.mp4 -l -16 -o norm.mp4
 $kino doctor
 ```

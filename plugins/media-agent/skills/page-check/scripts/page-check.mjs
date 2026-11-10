@@ -99,8 +99,8 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => {
 // a new profile; any other failure is reported as it is.
 async function launch(noSandbox) {
   try { return await launchOnce(noSandbox); } catch (e) {
-    if (!/did not open its DevTools port/.test(e.message)) throw e;
-    console.error('page-check: Chrome did not start in 20 s, trying once more');
+    if (!e.slowStart) throw e;
+    console.error(`page-check: ${e.message.trimEnd()}\npage-check: trying once more`);
     return launchOnce(noSandbox);
   }
 }
@@ -125,7 +125,7 @@ async function launchOnce(noSandbox) {
     chrome = proc;
     const url = await new Promise((resolve, reject) => {
       let buf = '';
-      const timer = setTimeout(() => reject(new Error('Chrome did not open its DevTools port in 20 s:\n' + buf.slice(-600))), 20000);
+      const timer = setTimeout(() => reject(Object.assign(new Error('Chrome did not open its DevTools port in 20 s:\n' + buf.slice(-600)), { slowStart: true })), 20000);
       proc.stderr.on('data', (d) => {
         buf = (buf + d).slice(-4000);
         const m = buf.match(/DevTools listening on (ws:\/\/\S+)/);

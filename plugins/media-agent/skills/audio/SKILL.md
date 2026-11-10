@@ -17,8 +17,10 @@ your own GPU).
 
 ## Music
 
-- Use a music generator only where its terms allow commercial use; the
-  `stock-media` skill's source table records the ones checked.
+- Use a music generator only where its terms allow commercial use. The ones
+  checked: ElevenLabs ([elevenlabs.md](references/elevenlabs.md)) and ACE-Step
+  ([local-music.md](references/local-music.md)) allow it, with the limits
+  those files give; Google Flow Music has published no commercial terms.
 - Make it the length of the cut. Generate at that length, or generate 40 s and
   loop with a 2 s crossfade: long generations degrade toward the end.
 - For institutional pieces: instrumental, no drums, slow, minimal.
