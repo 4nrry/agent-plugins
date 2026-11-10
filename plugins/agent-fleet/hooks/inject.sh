@@ -17,6 +17,16 @@
 # research arm two-sided: "pesquisa" alone fired on 9 of 13 near-misses
 # (code search, survey forms, a search box). Patterns are POSIX ERE, no \b or
 # \s, so GNU grep, BSD grep and ugrep agree.
+#
+# The full SKILL.md goes in once per session. A marker named after the
+# session id records it; later matches print one line that points back to the
+# file. `inject.sh --forget` (SessionStart after a compaction or a clear)
+# removes the marker, since the injected text may be gone from the context.
+# The marker is used only where the host sets CLAUDE_PLUGIN_DATA, which is
+# Claude Code: the bridges for other harnesses run this hook with no
+# SessionStart event, so a marker there would never be removed. Without that
+# variable, a session id or a writable directory, the hook injects every time,
+# as it did before.
 set -euo pipefail
 
 # Resolve the plugin root from the script's own location rather than
@@ -26,7 +36,21 @@ set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../skills/agent-fleet" && pwd)"
 
 command -v jq >/dev/null || { echo "agent-fleet inject hook: jq not found, skill not injected" >&2; exit 0; }
-prompt=$(jq -r '.prompt // empty' 2>/dev/null) || exit 0
+input=$(cat) || exit 0
+
+MARKERS=""
+if [[ -n "${CLAUDE_PLUGIN_DATA:-}" ]]; then MARKERS="$CLAUDE_PLUGIN_DATA/injected"; fi
+sid=$(jq -r '.session_id // empty' <<<"$input" 2>/dev/null) || sid=""
+[[ "$sid" =~ ^[A-Za-z0-9_-]{1,128}$ ]] || sid=""
+marker=""
+if [[ -n "$MARKERS" && -n "$sid" ]]; then marker="$MARKERS/$sid"; fi
+
+if [[ "${1:-}" == "--forget" ]]; then
+  [[ -z "$marker" ]] || rm -f -- "$marker" 2>/dev/null || true
+  exit 0
+fi
+
+prompt=$(jq -r '.prompt // empty' <<<"$input" 2>/dev/null) || exit 0
 [[ -n "$prompt" ]] || exit 0
 
 B='(^|[^[:alnum:]])'
@@ -67,5 +91,18 @@ if [[ ! -f "$SKILL_DIR/SKILL.md" ]]; then
   exit 1
 fi
 
-printf 'The agent-fleet skill applies to this request (matched: %s). Follow it when orchestrating. Before dispatching any predefined workflow, read its script and check for model: overrides on the agent() calls — without them every agent inherits the session model, at fan-out scale; this is the rule most often skipped. Skill directory: %s (scripts/ and references/ paths below are relative to it).\n\n' "$why" "$SKILL_DIR"
+ROUTING='Before dispatching any predefined workflow, read its script and check for model: overrides on the agent() calls — without them every agent inherits the session model, at fan-out scale; this is the rule most often skipped.'
+
+if [[ -n "$marker" && -e "$marker" ]]; then
+  printf 'The agent-fleet skill applies to this request (matched: %s). Its text was injected earlier in this session; if it is no longer in your context, read %s/SKILL.md before orchestrating. %s\n' "$why" "$SKILL_DIR" "$ROUTING"
+  exit 0
+fi
+
+printf 'The agent-fleet skill applies to this request (matched: %s). Follow it when orchestrating. %s Skill directory: %s (scripts/ and references/ paths below are relative to it).\n\n' "$why" "$ROUTING" "$SKILL_DIR"
 cat "$SKILL_DIR/SKILL.md"
+
+if [[ -n "$marker" ]] && mkdir -p "$MARKERS" 2>/dev/null; then
+  { : >"$marker"; } 2>/dev/null || true
+  # One marker per session would pile up for as long as the data directory lives.
+  find "$MARKERS" -maxdepth 1 -type f -mtime +7 -delete 2>/dev/null || true
+fi
