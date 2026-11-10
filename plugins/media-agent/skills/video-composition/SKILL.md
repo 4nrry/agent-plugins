@@ -30,10 +30,11 @@ route has no license cost and loses the interactive preview.
 - **Audio levels:** each sentence at -16 LUFS before assembly, music ducked
   under the voice, and `loudnorm` at -16 LUFS on the final file; the render
   does not normalize.
-- **Footage:** stock b-roll and photos need a license per item (`audio` skill
-  for the rule; its `scripts/media-search.py` searches Pexels, Pixabay and
-  Openverse too). Download at 1080p30: re-encoding 4K at render time costs
-  more. Generated shots come from the `video-generation` skill.
+- **Footage:** stock b-roll and photos need a license per item
+  (`stock-media` skill for the rule; its `scripts/media-search.py` searches
+  Pexels, Pixabay and Openverse). Download at 1080p30: re-encoding 4K at
+  render time costs more. Generated shots come from the `video-generation`
+  skill.
 - **3D:** a pre-rendered turntable (`3d-turntable` skill) looks best for the
   product hero shot and takes minutes; a real-time Three.js scene takes seconds
   and suits supporting shots and reframing one move for several formats.

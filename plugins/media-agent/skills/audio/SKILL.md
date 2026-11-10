@@ -1,33 +1,26 @@
 ---
 name: audio
-description: Gets music, sound effects, stock media and audio fixes for video under commercial licenses — exact-length music, SFX, stock audio, footage and photos with credits, noise removal, captions from real speech, word times for a voice-over. Use for a soundtrack, royalty-free music, SFX, stock footage or photos, CC0 or CC-BY credits, subtitles for a real recording, word-by-word captions, or a named source (ElevenLabs, ACE-Step, Freesound, Pexels, Pixabay, WhisperX).
+description: Makes and fixes audio for video — music generated at the exact length of the cut, generated or synthesized sound effects, noise removal, captions from real speech, word times for a voice-over. Use for a soundtrack, generated music, SFX, cleaning a noisy recording, subtitles for a real recording, word-by-word captions, or a named tool (ElevenLabs, ACE-Step, WhisperX). Library music and effects, stock footage and photos are in stock-media; narration is in voice.
 ---
 
 # Audio for video
 
-Voice-over is in the `voice` skill. The rules below hold for any provider; how
-to run each one is in `references/`:
+Voice-over is in the `voice` skill. Music, effects, footage and photos taken
+from a library, and the license and credit rules for anything you did not
+make, are in the `stock-media` skill. The rules below hold for any provider;
+how to run each one is in `references/`:
 [elevenlabs.md](references/elevenlabs.md) (SFX, music, cleanup,
 transcription, dubbing, untested), [xai.md](references/xai.md) (transcription),
 [local-stt.md](references/local-stt.md) (transcription and word alignment on
-your own GPU), [local-music.md](references/local-music.md) (music on
-your own GPU) and [stock.md](references/stock.md) (audio, footage and photo
-libraries, their licenses, and `scripts/media-search.py`).
-
-## Licenses
-
-- "Copyright free" does not exist; a license that allows your use does. Every
-  service shows the media for free and keeps the condition in its terms: check
-  commercial use, the platforms allowed, and credit.
-- CC-BY needs credit per item, visible in the piece or its description. Keep a
-  `CREDITS.json` beside the files with id, author, license and URL.
-- A license filter in a search API trusts what uploaders declared: open the
-  item's page before using it.
+your own GPU) and [local-music.md](references/local-music.md) (music on
+your own GPU).
 
 ## Music
 
-- Use a music generator only where its terms allow commercial use;
-  [references/stock.md](references/stock.md) records the ones checked.
+- Use a music generator only where its terms allow commercial use. The ones
+  checked: ElevenLabs ([elevenlabs.md](references/elevenlabs.md)) and ACE-Step
+  ([local-music.md](references/local-music.md)) allow it, with the limits
+  those files give; Google Flow Music has published no commercial terms.
 - Make it the length of the cut. Generate at that length, or generate 40 s and
   loop with a 2 s crossfade: long generations degrade toward the end.
 - For institutional pieces: instrumental, no drums, slow, minimal.
