@@ -1,9 +1,9 @@
-# Batch 2026-10-28-sinalpublico — claims
+# Batch 2026-10-28-news-series — claims
 
 **Notes, not run records.** Source of the `3d-scenes` and `sourced-video`
-skills (media-agent 0.14.0): the owner's private channel repository
-(Sinal Público, short vertical videos about sourced real events, low-poly 3D
-in Blender, VHS post), built 2026-10-25 to 28 without media-agent loaded.
+skills (media-agent 0.14.0): a private series repository (short vertical
+videos about sourced real events, low-poly 3D in Blender, VHS post), built
+2026-10-25 to 28 without media-agent loaded.
 Figures marked *repo* were measured there and are copied from its docs and
 code; figures marked *here* were re-run on 2026-10-28 on the same machine
 (RTX 4070 Laptop 8 GB beside an Intel Arc, Blender 5.2.0). n=1 per item.

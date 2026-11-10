@@ -2,7 +2,7 @@
 
 A VHS treatment over 3D plates or flat graphics. It also hides a low render
 sample count, so a 540×960 EEVEE plate at 8 samples passes as 1080×1920.
-Values below come from one series (Sinal Público, 2026-10), applied per frame
+Values below come from one series (2026-10), applied per frame
 in numpy on the low-resolution plate before upscaling.
 
 | Step | Value |
