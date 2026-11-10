@@ -1,7 +1,7 @@
 # crew through Claude Code
 
-Read [delegate.md](delegate.md) first. Commands run from the crew skill's
-directory (the one holding `SKILL.md`). Requires `claude` on PATH and logged
+Read [delegate.md](delegate.md) first. `scripts/crew.py` is in the crew skill's
+directory; run it from the task's repository, or pass `--repo`. Requires `claude` on PATH and logged
 in; a version other than the tested one is a warning.
 
 ```bash
@@ -14,9 +14,9 @@ set, and Claude's own subagents do the same job there.
 
 ## Before the first run
 
-Tell the user: **no OS sandbox.** Claude Code's sandbox does not start on this
-machine (bubblewrap: "nested userns is capability-restricted"), so crew's hooks
-are the only limit on Bash. `--restricted` still confines the file tools.
+Tell the user: **no OS sandbox.** crew does not rely on Claude Code's sandbox:
+on the Linux host it was tested on it did not start (bubblewrap: "nested userns
+is capability-restricted"), so crew's hooks are the only limit on Bash. `--restricted` still confines the file tools.
 
 ## The run
 
@@ -43,8 +43,9 @@ the repo root, plus `--effort` with `"effort"` in the task.
 - `Stop`: the gate runs. While it fails, the stop is blocked with its output,
   up to `max_gate_attempts`; when it passes, the stop is blocked at most twice
   more if the final message lacks the JSON report.
-- A hook that exits 2 blocks the call: an unknown event or a crash before the
-  guard answers denies rather than allows.
+- The guard denies through its JSON answer: an unknown event, or an error
+  while it decides, denies rather than allows. A failure before that (the
+  interpreter not starting, input it cannot read) is not a deny.
 
 ## Task fields
 
