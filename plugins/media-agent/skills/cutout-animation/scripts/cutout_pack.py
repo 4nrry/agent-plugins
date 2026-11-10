@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Pack cut-out frames (RGBA PNGs) into what a web page loads.
 
-  cutout_pack.py pack CUTDIR -o char.webp [--width 400] [--fps 10] [--pingpong]
-                 [--still char-still.webp] [--sprite sheet.webp --css sheet.css]
+  cutout_pack.py pack CUTDIR -o char.webp [--width 400] [--fps N] [--pingpong]
+                 [--drop-last] [--still char-still.webp]
+                 [--sprite sheet.webp --css sheet.css]
   cutout_pack.py split PROPS.png -o DIR --names kelp1,kelp2,kelp3 [--max-side 760]
   cutout_pack.py sheet CUTDIR [CUTDIR ...] -o sheet.jpg [--bg '#08384C'] [--n 6]
   cutout_pack.py --self-test
@@ -10,7 +11,10 @@
 pack   crops every frame to ONE box (the union of all frames' alpha boxes), so the
        subject does not jitter, then writes an animated WebP with alpha. --still
        writes frame 1 in the same box, for prefers-reduced-motion. --sprite writes
-       a grid sheet and --css the steps() rules that play it.
+       a grid sheet and --css the steps() rules that play it. Without --fps it
+       plays at the rate cutout-frames.sh extracted the frames at (its record
+       beside CUTDIR), or 10 when there is none. --drop-last leaves out the last
+       frame, for a cycle trimmed so that it ends on the pose it starts with.
 split  cuts one matted image of several separate props into one file per prop,
        left to right, by the empty columns between them.
 sheet  lays sample frames over the page's background colour, to check edges and
@@ -40,6 +44,20 @@ def union_box(boxes, size, pad=6):
 def pingpong(n):
     """Frame order that plays forward then back without repeating either end."""
     return list(range(n)) + list(range(n - 2, 0, -1))
+
+
+def marker_fps(text):
+    """The rate in cutout-frames.sh's record ("CLIP SIZE MTIME fps=N [trim]"), or
+    None. The last fps= wins: the clip's own name comes first and may hold one."""
+    found = re.findall(r"(?:^| )fps=(\S+)", text)
+    if not found:
+        return None
+    num, _, den = found[-1].partition("/")
+    try:
+        fps = float(num) / (float(den) if den else 1)
+    except (ValueError, ZeroDivisionError):
+        return None
+    return fps if fps > 0 and math.isfinite(fps) else None
 
 
 def runs(values, min_len, threshold=3):
@@ -145,6 +163,15 @@ def _parent(path):
 
 def cmd_pack(a):
     Image = _pil()
+    marker = Path(a.cutdir).resolve().parent / ".cutout-frames"
+    extracted = marker_fps(marker.read_text(encoding="utf-8", errors="replace")) if marker.is_file() else None
+    if a.fps is None:
+        a.fps = extracted or 10
+        print(f"{a.fps:g} fps, " + (f"the rate the frames were extracted at ({marker})" if extracted
+                                    else "the default: no record of the extraction beside the frames"))
+    elif extracted and abs(a.fps - extracted) > 1e-6:
+        print(f"cutout_pack: --fps {a.fps:g}, but the frames were extracted at {extracted:g}: "
+              f"the motion plays at {a.fps / extracted:.2g}x", file=sys.stderr)
     if a.fps <= 0 or a.width <= 0:
         sys.exit("cutout_pack: --fps and --width must be above zero")
     if a.css and not a.sprite:
@@ -153,6 +180,10 @@ def cmd_pack(a):
         sys.exit("cutout_pack: --sprite must be NAME.webp with NAME made of letters, digits, - and _ "
                  "and not starting with a digit: it becomes the CSS class")
     fr = _frames(a.cutdir, a.alpha_floor)
+    if a.drop_last:
+        if len(fr) < 2:
+            sys.exit("cutout_pack: --drop-last needs at least two frames")
+        fr = fr[:-1]
     try:
         box = union_box([f.getchannel("A").getbbox() for f in fr], fr[0].size)
     except ValueError as e:
@@ -235,6 +266,12 @@ def self_test():
     except ValueError:
         pass
     assert pingpong(4) == [0, 1, 2, 3, 2, 1]
+    assert marker_fps("/w/clip.mp4 123456 1700000000 fps=12 -ss 1.45 -t 3.6") == 12
+    assert marker_fps("/w/clip.mp4 123456 1700000000 fps=25/2 ") == 12.5
+    assert marker_fps("/w/take fps=24 b.mp4 9 9 fps=10 ") == 10      # the clip's name is not the rate
+    assert marker_fps("/w/clip.mp4 9 9") is None and marker_fps("x fps=abc") is None
+    assert marker_fps("x fps=0") is None and marker_fps("x fps=1/0") is None
+    assert marker_fps("x fps=inf") is None and marker_fps("x fps=nan") is None
     assert pingpong(2) == [0, 1] and pingpong(1) == [0]
     cols = [0] * 5 + [200] * 30 + [0] * 4 + [9] * 3 + [0] * 4 + [255] * 40
     assert runs(cols, 24) == [(5, 35), (46, 86)]          # the 3-wide speck is not a prop
@@ -280,7 +317,8 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     k = sub.add_parser("pack")
     k.add_argument("cutdir"); k.add_argument("-o", "--out", required=True)
-    k.add_argument("--width", type=int, default=400); k.add_argument("--fps", type=float, default=10)
+    k.add_argument("--width", type=int, default=400); k.add_argument("--fps", type=float)
+    k.add_argument("--drop-last", action="store_true", help="leave out the last frame (a cycle that ends on its first pose)")
     k.add_argument("--pingpong", action="store_true"); k.add_argument("--quality", type=int, default=74)
     k.add_argument("--still"); k.add_argument("--sprite"); k.add_argument("--css")
     k.set_defaults(fn=cmd_pack)
