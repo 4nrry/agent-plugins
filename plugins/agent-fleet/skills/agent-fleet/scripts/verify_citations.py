@@ -108,7 +108,9 @@ _CURLY = {
 }
 
 
-_DOUBLE_QUOTES = re.compile('["\u2033\u2036\u275d\u275e\u301d\u301e]')
+# The set the routed workflow strips. Removed before NFKC, which would turn
+# the double primes into pairs of single ones.
+_DOUBLE_QUOTES = re.compile('["\u201c-\u201f\u2033\u2036\u275d\u275e\u301d\u301e\uff02]')
 
 
 def normalize(text: str) -> str:
@@ -126,13 +128,13 @@ def normalize(text: str) -> str:
 
     Applied to both sides, so the comparison stays fair.
     """
-    text = unicodedata.normalize("NFKC", text)
-    for a, b in _CURLY.items():
-        text = text.replace(a, b)
     # Double quotation marks go, on both sides. The routed deep-research
     # workflow strips them from the quotes it returns (its web-text sanitizer),
     # so a quote that held one no longer matched the page around it.
     text = _DOUBLE_QUOTES.sub("", text)
+    text = unicodedata.normalize("NFKC", text)
+    for a, b in _CURLY.items():
+        text = text.replace(a, b)
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # [text](url) -> text
     # Only the unambiguously-markdown forms. A lone `*` or `~` stays: both are
     # real syntax in nginx config and in regexes, and one corpus claim was
@@ -252,9 +254,21 @@ def resolves_public(host: str) -> bool:
     except (OSError, UnicodeError):
         return True
     try:
-        return all(ipaddress.ip_address(i[4][0].split("%", 1)[0]).is_global for i in infos)
+        return all(_public_ip(i[4][0].split("%", 1)[0]) for i in infos)
     except ValueError:
         return False
+
+
+# A proxy that answers DNS with placeholder addresses (the "fake-IP" mode of
+# Clash and Surge) puts every name in 198.18.0.0/15, the benchmarking range.
+# Refusing it would refuse every URL on such a machine, and nothing private
+# lives there by convention, so a resolved address in it passes.
+_FAKE_IP = ipaddress.ip_network("198.18.0.0/15")
+
+
+def _public_ip(addr: str) -> bool:
+    ip = ipaddress.ip_address(addr)
+    return ip.is_global or ip in _FAKE_IP
 
 
 class _PublicOnly(urllib.request.HTTPRedirectHandler):
@@ -770,7 +784,7 @@ def self_test() -> int:
     except urllib.error.URLError:
         pass
     # (8) quotation marks do not count: the routed workflow strips them from its quotes
-    if normalize('the flag “--fail” is "safe" to use') != normalize("the flag --fail is safe to use"):
+    if normalize('the flag “--fail” is "safe" to ″use″') != normalize("the flag --fail is safe to use"):
         fail("(8): double quotation marks still count in normalize()")
 
     print("self-test OK — line wrapping survives, invention fails, fusion is "

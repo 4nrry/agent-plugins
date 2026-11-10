@@ -7,7 +7,8 @@ Pipes sample PreToolUse JSON into the hook and checks what it prints: a deny
 for an unrouted script (once), for another workflow invoked by name (once) and
 for the bare built-in name (every time); nothing for a routed script, the
 plugin's own fork, a resume or input it cannot parse. The hook always exits 0.
-Needs bash and jq; without jq it reports a skip, since the hook does nothing.
+Needs bash, jq and sha256sum; without one it reports a skip, since the hook
+then does nothing.
 """
 import json
 import os
@@ -34,8 +35,9 @@ def run(payload, data_dir):
 
 
 def self_test():
-    if not shutil.which("jq"):
-        print("self-test skipped: jq is not installed, and without it the hook does nothing")
+    missing = [t for t in ("jq", "sha256sum") if not shutil.which(t)]
+    if missing:
+        print(f"self-test skipped: {', '.join(missing)} not installed, and without it the hook does nothing")
         return 0
     fails = []
     with tempfile.TemporaryDirectory() as tmp:
