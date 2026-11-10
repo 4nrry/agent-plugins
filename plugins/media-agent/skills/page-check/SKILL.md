@@ -70,12 +70,16 @@ its lowest ratio and its median, from its worst capture.
   a slide clipped out of a carousel or a closed accordion. An entrance is
   given up to 2 s to finish first. The value and the placeholder of a form
   field count as text, and `-webkit-text-fill-color` is the colour when set.
+- Two kinds of text are left out without a line in the report: a piece of
+  text of fewer than 3 characters (an icon glyph, "OK", a short price), and
+  text that is all but transparent (colour alpha times opacity under 5%),
+  which is how gradient text is made. Read those in the screenshots.
 
 ## What the motion lines mean
 
 - `moves at rest: yes` only says two captures taken a moment apart differ.
   It does not say the motion is right. For a looping character, look at a
-  frame sheet (`cutout-animation`); for a scroll effect, compare the
+  contact sheet (`cutout-animation`); for a scroll effect, compare the
   screenshots at consecutive stops.
 - `under reduced motion: YES` is an error. The page was loaded again with
   `prefers-reduced-motion: reduce` and still moved at one of the scroll
