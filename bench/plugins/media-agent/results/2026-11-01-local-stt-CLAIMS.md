@@ -3,7 +3,7 @@
 **Notes, not run records.** Source of `skills/audio/references/local-stt.md`
 (media-agent 0.16.0). Measured on 2026-11-01 on an RTX 4070 Laptop 8 GB with
 WhisperX 3.8.6 (faster-whisper 1.2.1, torch 2.8.0), on the 82 voice lines of
-the owner's private channel repository: ElevenLabs TTS in
+a private series repository: ElevenLabs TTS in
 Brazilian Portuguese, 48 kHz mono, 7.7 min in all, each with its script text.
 n=1 per method.
 
