@@ -15,6 +15,7 @@ new skill.
 | `image-generation` | explore, choose on a contact sheet, final still, what never to generate | Grok Imagine (Grok Build, Hermes), Gemini (agy, API) wrappers; `contact-sheet.sh` |
 | `video-generation` | still-to-video, one camera move, resolution by use, checking every clip | Gemini Omni and Grok video wrappers |
 | `image-retouching` | weight licenses, removal vs inpainting, one GPU job at a time | headless ComfyUI (`comfy-run.py`) |
+| `cutout-animation` | a still on a plain background, cycle or ping-pong, one crop box for the clip, format by what the page does, a still for reduced motion | `cutout-frames.sh`, `cutout_pack.py` (animated WebP, sprite sheet and its `steps()` CSS, props from one image) |
 | `voice` | one sentence per file, caption vs spoken text, -16 LUFS, the durations JSON | `vo-normalize.sh`, `hermes-tts.sh` (xAI voice); TTS engine notes |
 | `audio` | licenses and credits, exact-length music, SFX, fixing real recordings, word times for captions | ElevenLabs (`eleven.py`), ACE-Step, stock search (`media-search.py`), WhisperX notes |
 | `video-composition` | video as code: frame-driven scenes, captions from the voice JSON, formats from one source, short vertical video for Reels, Shorts and TikTok, motion for cuts and text | Remotion, HTML + Chrome + ffmpeg |
@@ -38,3 +39,5 @@ and keys come from environment variables (`COMFY_HOME`, `*_API_KEY`).
 **Evidence:** behavior checks from one real production, not effect
 measurements —
 [`bench/plugins/media-agent/results/2026-10-13-production-checks-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-10-13-production-checks-CLAIMS.md).
+The cut-out route's timings and file sizes from one landing-page prototype are in
+[`2026-11-10-cutout-animation-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-10-cutout-animation-CLAIMS.md).
