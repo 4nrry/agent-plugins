@@ -6,6 +6,10 @@ modality: its rules hold for any model of that kind, and each tool's notes sit
 in the skill's `references/`, so a new model is a new reference file, not a
 new skill.
 
+It is built for Claude Code on a local machine: the scripts need a GPU,
+Blender, ComfyUI, Chrome, ffmpeg or uv there. claude.ai chat runs neither the
+hooks nor the local MCP server, so only the skills' text applies there.
+
 ```
 /plugin install media-agent@4nrry
 ```
@@ -18,7 +22,7 @@ new skill.
 | `cutout-animation` | a still on a plain background, cycle or ping-pong, one crop box for the clip, format by what the page does, a still for reduced motion | `cutout-frames.sh`, `cutout_pack.py` (animated WebP, sprite sheet and its `steps()` CSS, props from one image) |
 | `page-check` | errors before screenshots, contrast measured against what is rendered behind the text, what the motion lines mean, a weight budget chosen before the run, what nobody checked | `page-check.mjs` (headless Chrome over its DevTools port, no packages) |
 | `voice` | one sentence per file, caption vs spoken text, -16 LUFS, the durations JSON | `vo-normalize.sh`, `hermes-tts.sh` (xAI voice); TTS engine notes |
-| `audio` | licenses and credits, exact-length music, SFX, fixing real recordings, word times for captions | ElevenLabs (`eleven.py`), ACE-Step, stock search (`media-search.py`), WhisperX notes |
+| `audio` | licenses and credits, exact-length music, SFX, fixing real recordings, word times for captions | ElevenLabs (`eleven.py`), ACE-Step, stock search (`media-search.py`), synthesized effects (`sfx-synth.py`), WhisperX notes |
 | `video-composition` | video as code: frame-driven scenes, captions from the voice JSON, formats from one source, short vertical video for Reels, Shorts and TikTok, motion for cuts and text | Remotion, HTML + Chrome + ffmpeg |
 | `video-editing` | re-render vs patch the mp4, checking the output | Kinocut, registered as an MCP server (`.mcp.json`) |
 | `3d-turntable` | a 360° product turn as transparent frames | headless Blender (`turntable.py`) |
@@ -32,6 +36,16 @@ Two hooks warn and never block:
 - `hooks/skill-before-kinocut.sh` (`PreToolUse` on the Kinocut MCP tools)
   asks the agent to load the matching skill when it calls Kinocut before any
   media-agent skill, once per session. The first call still runs.
+
+What leaves the machine, and only when the agent runs that script: `eleven.py`
+sends prompts and audio to ElevenLabs; `nano.py` and `omni.py` send prompts and
+images to Google's Gemini API; `grok-image.sh`, `grok-video.sh`, `agy-image.sh`
+and `hermes-image.sh` run the Grok, Antigravity and Hermes CLIs, which send the
+prompt to their own providers; `media-search.py` sends search terms to Openverse,
+Freesound, Pexels and Pixabay and keeps Pixabay's answers for 24 h under the
+user cache directory. The Kinocut MCP server and the ComfyUI scripts run
+locally. The hooks read the tool call and the session transcript, need `jq`,
+and write one marker file per session under the temp directory.
 
 The plugin does not decide licenses for you (Remotion's employee limit,
 ElevenLabs' free tier): the skills state the rule and the user decides. Paths

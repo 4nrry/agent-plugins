@@ -11,7 +11,10 @@ import argparse
 import sys
 import wave
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:
+    sys.exit("sfx-synth: numpy is not installed (pip install numpy)")
 
 SR = 48000
 

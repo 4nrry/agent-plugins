@@ -34,7 +34,8 @@ human.glb out/` renders three figures (front, profile, back) to check a new glb.
 - Always pass `--python-exit-code 1`: without it Blender 5.2 exits 0 after an
   uncaught Python error and the pipeline takes an empty folder as a render.
 - One Blender process per scene, in parallel. Cache each plate under a hash of
-  the scene sources and skip it when the hash and the frame count match.
+  the scene sources and skip it when the hash and the frame count match:
+  `scene_kit.py` does not do this, the pipeline that calls it does.
 - On a hybrid laptop, EEVEE lands on the integrated GPU unless the process is
   offloaded: set `__NV_PRIME_RENDER_OFFLOAD=1` and
   `__GLX_VENDOR_LIBRARY_NAME=nvidia` (what `prime-run` does). Cycles device
@@ -86,7 +87,8 @@ human.glb out/` renders three figures (front, profile, back) to check a new glb.
 ## Checking
 
 - `scripts/check_motion.py PLATE_DIR` fails when two consecutive frames are
-  identical. Run it on plates, before grain or text hides a still picture.
+  identical. Run it on plates, before grain or text hides a still picture. It
+  needs numpy and Pillow.
 - Look at a contact sheet of every shot at phone size before the final render.
 
 ## A series

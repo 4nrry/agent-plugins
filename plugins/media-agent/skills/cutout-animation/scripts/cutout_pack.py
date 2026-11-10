@@ -215,7 +215,7 @@ def cmd_pack(a):
               + (f", last frame held {padn}x to fill the grid" if padn else ""))
         if a.css:
             Path(a.css).write_text(steps_css(css_name(a.sprite), a.width, h, cols, rows, a.fps), encoding="utf-8")
-            print(a.css)
+            print(f"{a.css}: {Path(a.css).stat().st_size} bytes")
 
 
 def cmd_split(a):

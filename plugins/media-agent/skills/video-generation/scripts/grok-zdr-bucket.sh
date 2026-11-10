@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Write Grok Build's ZDR video-output section, pointing to your own S3-compatible
-# bucket (R2, S3, MinIO). Prompts for the keys without echo; nothing reaches shell history.
+# bucket (R2, S3, MinIO). Prompts for the two keys, the secret without echo; nothing
+# reaches shell history. Needs a terminal to prompt on: run it yourself, not through an agent.
 #
 #   S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com S3_BUCKET=grok-videos grok-zdr-bucket.sh
 #
@@ -14,6 +15,9 @@ section="[tools.zdr_video_output_s3]"
 
 key_id="${S3_ACCESS_KEY_ID:-}"
 secret="${S3_SECRET_ACCESS_KEY:-}"
+if [ -z "$key_id" ] || [ -z "$secret" ]; then
+  [ -t 0 ] || { echo "grok-zdr-bucket: no terminal to prompt on; run it in your own terminal, or set S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY" >&2; exit 2; }
+fi
 [ -n "$key_id" ] || read -rp "Access Key ID: " key_id
 [ -n "$secret" ] || { read -rsp "Secret Access Key: " secret; echo; }
 [ -n "$key_id" ] && [ -n "$secret" ] || { echo "missing key" >&2; exit 1; }
