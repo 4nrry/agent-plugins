@@ -2,18 +2,6 @@
 
 Licenses checked against each service's terms on 2026-10-26.
 
-`scripts/media-search.py` searches and downloads, and prints the id, author,
-license and URL each item needs in `CREDITS.json`. Stdlib only; keys come from
-the environment, injected by your secrets manager's `run`, never from a
-`.env` in the repo. From the skill's directory:
-
-```bash
-python3 scripts/media-search.py openverse "ambient piano" --type audio --download DIR
-python3 scripts/media-search.py freesound "whoosh" --license cc0 --download DIR             # FREESOUND_API_KEY
-python3 scripts/media-search.py pexels "industrial plant drone" --type video --download DIR  # PEXELS_API_KEY
-python3 scripts/media-search.py pixabay "wastewater treatment" --type photo                   # PIXABAY_API_KEY
-```
-
 | Source | Has | License | Trap |
 |---|---|---|---|
 | Openverse (no key) | CC audio and images | per item; `license_type=commercial` filters | the filter trusts declared metadata |

@@ -20,11 +20,39 @@ and watch the cut points.
 ## Kinocut, the bundled tool
 
 Kinocut wraps ffmpeg in typed operations: it validates the input first and
-returns JSON with `success` and the output path, or a structured error with a
-`suggested_action`, instead of pages of stderr. The plugin registers it as the
-`kinocut` MCP server (pinned in the plugin's `.mcp.json`); its tools appear in
-a new session. The same from the CLI, with the version pinned in `.mcp.json`,
-always with `--format json` (otherwise the output is a human table):
+returns JSON with `success` and `output_path`, or `success: false` with an
+`error.code` and a `suggested_action`, instead of pages of stderr. The plugin
+registers it as the `kinocut` MCP server (pinned in `.mcp.json`). Call its
+tools, with absolute paths:
+
+| Task | Tool | Note |
+|---|---|---|
+| Duration, size, fps, codecs | `video_info` | before any edit |
+| Cut a segment | `video_trim` | `start` plus `duration` or `end`; add `accurate: true` when the cut must be frame-exact |
+| Join clips | `video_merge` | `clips` in order; the output takes the first clip's size |
+| Change size or ratio | `video_resize` | `aspect_ratio` pads with black bars, it does not crop: to fill the frame, `video_crop` first |
+| Crop | `video_crop` | `width` and `height`, centered unless `x` and `y` are given |
+| Burn in subtitles | `video_subtitles` | `.srt`, `.vtt` or `.ass` |
+| Loudness of a finished file | `video_normalize_audio` | `target_lufs: -16` |
+| One frame | `video_extract_frame` | `timestamp` in seconds |
+| Anything else | `search_tools` | finds a tool by keyword and lists its required parameters |
+
+- Without `output_path` the result goes beside the input (`clip_trimmed.mp4`).
+  An existing output is refused with `output_exists` unless `overwrite: true`.
+- The server lists about 200 tools and some are shells. `search_tools`
+  describes a contract, not what is installed: run a tool once on a real file
+  and check `success` and the output before building a flow on it.
+- `video_ai_*`, `hyperframes_*` and several `sound_*` tools need optional
+  extras (Whisper, Demucs, Real-ESRGAN, torch). Do not install them to get
+  "all green": this plugin covers transcription, music and upscaling with
+  other skills.
+- The server needs `uv`, `ffmpeg` and `ffprobe` on PATH. Without `uv` it does
+  not start, and the error shows only in the MCP list.
+
+Where the tools are missing (the server did not start, or a harness that does
+not load `.mcp.json`), the same operations exist in the CLI, with the version
+pinned in `.mcp.json` and always with `--format json` (otherwise the output is
+a human table):
 
 ```bash
 kino="uvx --from kinocut==<version from .mcp.json> kino"
@@ -33,12 +61,3 @@ $kino --format json trim video.mp4 -s 0 -d 15 -o teaser.mp4
 $kino --format json normalize-audio video.mp4 -l -16 -o norm.mp4
 $kino doctor
 ```
-
-- There are many commands and some are shells: run a command once on a real
-  file and check `success` and the output before building a flow on it.
-- `video-ai-*`, `hyperframes-*` and several `sound-*` commands need optional
-  extras (Whisper, Demucs, Real-ESRGAN, torch). Do not install them to get
-  "all green": this plugin covers transcription, music and upscaling with
-  other skills.
-- It needs `uv`, `ffmpeg` and `ffprobe` on PATH. Without `uv` the MCP server
-  does not start, and the error shows only in the MCP list.
