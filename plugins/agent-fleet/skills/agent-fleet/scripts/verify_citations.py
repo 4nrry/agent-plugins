@@ -59,7 +59,11 @@ scored against its own URL, in any language; nothing is guessed from layout.
 
 Only http and https URLs are fetched, and loopback, private and link-local
 addresses are skipped: a report is built from web text, and a planted
-`file://` or intranet citation would otherwise make this script read it.
+`file://` or intranet citation would otherwise make this script read it. That
+holds for an IP literal, for a name that resolves to such an address, for
+`localhost` and names with no dot, and for every hop of a redirect. It does
+not hold against a name whose DNS answer changes between the check and the
+fetch.
 
 USAGE
 -----
@@ -76,6 +80,7 @@ import gzip
 import ipaddress
 import json
 import re
+import socket
 import sys
 import unicodedata
 import urllib.error
@@ -84,6 +89,8 @@ from pathlib import Path
 import zlib
 
 UA = "Mozilla/5.0 (X11; Linux x86_64) verify_citations/1.0"
+# Both are choices, not measurements: long enough for a slow docs site, and
+# room for a long single-page reference without reading a download to the end.
 TIMEOUT = 30
 MAX_BYTES = 4_000_000
 
@@ -99,6 +106,9 @@ _CURLY = {
     "–": "-", "—": "-", "−": "-", " ": " ",
     "…": "...",
 }
+
+
+_DOUBLE_QUOTES = re.compile('["\u2033\u2036\u275d\u275e\u301d\u301e]')
 
 
 def normalize(text: str) -> str:
@@ -119,6 +129,10 @@ def normalize(text: str) -> str:
     text = unicodedata.normalize("NFKC", text)
     for a, b in _CURLY.items():
         text = text.replace(a, b)
+    # Double quotation marks go, on both sides. The routed deep-research
+    # workflow strips them from the quotes it returns (its web-text sanitizer),
+    # so a quote that held one no longer matched the page around it.
+    text = _DOUBLE_QUOTES.sub("", text)
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)  # [text](url) -> text
     # Only the unambiguously-markdown forms. A lone `*` or `~` stays: both are
     # real syntax in nginx config and in regexes, and one corpus claim was
@@ -211,11 +225,59 @@ def html_to_text(raw: str) -> str:
 
 # -------------------------------------------------------------------- fetch
 
+def _host(url: str) -> str:
+    host = url.split("//", 1)[-1].split("/", 1)[0].split("?", 1)[0].split("#", 1)[0].rsplit("@", 1)[-1]
+    return host[1:].split("]", 1)[0] if host.startswith("[") else host.split(":", 1)[0]
+
+
+def fetchable(url: str) -> bool:
+    """An http(s) URL on a host that is not local by its own spelling: not
+    localhost, not a name with no dot, not a non-public IP literal."""
+    if not url.startswith(("http://", "https://")):
+        return False
+    host = _host(url).lower().rstrip(".")
+    if not host or host == "localhost" or host.endswith(".localhost"):
+        return False
+    try:
+        return ipaddress.ip_address(host).is_global
+    except ValueError:
+        return "." in host
+
+
+def resolves_public(host: str) -> bool:
+    """False when the name resolves to any address that is not public. A name
+    that does not resolve passes: the fetch then reports the DNS error."""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except (OSError, UnicodeError):
+        return True
+    try:
+        return all(ipaddress.ip_address(i[4][0].split("%", 1)[0]).is_global for i in infos)
+    except ValueError:
+        return False
+
+
+class _PublicOnly(urllib.request.HTTPRedirectHandler):
+    """A public page may redirect to cloud metadata or an intranet host;
+    every hop gets the same test as the first URL."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not (fetchable(newurl) and resolves_public(_host(newurl))):
+            raise urllib.error.URLError(f"redirect to a non-public address refused: {newurl}")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_PublicOnly)
+
+
 def fetch(url: str) -> dict:
+    if not (fetchable(url) and resolves_public(_host(url))):
+        return {"status": None, "text": "", "error": "not fetched: not a public http(s) address",
+                "final_url": url}
     req = urllib.request.Request(
         url, headers={"User-Agent": UA, "Accept-Encoding": "gzip, deflate"})
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        with _OPENER.open(req, timeout=TIMEOUT) as resp:
             body = resp.read(MAX_BYTES)
             enc = (resp.headers.get("Content-Encoding") or "").lower()
             if enc == "gzip":
@@ -552,14 +614,15 @@ def run(report_path: Path, out_path, fetch_fn=fetch) -> dict:
 
 def load_claims(data):
     """[(quote, url)] from fleet_worker's `claims` (sourceUrl) or the routed
-    workflow's `confirmed` (source); a bare list of either shape also works."""
+    workflow's `confirmed` (source); a bare list of either shape also works,
+    and so does `url` as the key."""
     if isinstance(data, dict):
         data = data.get("claims") or data.get("confirmed") or []
     out = []
     for c in data if isinstance(data, list) else []:
         if isinstance(c, dict):
             out.append((str(c.get("quote") or "").strip(),
-                        str(c.get("sourceUrl") or c.get("source") or "").strip()))
+                        str(c.get("sourceUrl") or c.get("source") or c.get("url") or "").strip()))
     return out
 
 
@@ -576,7 +639,7 @@ def run_claims(claims_path: Path, out_path, fetch_fn=fetch) -> dict:
             skip("no_quote")
         elif len(clean) < MIN_QUOTE:
             skip("under_30_chars")
-        elif not (url.startswith(("http://", "https://")) and public_host(url)):
+        elif not fetchable(url):
             skip("url_not_fetchable")
         else:
             items.append((clean, url))
@@ -596,6 +659,9 @@ def self_test() -> int:
     5. file:// and private-address citations are never fetched
     6. a claims file is scored quote by quote, a Portuguese quote included,
        and what it cannot score is counted, not dropped
+    7. localhost, a name with no dot, a private or link-local address and a
+       redirect to one are refused before any request is made
+    8. a quote stripped of its quotation marks still matches the page
 
     Pages are served by a stub fetcher, so no network is used.
     """
@@ -686,9 +752,31 @@ def self_test() -> int:
         if c["skipped"] != {"under_30_chars": 1, "url_not_fetchable": 1}:
             fail(f"(6): skipped {c['skipped']}, expected one short quote and one local URL")
 
+    # (7) what counts as fetchable, by spelling, by address and across a redirect
+    for u, want in (("https://docs.example.org/a", True), ("http://localhost:8080/x", False),
+                    ("http://backend/x", False), ("http://app.localhost/x", False),
+                    ("http://169.254.169.254/latest", False), ("http://[::1]/x", False),
+                    ("http://10.0.0.5/x", False), ("ftp://docs.example.org/a", False),
+                    ("https://user@8.8.8.8:443/x", True)):
+        if fetchable(u) != want:
+            fail(f"(7): fetchable({u!r}) is {not want}")
+    if resolves_public("127.0.0.1") or resolves_public("10.1.2.3") or not resolves_public("8.8.8.8"):
+        fail("(7): resolves_public misjudged an address literal")
+    if fetch("http://localhost:9/x")["error"] != "not fetched: not a public http(s) address":
+        fail("(7): fetch() went to localhost")
+    try:
+        _PublicOnly().redirect_request(None, None, 302, "Found", {}, "http://169.254.169.254/latest/")
+        fail("(7): a redirect to a link-local address was followed")
+    except urllib.error.URLError:
+        pass
+    # (8) quotation marks do not count: the routed workflow strips them from its quotes
+    if normalize('the flag “--fail” is "safe" to use') != normalize("the flag --fail is safe to use"):
+        fail("(8): double quotation marks still count in normalize()")
+
     print("self-test OK — line wrapping survives, invention fails, fusion is "
-          "caught, a URL in backticks is still fetched, local URLs are not, "
-          "and claims files are scored and counted"
+          "caught, a URL in backticks is still fetched, local URLs are not "
+          "(by name, by address or through a redirect), quotation marks do "
+          "not count, and claims files are scored and counted"
           if ok else "self-test FAILED")
     return 0 if ok else 1
 
