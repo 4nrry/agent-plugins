@@ -13,18 +13,27 @@ count moves with the install path).
 instruction to read it if its text is no longer in context, and the routing
 rule, which the hook already called the one most often skipped.
 
-**Fixture test.** `scripts/check_inject_hook.py --self-test`, 22 checks:
+**Fixture test.** `scripts/check_inject_hook.py --self-test`, 28 checks:
 whole text on the first match, pointer on the second and third, whole text in
 another session, whole text again after `--forget`, whole text every time
-with no session id, with a session id that is a path, and with a data
-directory that cannot be created; nothing on a miss or on input that is not
-JSON; the trigger still found above 60,000 filler lines. Against the 1.9.2
-hook the same test fails 4 checks. The trigger scores of
+with no session id, with a session id that is a path, with a data directory
+that cannot be created, and with no `CLAUDE_PLUGIN_DATA` (HOME set or not);
+nothing on a miss or on input that is not JSON; the trigger still found above 60,000 filler lines. Against the 1.9.2
+hook the same test fails 4 of its first 22 checks. The trigger scores of
 `2026-10-26-pesquisa-trigger/check_hook.py` did not move (its payloads carry
 no session id).
+
+**Other harnesses.** The marker is used only where `CLAUDE_PLUGIN_DATA` is
+set. The Hermes bridge passes a session id but no SessionStart event, and the
+generic bridge registers only UserPromptSubmit and PreToolUse; neither sets
+that variable, so there the hook prints the whole skill on every match, as
+1.9.2 did. A cold review found both this and a crash with HOME unset in the
+first draft.
 
 **Not measured.** Whether Claude Code runs the `SessionStart` entry with
 matcher `compact|clear` and the same session id the prompts carry: the hook
 was fed by hand, not by a live compaction. If it does not, the marker stays
 and the pointer is what tells the model to read the file again. Whether a
-model follows that pointer after a compaction was not tested either.
+model follows that pointer after a compaction was not tested either. A
+rewind to before the first match runs no hook, so the marker outlives the
+text there too.
