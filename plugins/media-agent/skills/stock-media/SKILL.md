@@ -1,6 +1,6 @@
 ---
 name: stock-media
-description: Finds stock footage, photos, music and sound effects under licenses that allow commercial use, with the credit each item needs — which library has what, the trap in each license, and a search-and-download script. Use for stock footage or b-roll, stock photos, royalty-free or CC0 music or sound effects from a library, CC-BY credits or a CREDITS.json, or a named library (Pexels, Pixabay, Openverse, Freesound, Jamendo, YouTube Audio Library). Generated music and effects are in the audio skill; generated shots in video-generation.
+description: Finds ready-made footage, photos, music and sound effects in stock libraries, under licenses that allow commercial use, with the credit each item needs — which library has what, the trap in each license, and a search-and-download script. Use for stock footage or b-roll, stock photos, royalty-free or CC0 music or sound effects from a library, CC-BY credits or a CREDITS.json, or a named library (Pexels, Pixabay, Openverse, Freesound, Jamendo, YouTube Audio Library). Generated music and effects are in the audio skill; generated shots in video-generation.
 ---
 
 # Stock media
