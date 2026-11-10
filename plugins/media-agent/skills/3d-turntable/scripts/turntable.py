@@ -64,11 +64,12 @@ bpy.context.preferences.edit.keyframe_new_interpolation_type = "LINEAR"  # Blend
 pivot.rotation_euler = (0, 0, 0); pivot.keyframe_insert("rotation_euler", frame=1)
 pivot.rotation_euler = (0, 0, math.tau); pivot.keyframe_insert("rotation_euler", frame=frames + 1)
 
-# render: Cycles on GPU (CUDA, then OptiX), transparent, RGBA PNG
+# render: Cycles on GPU (CUDA, then OptiX; CYCLES_BACKEND goes first when set), transparent, RGBA PNG
 scene.render.engine = "CYCLES"
 prefs = bpy.context.preferences.addons["cycles"].preferences
 import os
-for backend in tuple(filter(None, [os.environ.get("CYCLES_BACKEND")])) or ("CUDA", "OPTIX"):
+tried = list(dict.fromkeys(filter(None, [os.environ.get("CYCLES_BACKEND"), "CUDA", "OPTIX"])))
+for backend in tried:
     try:
         # get_devices() also enumerates oneAPI/Level Zero and segfaults with an integrated Arc; enumerate only the requested backend
         prefs.compute_device_type = backend; devs = prefs.get_devices_for_type(backend)
@@ -76,6 +77,8 @@ for backend in tuple(filter(None, [os.environ.get("CYCLES_BACKEND")])) or ("CUDA
             for d in devs: d.use = True
             scene.cycles.device = "GPU"; print("cycles device:", backend, flush=True); break
     except Exception as e: print("backend", backend, "unavailable:", e)
+else:
+    print("cycles device: none of", ", ".join(tried), "returned a GPU; rendering on the CPU", flush=True)
 scene.cycles.samples = 16 if a.preview else a.samples
 scene.cycles.use_denoising = True
 scene.view_settings.view_transform = "AgX"; scene.view_settings.look = "AgX - Base Contrast"; scene.view_settings.exposure = 0.0

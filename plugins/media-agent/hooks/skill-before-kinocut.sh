@@ -8,6 +8,7 @@
 # has been loaded.
 set -uo pipefail
 
+command -v jq >/dev/null || { echo "media-agent hook: jq not found, no skill reminder" >&2; exit 0; }
 input=$(cat) || exit 0
 sid=$(jq -r '.session_id // empty' <<<"$input" 2>/dev/null) || exit 0
 transcript=$(jq -r '.transcript_path // empty' <<<"$input" 2>/dev/null) || exit 0
@@ -17,6 +18,8 @@ marker_dir="${TMPDIR:-/tmp}/media-agent-skill-hint"
 marker="$marker_dir/$sid"
 [[ -e "$marker" ]] && exit 0
 mkdir -p "$marker_dir" 2>/dev/null && : >"$marker" 2>/dev/null
+# One marker per session would pile up for as long as the temp directory lives.
+find "$marker_dir" -maxdepth 1 -type f -mtime +7 -delete 2>/dev/null || true
 
 if [[ -r "$transcript" ]] && jq -r 'select(.type == "assistant") | .message.content[]?
     | select(.type == "tool_use" and .name == "Skill") | .input.skill // empty' \

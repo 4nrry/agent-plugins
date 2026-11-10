@@ -3,7 +3,8 @@
 
   check_sources.py spec.yaml      (or .json)
 
-Exits 1 and lists every problem:
+Exit 0 when the spec passes. Exit 2 when the check did not run (wrong usage, a
+spec that cannot be read, PyYAML missing). Exit 1 lists every problem:
 - a fact line (narration or on-screen) without enough opened sources, or citing
   a source id the spec does not define;
 - a phrase recorded under `left_out` that appears in any spoken or shown text;
@@ -18,15 +19,32 @@ import sys
 from pathlib import Path
 
 
+def stop(msg):
+    """The check did not run: exit 2, so it is not read as a list of problems."""
+    print("check_sources: " + msg, file=sys.stderr)
+    sys.exit(2)
+
+
 def load(path):
-    text = Path(path).read_text()
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError as e:
+        stop(f"cannot read {path}: {e.strerror}")
+    except UnicodeDecodeError:
+        stop(f"{path} is not UTF-8 text")
     if path.endswith(".json"):
-        return json.loads(text)
+        try:
+            return json.loads(text)
+        except ValueError as e:
+            stop(f"{path} is not valid JSON: {e}")
     try:
         import yaml
     except ImportError:
-        sys.exit("PyYAML is missing: pip install pyyaml, or write the spec as .json")
-    return yaml.safe_load(text)
+        stop("PyYAML is missing: pip install pyyaml, or write the spec as .json")
+    try:
+        return yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        stop(f"{path} is not valid YAML: {e}")
 
 
 def check(spec):
@@ -70,9 +88,16 @@ def check(spec):
 
 
 def main():
+    if len(sys.argv) == 2 and sys.argv[1] in ("-h", "--help"):
+        print(__doc__)
+        sys.exit(0)
     if len(sys.argv) != 2:
-        sys.exit(__doc__)
-    problems = check(load(sys.argv[1]))
+        print(__doc__, file=sys.stderr)
+        sys.exit(2)
+    spec = load(sys.argv[1])
+    if not isinstance(spec, dict):
+        stop(f"{sys.argv[1]} holds no spec: its top level must be a mapping (see references/spec.md)")
+    problems = check(spec)
     for p in problems:
         print("-", p)
     print("ok" if not problems else "%d problem(s)" % len(problems))

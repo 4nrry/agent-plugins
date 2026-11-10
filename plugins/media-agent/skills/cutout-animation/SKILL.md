@@ -1,6 +1,6 @@
 ---
 name: cutout-animation
-description: Turns a still of a character or prop into a transparent looping animation that a web page can layer over its own background — a clip made from the still, frames at stop-motion rate, the background removed from every frame, one crop box, then an animated WebP or a CSS sprite sheet. Use for an animated mascot or character on a landing page, a transparent or alpha animation for the web, a sprite sheet from an AI clip, stop-motion or claymation motion on a site, or cut-out props for layered scenery. A clip that stays a rectangle is in video-generation; one transparent PNG is in image-retouching.
+description: Turns a still of a character or prop into a transparent looping animation that a web page can layer over its own background — a clip made from the still, frames at stop-motion rate, the background removed from every frame, one crop box, then an animated WebP or a CSS sprite sheet. Use for an animated mascot or character on a landing page, a transparent or alpha animation for the web, a sprite sheet from an AI clip, stop-motion or claymation motion on a site, or cut-out props for layered scenery. A clip that stays a rectangle is in video-generation; one transparent PNG is in image-retouching, whose scripts this skill runs, so it needs that skill beside it.
 ---
 
 # Cut-out animation

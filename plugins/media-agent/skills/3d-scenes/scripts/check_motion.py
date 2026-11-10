@@ -12,8 +12,11 @@ import argparse
 import sys
 from pathlib import Path
 
-import numpy as np
-from PIL import Image
+try:
+    import numpy as np
+    from PIL import Image
+except ImportError as e:
+    sys.exit(f"check_motion: {e.name} is not installed; it needs numpy and Pillow (pip install numpy pillow)")
 
 
 def load(path):

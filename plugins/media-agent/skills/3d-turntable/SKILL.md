@@ -24,9 +24,11 @@ of minutes, with visibly poorer lighting.
 
 - **`prefs.get_devices()` segfaults** on machines with an integrated Intel Arc
   beside an NVIDIA GPU (oneAPI enumeration). `get_devices_for_type("CUDA")` or
-  `"OPTIX"` enumerates only that backend; the script does this, and
-  `CYCLES_BACKEND=OPTIX` forces OptiX. If OptiX returns no device (driver and
-  Blender version must match), it falls back to CUDA.
+  `"OPTIX"` enumerates only that backend; the script does this, CUDA first and
+  then OptiX, and `CYCLES_BACKEND=OPTIX` tries OptiX first. If OptiX returns
+  no device (driver and Blender version must match), it falls back to CUDA.
+  When no backend returns one, it prints `cycles device: none of ...` and
+  renders on the CPU: read that line before trusting a render time.
 - **Blender 5 has no `action.fcurves`** (layered actions). For a linear spin,
   set `preferences.edit.keyframe_new_interpolation_type = "LINEAR"` before
   inserting keyframes.

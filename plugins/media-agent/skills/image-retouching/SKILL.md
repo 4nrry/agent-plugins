@@ -37,7 +37,9 @@ python3 scripts/comfy-run.py inpaint    photo.png "what to put there" -o out.png
 python3 scripts/comfy-run.py generate   "description" -o still.png --size 1344x768 --seed 7
 ```
 
-Pass `--keep` on the first of several jobs; the first model load is slow.
+Pass `--keep` on the first of several jobs; the first model load is slow. It
+prints the server's PID: `kill` it after the last job, since later jobs never
+stop a server they did not start and it holds the GPU until then.
 
 - The JSON the UI saves (`nodes`, `links`, subgraphs) is not what `/prompt`
   accepts. The workflows here are API format (`{"id": {"class_type",
