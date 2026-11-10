@@ -9,12 +9,14 @@
 
 Mask: PNG where white = area to change. --rect builds the mask inside the graph
 (GetImageSize + SolidMask + MaskComposite), so no PIL is needed here.
-Starts the server (comfy-serve.sh, needs COMFY_HOME) if none answers on --server and
-stops it when done, unless --keep. Never kills a server it did not start.
+Starts the server (comfy-serve.sh, needs COMFY_HOME) if none answers on --server, on
+that URL's port, and stops it when done, or when it fails to come up. --keep leaves it
+running and prints its PID. Never kills a server it did not start.
 """
 import argparse, json, os, random, subprocess, sys, time, urllib.error, urllib.parse, urllib.request, uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+STARTUP_POLLS = int(os.environ.get("COMFY_STARTUP_POLLS", "240"))   # 0.5 s each: 120 s for a cold model load
 WORKFLOWS = os.path.join(os.path.dirname(HERE), "workflows")
 IMAGE_NODE = {"upscale": "1", "background": "1", "remove": "1", "inpaint": "7"}
 MASK_LOAD_NODE = {"remove": "2", "inpaint": "8"}
@@ -115,21 +117,24 @@ def main():
     if a.workflow in MASK_NODE and bool(a.mask) == bool(a.rect):
         sys.exit("pass --mask OR --rect")
 
-    proc = None
-    if not alive(a.server):
-        serve = os.path.join(HERE, "comfy-serve.sh")
-        log_path = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "comfy-run.log")
-        with open(log_path, "ab") as log:
-            proc = subprocess.Popen([serve], stdout=log, stderr=subprocess.STDOUT)
-        for _ in range(240):
-            if alive(a.server):
-                break
-            if proc.poll() is not None:
-                sys.exit(f"server died on startup; see {log_path}")
-            time.sleep(0.5)
-        else:
-            sys.exit(f"server did not respond within 120 s; see {log_path}")
+    proc, ready = None, False
     try:
+        if not alive(a.server):
+            serve = os.path.join(HERE, "comfy-serve.sh")
+            log_path = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "comfy-run.log")
+            port = urllib.parse.urlsplit(a.server).port
+            env = dict(os.environ, COMFY_PORT=str(port)) if port else None   # the port this command will poll
+            with open(log_path, "ab") as log:
+                proc = subprocess.Popen([serve], stdout=log, stderr=subprocess.STDOUT, env=env)
+            for _ in range(STARTUP_POLLS):
+                if alive(a.server):
+                    break
+                if proc.poll() is not None:
+                    sys.exit(f"server died on startup; see {log_path}")
+                time.sleep(0.5)
+            else:
+                sys.exit(f"server did not respond within {STARTUP_POLLS // 2} s; see {log_path}")
+        ready = True
         if a.workflow != "generate":
             wf[IMAGE_NODE[a.workflow]]["inputs"]["image"] = upload(a.server, image)
         if a.workflow == "upscale":
@@ -145,12 +150,15 @@ def main():
             wf["12"]["inputs"].update(seed=seed, steps=a.steps, denoise=a.denoise)
         run(a.server, wf, a.out)
     finally:
-        if proc and not a.keep:
+        # A server that never came up is stopped even with --keep: nothing can use it.
+        if proc and proc.poll() is None and (not a.keep or not ready):
             proc.terminate()
             try:
                 proc.wait(15)
             except subprocess.TimeoutExpired:
                 proc.kill()
+        elif proc and proc.poll() is None:
+            print(f"ComfyUI left running (pid {proc.pid}); stop it after the last job: kill {proc.pid}")
 
 
 if __name__ == "__main__":

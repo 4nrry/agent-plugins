@@ -16,7 +16,7 @@ Model files, with the names the workflows expect (about 19 GB):
 | `qwen_3_4b_fp8_mixed.safetensors` | `text_encoders` | same |
 | `ae.safetensors` | `vae` | same |
 | `4xRealWebPhoto_v4_dat2.safetensors` | `upscale_models` | `Phips/4xRealWebPhoto_v4_dat2` |
-| `RealESRGAN_x4plus.pth` | `upscale_models` | Real-ESRGAN releases |
+| `RealESRGAN_x4plus.pth` (optional: no bundled workflow loads it) | `upscale_models` | Real-ESRGAN releases |
 | BiRefNet-general (4 files) | `RMBG/BiRefNet` | `1038lab/BiRefNet` |
 | `big-lama.pt` | `RMBG/Lama` | `1038lab/Lama` |
 
