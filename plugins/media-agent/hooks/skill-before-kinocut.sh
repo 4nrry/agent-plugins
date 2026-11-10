@@ -33,7 +33,9 @@ jq -n '{
       "removal, subtitles for a real recording), voice (narration, TTS), " +
       "video-editing (a finished mp4), video-composition (a video built from " +
       "its source project), image-retouching (background removal, upscale, " +
-      "inpainting). The skill holds the license, loudness and QC rules that " +
+      "inpainting), cutout-animation (a transparent looping animation from " +
+      "a clip, the background removed from every frame). The skill holds the " +
+      "license, loudness and QC rules that " +
       "Kinocut does not apply."
     )
   }
