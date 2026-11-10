@@ -2,14 +2,17 @@
 // Check a web page mechanically, then leave screenshots to look at.
 //
 //   page-check.mjs URL_OR_FILE -o OUTDIR [--widths 1440x900,390x844] [--stops 5]
-//                  [--budget-kb N] [--wait-ms 600] [--no-sandbox]
+//                  [--budget-kb N] [--contrast-area 10] [--no-contrast]
+//                  [--wait-ms 600] [--no-sandbox]
 //   page-check.mjs --self-test
 //
 // For each width: loads the page in headless Chrome, records console errors,
 // failed requests and broken images, measures horizontal overflow, text that is
-// invisible or cut off, and the weight of what was downloaded, takes a
-// screenshot at each scroll stop, and checks whether the page moves at rest and
-// whether it still moves under prefers-reduced-motion.
+// invisible or cut off, the contrast of every text block against the pixels
+// really behind it (the text is hidden and the page captured twice per
+// screenful), and the weight of what was downloaded, takes a screenshot at each
+// scroll stop, and checks whether the page moves at rest and whether it still
+// moves under prefers-reduced-motion.
 //
 // Writes OUTDIR/report.json and OUTDIR/<width>-<stop>.png. Exit 1 when there is
 // an error-level finding, 0 otherwise. Needs Node 22 or later and Chrome or
@@ -20,6 +23,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import zlib from 'node:zlib';
 
 function findChrome() {
   const names = [process.env.CHROME, 'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'chrome'].filter(Boolean);
@@ -83,6 +87,88 @@ async function launch(noSandbox) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Decode the PNG Chrome returns (8-bit RGB or RGBA, not interlaced) to raw pixels.
+function decodePng(buf) {
+  if (buf.readUInt32BE(0) !== 0x89504e47) throw new Error('not a PNG');
+  let pos = 8, w = 0, h = 0, bpp = 0; const idat = [];
+  while (pos < buf.length) {
+    const len = buf.readUInt32BE(pos), type = buf.toString('latin1', pos + 4, pos + 8), data = buf.subarray(pos + 8, pos + 8 + len);
+    if (type === 'IHDR') {
+      w = data.readUInt32BE(0); h = data.readUInt32BE(4);
+      if (data[8] !== 8 || (data[9] !== 2 && data[9] !== 6) || data[12] !== 0) throw new Error(`PNG kind not handled (depth ${data[8]}, colour ${data[9]}, interlace ${data[12]})`);
+      bpp = data[9] === 6 ? 4 : 3;
+    } else if (type === 'IDAT') idat.push(data);
+    else if (type === 'IEND') break;
+    pos += 12 + len;
+  }
+  const raw = zlib.inflateSync(Buffer.concat(idat)), stride = w * bpp, px = Buffer.alloc(h * stride);
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (stride + 1)], line = raw.subarray(y * (stride + 1) + 1, (y + 1) * (stride + 1)), o = y * stride;
+    for (let x = 0; x < stride; x++) {
+      const a = x >= bpp ? px[o + x - bpp] : 0, b = y ? px[o - stride + x] : 0, c = x >= bpp && y ? px[o - stride + x - bpp] : 0;
+      let v = line[x];
+      if (f === 1) v += a; else if (f === 2) v += b; else if (f === 3) v += (a + b) >> 1;
+      else if (f === 4) { const p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c); v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c; }
+      px[o + x] = v & 255;
+    }
+  }
+  return { w, h, bpp, px };
+}
+
+// WCAG 2 contrast between two sRGB colours given as 0..255 channels.
+const lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+const lum = (r, g, b) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+function contrast(l1, l2) { const hi = Math.max(l1, l2), lo = Math.min(l1, l2); return (hi + 0.05) / (lo + 0.05); }
+// Large text needs 3:1, the rest 4.5:1 (WCAG 2 AA): 24px, or 18.66px when bold.
+const needed = (sizePx, weight) => (sizePx >= 24 || (sizePx >= 18.66 && weight >= 700) ? 3 : 4.5);
+
+// Contrast of one text block against the pixels actually behind it. The text's
+// own alpha is applied over every sampled pixel, so see-through text is judged
+// against what shows through it.
+function blockContrast(img, block) {
+  const [r, g, b] = block.rgb, a = block.alpha, ratios = [];
+  for (const q of block.rects) {
+    const x0 = Math.max(0, Math.floor(q.x)), y0 = Math.max(0, Math.floor(q.y)), x1 = Math.min(img.w, Math.ceil(q.x + q.w)), y1 = Math.min(img.h, Math.ceil(q.y + q.h));
+    const step = Math.max(1, Math.round(Math.sqrt(((x1 - x0) * (y1 - y0)) / 300)));
+    for (let y = y0; y < y1; y += step) for (let x = x0; x < x1; x += step) {
+      const i = (y * img.w + x) * img.bpp, pr = img.px[i], pg = img.px[i + 1], pb = img.px[i + 2];
+      ratios.push(contrast(lum(a * r + (1 - a) * pr, a * g + (1 - a) * pg, a * b + (1 - a) * pb), lum(pr, pg, pb)));
+    }
+  }
+  return ratios;
+}
+
+// Runs in the page: every run of visible HTML text in the viewport, with the
+// boxes of its lines, its colour as the browser resolves it, and its size.
+const TEXT_BLOCKS = `(() => {
+  const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+  const cv = document.createElement('canvas'); cv.width = cv.height = 1;
+  const cx = cv.getContext('2d', { willReadFrequently: true });
+  const rgba = (css) => { cx.clearRect(0, 0, 1, 1); cx.fillStyle = '#000'; cx.fillStyle = css; cx.fillRect(0, 0, 1, 1); const d = cx.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2], d[3] / 255]; };
+  const out = [];
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const seen = new Map();
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const text = n.textContent.trim(); if (text.length < 3) continue;
+    const el = n.parentElement; if (!el || el.namespaceURI !== 'http://www.w3.org/1999/xhtml' || /^(SCRIPT|STYLE|NOSCRIPT|TEXTAREA|OPTION)$/.test(el.tagName)) continue;
+    const s = getComputedStyle(el); if (s.visibility === 'hidden' || s.display === 'none') continue;
+    let op = 1; for (let p = el; p; p = p.parentElement) op *= parseFloat(getComputedStyle(p).opacity);
+    const c = rgba(s.color); if (op * c[3] < 0.05) continue;
+    const range = document.createRange(); range.selectNodeContents(n);
+    const rects = [...range.getClientRects()].filter((r) => r.width > 2 && r.height > 2 && r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw).map((r) => ({ x: r.left, y: r.top, w: r.width, h: r.height }));
+    if (!rects.length) continue;
+    let b = seen.get(el);
+    if (!b) { b = { key: '', text: '', rects: [], rgb: c.slice(0, 3), alpha: op * c[3], size: parseFloat(s.fontSize), weight: parseInt(s.fontWeight, 10) || 400, top: 0 }; seen.set(el, b); out.push(b); }
+    b.text = (b.text + ' ' + text).trim().slice(0, 60); b.rects.push(...rects);
+  }
+  for (const [el, b] of seen) {
+    b.key = el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\\s+/).slice(0, 2).join('.') : '') + ' "' + b.text + '"';
+  }
+  return out.slice(0, 400);
+})()`;
+const HIDE_TEXT = `(() => { const s = document.createElement('style'); s.id = '__page_check_hide'; s.textContent = '*, *::before, *::after, ::placeholder { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; caret-color: transparent !important; text-decoration-color: transparent !important; }'; document.head.appendChild(s); return true; })()`;
+const SHOW_TEXT = `(() => { document.getElementById('__page_check_hide')?.remove(); return true; })()`;
 
 // Runs in the page. Returns what can be measured without looking.
 const MEASURE = `(() => {
@@ -166,6 +252,40 @@ async function checkViewport(cdp, url, vp, opts, outdir) {
     if (maxY === 0) break;
   }
 
+  // Contrast: hide the text, capture what is behind it, twice per screenful so
+  // that something moving behind the text is caught, and keep each block's
+  // worst capture.
+  let contrastReport = null;
+  if (opts.contrast) {
+    const worst = new Map();
+    const screens = Math.min(40, Math.max(1, Math.ceil(m.pageHeight / (vp.h * 0.9))));
+    for (let i = 0; i < screens; i++) {
+      await evaluate(`window.scrollTo(0, ${Math.round(Math.min(maxY, i * vp.h * 0.9))})`); await sleep(Math.min(opts.waitMs, 300));
+      for (let k = 0; k < 2; k++) {
+        const blocks = await evaluate(TEXT_BLOCKS);
+        await evaluate(HIDE_TEXT);
+        const img = decodePng(await shot());
+        await evaluate(SHOW_TEXT);
+        for (const b of blocks) {
+          const ratios = blockContrast(img, b); if (ratios.length < 8) continue;
+          const need = needed(b.size, b.weight), under = ratios.filter((x) => x < need).length / ratios.length;
+          ratios.sort((x, y) => x - y);
+          const cur = worst.get(b.key);
+          if (!cur || under > cur.under) worst.set(b.key, { key: b.key, under, need, min: ratios[0], median: ratios[ratios.length >> 1], size: b.size, weight: b.weight, alpha: b.alpha });
+        }
+        if (k === 0) await sleep(opts.waitMs);
+      }
+    }
+    const list = [...worst.values()].sort((a, b) => b.under - a.under);
+    const fmt = (b) => `${b.key}: ${Math.round(b.under * 100)}% of its area under ${b.need}:1 (lowest ${b.min.toFixed(1)}, median ${b.median.toFixed(1)}; ${b.size}px, weight ${b.weight}${b.alpha < 0.995 ? ', text alpha ' + b.alpha.toFixed(2) : ''})`;
+    for (const b of list) {
+      if (b.under * 100 >= opts.contrastArea) errors.push('low contrast: ' + fmt(b));
+      else if (b.under * 100 >= 2) warnings.push('contrast dips: ' + fmt(b));
+    }
+    contrastReport = { blocks: list.length, failing: list.filter((b) => b.under * 100 >= opts.contrastArea).length, worst: list.slice(0, 10).map((b) => ({ ...b, under: +b.under.toFixed(3), min: +b.min.toFixed(2), median: +b.median.toFixed(2) })) };
+    await evaluate('window.scrollTo(0, 0)');
+  }
+
   const all = [...requests.values()].map((r) => ({ url: r.url, type: r.type, bytes: Math.max(r.bytes, r.data) }));
   const total = all.reduce((s, r) => s + r.bytes, 0);
   const byType = {};
@@ -183,11 +303,11 @@ async function checkViewport(cdp, url, vp, opts, outdir) {
   const movesReduced = await moves();
   if (movesReduced) errors.push('still moving under prefers-reduced-motion: two captures ' + opts.waitMs + ' ms apart differ');
   await cdp.send('Target.closeTarget', { targetId });
-  return { viewport: `${vp.w}x${vp.h}`, pageHeight: m.pageHeight, errors: [...new Set(errors)], warnings: [...new Set(warnings)], movesAtRest, movesReduced, weight, shots };
+  return { viewport: `${vp.w}x${vp.h}`, pageHeight: m.pageHeight, errors: [...new Set(errors)], warnings: [...new Set(warnings)], movesAtRest, movesReduced, weight, contrast: contrastReport, shots };
 }
 
 function parseArgs(argv) {
-  const o = { widths: [{ w: 1440, h: 900 }, { w: 390, h: 844 }], stops: 5, budgetKb: 0, waitMs: 600, noSandbox: false, target: null, out: null };
+  const o = { widths: [{ w: 1440, h: 900 }, { w: 390, h: 844 }], stops: 5, budgetKb: 0, waitMs: 600, noSandbox: false, contrast: true, contrastArea: 10, target: null, out: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i], next = () => { if (i + 1 >= argv.length) throw new Error(`${a} needs a value`); return argv[++i]; };
     if (a === '-o' || a === '--out') o.out = next();
@@ -196,6 +316,8 @@ function parseArgs(argv) {
     else if (a === '--budget-kb') o.budgetKb = Math.max(0, parseFloat(next()) || 0);
     else if (a === '--wait-ms') o.waitMs = Math.max(50, parseInt(next(), 10) || 0);
     else if (a === '--no-sandbox') o.noSandbox = true;
+    else if (a === '--no-contrast') o.contrast = false;
+    else if (a === '--contrast-area') o.contrastArea = Math.min(100, Math.max(0.5, parseFloat(next()) || 10));
     else if (a.startsWith('-')) throw new Error(`unknown option ${a}`);
     else if (!o.target) o.target = a;
     else throw new Error(`unexpected argument ${a}`);
@@ -229,6 +351,7 @@ function print(report) {
     for (const e of v.errors) console.log('  ERROR ' + e);
     for (const w of v.warnings) console.log('  warn  ' + w);
     if (v.weight) console.log('  largest: ' + v.weight.largest.join(', '));
+    if (v.contrast) console.log(`  contrast: ${v.contrast.blocks} text blocks measured against what is behind them, ${v.contrast.failing} failing`);
     if (v.shots.length) console.log(`  ${v.shots.length} screenshots: ${v.shots[0]} ...`);
   }
 }
@@ -241,11 +364,13 @@ async function selfTest() {
     fs.writeFileSync(path.join(dir, 'good.html'), `<!doctype html><html lang="en"><title>Good</title><style>body{margin:0;font:16px sans-serif}
       .spin{width:40px;height:40px;background:teal;animation:s 1s linear infinite}@keyframes s{to{transform:rotate(360deg)}}
       @media (prefers-reduced-motion:reduce){.spin{animation:none}}</style>
-      <h1>A page that behaves</h1><div class="spin"></div><img src="dot.png" width="10" height="10" alt=""><div style="height:2400px"></div><p>The end of the page.</p></html>`);
+      <h1>A page that behaves</h1><p style="background:#123;color:#fff;padding:8px">White text on a dark band reads well.</p><p style="font-size:30px;font-weight:700;color:#777">Large grey text only needs three to one.</p><div class="spin"></div><img src="dot.png" width="10" height="10" alt=""><div style="height:2400px"></div><p>The end of the page.</p></html>`);
     fs.writeFileSync(path.join(dir, 'bad.html'), `<!doctype html><html><style>body{margin:0;font:16px sans-serif}
       .spin{width:40px;height:40px;background:red;animation:s 1s linear infinite}@keyframes s{to{transform:rotate(360deg)}}</style>
       <div style="width:2000px;height:20px;background:#ccc">a strip much wider than any phone or laptop screen</div>
       <p style="opacity:0">This paragraph waits for a script that never runs.</p>
+      <p style="color:#bbb">Pale grey words on a white page are hard to read.</p>
+      <p style="color:rgba(255,255,255,.8);padding:6px;width:300px;background:linear-gradient(90deg,#123 0 50%,#9cf 50% 100%)">Half of this line sits on a light patch.</p>
       <p style="height:18px;overflow:hidden;width:120px">A long sentence that cannot fit in one short line of a narrow box.</p>
       <div class="spin"></div><img src="missing.png" alt=""><script>console.error('boom'); null.x</script></html>`);
     const opts = { ...parseArgs([]), out: path.join(dir, 'out'), widths: [{ w: 800, h: 600 }], stops: 3, waitMs: 300 };
@@ -268,13 +393,19 @@ async function selfTest() {
       ['bad page: invisible text', has(bad.warnings, 'text invisible')],
       ['bad page: cut text', has(bad.warnings, 'text cut off')],
       ['bad page: no title', has(bad.warnings, 'no <title>')],
+      ['good page: contrast measured and nothing failing', good.contrast.blocks >= 3 && good.contrast.failing === 0, good.contrast],
+      ['bad page: pale grey text', bad.errors.some((e) => e.startsWith('low contrast') && e.includes('Pale grey'))],
+      ['bad page: see-through text over a light patch', bad.errors.some((e) => e.startsWith('low contrast') && e.includes('Half of this line') && e.includes('text alpha 0.80'))],
+      ['bad page: the pale text is nearly all under', bad.contrast.worst.some((b) => b.key.includes('Pale grey') && b.under > 0.9)],
+      ['bad page: see-through white on dark is not over-rated', bad.contrast.worst.some((b) => b.key.includes('Half of this line') && b.median < 21)],
+      ['bad page: the half-and-half line is about half under', bad.contrast.worst.some((b) => b.key.includes('Half of this line') && b.under > 0.3 && b.under < 0.7)],
       ['budget: a 0.1 KB budget is exceeded', (await run(path.join(dir, 'good.html'), { ...opts, out: path.join(dir, 'w'), budgetKb: 0.1 })).viewports[0].errors.some((e) => e.startsWith('weight:'))],
       ['budget: a 500 KB budget is not', !(await run(path.join(dir, 'good.html'), { ...opts, out: path.join(dir, 'w2'), budgetKb: 500 })).viewports[0].errors.some((e) => e.startsWith('weight:'))],
     ];
     let failed = 0;
     for (const [name, ok, detail] of checks) { if (!ok) { failed++; console.log('FAIL ' + name + (detail ? ' ' + JSON.stringify(detail) : '')); } }
     if (failed) { console.log(`self-test: ${failed} of ${checks.length} failed`); return 1; }
-    console.log(`self-test OK — ${checks.length} checks on a clean page and a page with eight planted defects`);
+    console.log(`self-test OK — ${checks.length} checks on a clean page and a page with ten planted defects`);
     return 0;
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }

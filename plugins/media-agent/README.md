@@ -16,7 +16,7 @@ new skill.
 | `video-generation` | still-to-video, one camera move, resolution by use, checking every clip | Gemini Omni and Grok video wrappers |
 | `image-retouching` | weight licenses, removal vs inpainting, one GPU job at a time | headless ComfyUI (`comfy-run.py`) |
 | `cutout-animation` | a still on a plain background, cycle or ping-pong, one crop box for the clip, format by what the page does, a still for reduced motion | `cutout-frames.sh`, `cutout_pack.py` (animated WebP, sprite sheet and its `steps()` CSS, props from one image) |
-| `page-check` | errors before screenshots, what the motion lines mean, a weight budget chosen before the run, what nobody checked | `page-check.mjs` (headless Chrome over its DevTools port, no packages) |
+| `page-check` | errors before screenshots, contrast measured against what is rendered behind the text, what the motion lines mean, a weight budget chosen before the run, what nobody checked | `page-check.mjs` (headless Chrome over its DevTools port, no packages) |
 | `voice` | one sentence per file, caption vs spoken text, -16 LUFS, the durations JSON | `vo-normalize.sh`, `hermes-tts.sh` (xAI voice); TTS engine notes |
 | `audio` | licenses and credits, exact-length music, SFX, fixing real recordings, word times for captions | ElevenLabs (`eleven.py`), ACE-Step, stock search (`media-search.py`), WhisperX notes |
 | `video-composition` | video as code: frame-driven scenes, captions from the voice JSON, formats from one source, short vertical video for Reels, Shorts and TikTok, motion for cuts and text | Remotion, HTML + Chrome + ffmpeg |
