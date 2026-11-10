@@ -30,6 +30,7 @@ OPENCODE_MODELS = ("opencode/deepseek-v4.1-flash-free", "opencode/glm-5.3-flash-
 OPENCODE_DENY = {"permission": {"edit": "deny", "bash": "deny", "execute": "deny",
                                 "task": "deny", "external_directory": "deny"}}
 # --web: the same denials, web fetch and search allowed (fleet_worker's research runs).
+# The read tools stay, so an opencode worker with --web can still read --cwd.
 OPENCODE_WEB = {"permission": dict(OPENCODE_DENY["permission"], webfetch="allow", websearch="allow")}
 # opencode 2.1 searches only through a provider the user picked once in the
 # TUI; with none saved it asks, and `run` cancels the question ("Web search
@@ -426,6 +427,12 @@ def model_vendor(model: str):
     return next((v for prefix, v in MODEL_VENDOR if m.startswith(prefix)), None)
 
 
+# Backends whose --web run has no file tools at all. For the others (agy,
+# opencode, codex) --web adds search and fetch to the read-only profile: the
+# worker can still read whatever is under --cwd.
+WEB_ONLY = ("claude", "grok", "hermes")
+
+
 def resolve(backend: str, tier: str = "cheap", model=None, effort=None, env=os.environ, web=False) -> dict:
     """Pick binary, model and effort; return them with warnings, or raise ValueError."""
     if backend not in SPECS:
@@ -536,6 +543,10 @@ def self_test() -> int:
     except ValueError:
         pass
     web = {"web": True}
+    ok(all(SPECS[b]["web"] for b in WEB_ONLY) and "read" not in OPENCODE_WEB["permission"]
+       and "--search" in b_codex(fake, "q", None, None, None, "/r", web)[0]
+       and b_agy(fake, "q", None, None, None, "/r", web)[0] == b_agy(fake, "q", None, None, None, "/r", {})[0],
+       "WEB_ONLY names the web backends that drop file tools; agy, opencode and codex keep theirs")
     argv, _, _ = b_claude(fake, "q", None, None, None, "/r", dict(web, schema={"type": "object"}))
     ok(argv[argv.index("--tools") + 1] == "WebSearch,WebFetch" and "--json-schema" in argv, "claude web + schema")
     argv, env, _ = b_grok(fake, "q", None, None, None, "/r", dict(web, schema={"type": "object"}))

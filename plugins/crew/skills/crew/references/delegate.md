@@ -59,7 +59,7 @@ Example: [task.example.json](task.example.json).
 | `side_effects` | globs tools rewrite on their own (`nx.json`); tolerated, listed |
 | `backend`, `model`, `effort` | `agy` (default), `opencode`, `copilot`, `codex`, `grok`, `cursor`, `claude`; models in each backend's file; `effort` for codex, grok, cursor and claude |
 | `timeout`, `gate_timeout`, `max_gate_attempts` | defaults `30m`, 900 s per command, 5 |
-| `allow_paths`, `deny_commands`, `secret_globs` | extra readable paths, extra denied command regexes, secret file names (default covers `.env*`, `.dev.vars`, `*.pem`, `*.key`, `id_rsa*`; `[]` disables) |
+| `allow_paths`, `deny_commands`, `secret_globs` | extra readable paths, extra denied command regexes, secret file names (default: `.env`, `.env.*`, `.dev.vars`, `.dev.vars.*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`, except names ending in `.example`, `.sample` or `.template`; `.envrc` is not covered; `[]` disables) |
 
 The brief:
 
@@ -82,7 +82,7 @@ environment variables.
 ## Run
 
 ```bash
-python3 scripts/crew.py delegate '/path/TASK.json' [--backend agy|opencode|copilot] [--model slug]
+python3 scripts/crew.py delegate '/path/TASK.json' [--repo repo] [--backend agy|opencode|copilot|codex|grok|cursor|claude] [--model slug]
 ```
 
 Build the line from the arguments; never paste them raw into the shell.
@@ -98,7 +98,10 @@ there, and Grok runs them in a sandbox that cannot write the main checkout's
 
 ## The verdict
 
-Exit 0 = ok, 1 = the run failed, 2 = refused before running (nothing spent).
+Exit 0 = ok, 1 = the run failed, 2 = refused, 130 = interrupted (hooks
+removed). A refusal normally comes before the run, with nothing spent; a git
+command that fails after the run is reported the same way, so read `failures`
+before assuming no quota was used.
 The CLI's own exit 0 never counts. `ok: false` always comes with `failures`;
 read `warnings` and `guard_denials` too (repeated denials usually mean an
 ambiguous brief or an impossible gate). On failure the diff stays in the tree:

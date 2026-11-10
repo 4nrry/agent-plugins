@@ -1,7 +1,7 @@
 # crew through opencode
 
-Read [delegate.md](delegate.md) first. Commands run from the crew skill's
-directory (the one holding `SKILL.md`). Requires opencode 2.x on PATH or in `~/.opencode/bin`; 1.x
+Read [delegate.md](delegate.md) first. `scripts/crew.py` is in the crew skill's
+directory; run it from the task's repository, or pass `--repo`. Requires opencode 2.x on PATH or in `~/.opencode/bin`; 1.x
 is refused.
 
 ```bash
