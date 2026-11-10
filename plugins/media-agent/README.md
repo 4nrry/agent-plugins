@@ -40,8 +40,8 @@ Two hooks warn and never block:
 What leaves the machine, and only when the agent runs that script: `eleven.py`
 sends prompts and audio to ElevenLabs; `nano.py` and `omni.py` send prompts and
 images to Google's Gemini API; `grok-image.sh`, `grok-video.sh`, `agy-image.sh`
-and `hermes-image.sh` run the Grok, Antigravity and Hermes CLIs, which send the
-prompt to their own providers; `media-search.py` sends search terms to Openverse,
+`hermes-image.sh` and `hermes-tts.sh` run the Grok, Antigravity and Hermes CLIs,
+which send the prompt or the narration text to their own providers; `media-search.py` sends search terms to Openverse,
 Freesound, Pexels and Pixabay and keeps Pixabay's answers for 24 h under the
 user cache directory. The Kinocut MCP server and the ComfyUI scripts run
 locally. The hooks read the tool call and the session transcript, need `jq`,
