@@ -141,11 +141,13 @@ the long strings cut:
     "out_of_scope": []
   },
   "gate": {"passed": true, "source": "final (run after agy)",
-           "hook_attempts": 2, "tail": "Test Files  1 passed (1)"},
+           "hook_attempts": 2,
+           "tail": "GATE: [checks] npx vitest run src/server/orders: ok\nGATE: PASS"},
   "guard_denials": [{"tool": "run_command",
                      "reason": "Command blocked (…): 'git commit -am wip'. …",
                      "args": {"CommandLine": "git commit -am wip"}}],
-  "stop_events": [],
+  "stop_events": [{"t": "14:21:40", "event": "stop",
+                   "reason": "TERMINAL_STEP_TYPE", "decision": "stop"}],
   "report": {
     "status": "done",
     "files_changed": ["src/server/orders/orders.service.ts",
@@ -164,7 +166,9 @@ the long strings cut:
 or reject, and one file the worker could not touch. `changed` comes from git
 and `gate` from the script; `report` is the worker's own account. The block
 named after the backend (`agy` here) carries more fields, which differ by
-backend. A refusal prints only `{"ok": false, "refused": true, "failures": […]}`.
+backend. `gate.tail` holds a command's own output only when that command
+failed; `gate.source` reads `cached (…)` when the tree did not change after
+the hook's last green gate; a stop event is normal. A refusal prints only `{"ok": false, "refused": true, "failures": […]}`.
 
 ## Review the diff — after every run, ok or not
 
