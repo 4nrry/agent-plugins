@@ -7,6 +7,7 @@
 # dir leaves an untracked `photo-480.png` inside the repo and the scratch dir empty.
 set -uo pipefail
 
+command -v jq >/dev/null || { echo "media-agent hook: jq not found, vipsthumbnail not checked" >&2; exit 0; }
 input=$(cat) || exit 0
 cmd=$(jq -r '.tool_input.command // empty' <<<"$input" 2>/dev/null) || exit 0
 [[ -n "$cmd" ]] || exit 0

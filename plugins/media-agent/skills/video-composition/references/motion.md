@@ -5,6 +5,11 @@ series (Sinal Público, 2026-10) at 30 fps and 1080×1920, drawn per frame in
 numpy and PIL over 540×960 plates. Every effect is a function of the frame
 number, with no random state, so a re-render gives the same frames.
 
+## Contents
+- Proven in production
+- Next techniques
+- Tools
+
 ## Proven in production
 
 ### Punch-in on the cut
@@ -70,7 +75,8 @@ Impact sound, 0.5 s, peak −12 dBFS:
 - a crack of band noise 1.2–7 kHz at 0.7, decay `e^(−70t)`.
 
 The `audio` skill's `scripts/sfx-synth.py slam` is a similar impact, and its
-`static` and `tick` cover the other cut sounds.
+`static` and `tick` cover the other cut sounds. The whoosh is not bundled: the
+recipe above is all there is of it.
 
 ### Rules that came from review
 

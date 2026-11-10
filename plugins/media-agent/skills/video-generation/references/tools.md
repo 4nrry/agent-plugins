@@ -49,5 +49,6 @@ command; headless, the script asks the agent for it). With zero data retention
 data retention". Either the user turns ZDR off (`/privacy`), or points Grok at
 their own S3-compatible bucket: `S3_ENDPOINT=... S3_BUCKET=...
 scripts/grok-zdr-bucket.sh` writes `[tools.zdr_video_output_s3]` to
-`~/.grok/managed_config.toml`. An R2 key can only be created in the Cloudflare
+`~/.grok/managed_config.toml`. It prompts for the keys, so the user runs it in
+their own terminal. An R2 key can only be created in the Cloudflare
 dashboard.

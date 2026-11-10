@@ -11,7 +11,7 @@ episode spec first ([references/spec.md](references/spec.md)) and run, from
 this skill's directory:
 
 ```bash
-python3 scripts/check_sources.py episodes/ep012.yaml   # exit 1 lists every problem
+python3 scripts/check_sources.py episodes/ep012.yaml   # exit 1 lists every problem; exit 2: the check did not run
 ```
 
 Run it before recording the voice and again before the final render. It
