@@ -23,12 +23,14 @@ Audit progress:
 ```bash
 python3 scripts/lint_extensions.py <repo-or-plugin-dir>          # text report
 python3 scripts/lint_extensions.py <dir> --json                   # machine-readable
+python3 scripts/lint_extensions.py <plugin-dir> --directory       # also the directory listing rules
 ```
 
 Exit 1 means at least one `error`. Fix errors first; `warn` items need a
 decision, not always a change. Run `--self-test` once if the output looks off.
 
-**2. Validator.** For Claude Code plugins, `claude plugin validate --strict <plugin-dir>`.
+**2. Validator.** For Claude Code plugins, `claude plugin validate --strict <plugin-dir>`,
+plus `--profile directory` when the plugin will be submitted to a directory.
 It checks the manifest and paths, not behavior.
 
 **3. Checklist.** Read [references/checklist.md](references/checklist.md) and
@@ -40,8 +42,17 @@ severity. Say which items you could not check and why.
 
 **5. Evals.** A clean audit proves form, not effect. When the extension's
 value is in doubt, measure it against a no-extension baseline: `claude plugin
-eval` for a plugin, the skill-creator plugin for a single skill. Use several
-prompt variants per case; one prompt is not a measurement.
+eval` for a plugin, the skill-creator skill for a single skill. Use several
+prompt variants per case; one prompt is not a measurement. For whether the
+description triggers, from a directory that has its own `.claude/`:
+
+```bash
+python3 -m scripts.run_eval --eval-set evals.json --skill-path <skill-dir> --runs-per-query 3
+```
+
+with `PYTHONPATH` set to the skill-creator directory, and `evals.json` a list
+of `{"query": ..., "should_trigger": true|false}` (see the checklist's
+Evaluation section).
 
 ## Rules for the audit itself
 

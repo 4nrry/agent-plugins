@@ -7,6 +7,8 @@ disagree, the source wins.
 ## Contents
 - Skills: metadata, body, files, scripts
 - Plugins
+- Directory listing
+- Composition: skill, hook, agent or MCP
 - Hooks
 - Instructions and prompts
 - Portability across harnesses
@@ -17,10 +19,12 @@ disagree, the source wins.
 - [lint] `name`: ≤64 chars, lowercase letters, digits and hyphens, no "anthropic" or "claude", matches the directory.
 - [lint] `description`: present, ≤1,024 chars, no XML tags.
 - [lint] Description in third person ("Extracts…", not "I can…" or "You can…").
-- [lint] Frontmatter is valid strict YAML: quote a value that contains `: ` or ` #`. Claude Code reads it anyway; Copilot CLI silently drops the skill.
-- Description says what the skill does *and* when to use it, with the terms a user would type. Key use case first: Claude Code cuts description plus `when_to_use` at 1,536 chars.
+- [lint] Frontmatter is valid strict YAML: quote a value that contains `: ` or ` #`, and close every quote. Claude Code reads it anyway; Copilot CLI silently drops the skill.
+- [lint] Every frontmatter key is one Claude Code reads. Outside Claude Code only `name`, `description`, `license`, `compatibility`, `metadata` and `allowed-tools` are accepted; other keys are a hard error on claude.ai and the Skills API (warned).
+- [lint] No `SKILL.md` inside another skill's directory; uploads refuse it.
+- [lint] Description plus `when_to_use` fits 1,536 chars, where Claude Code cuts the listing.
+- Description says what the skill does *and* when to use it, with the terms a user would type. Key use case first.
 - Name is specific (gerund or noun phrase), consistent with sibling skills; not `helper`, `utils`, `tools`.
-- Outside Claude Code only `name`, `description`, `license`, `compatibility`, `metadata` and `allowed-tools` are accepted; other keys are a hard error on claude.ai and the Skills API.
 
 ## Skills: body
 
@@ -53,6 +57,7 @@ Sources: [Skill authoring best practices](https://platform.claude.com/docs/en/ag
 ## Plugins
 
 - [lint] New components use `skills/`, not `commands/`.
+- [lint] `npx`/`uvx` launchers in MCP configs and hooks pin an exact version (`pkg==1.2.3`, `pkg@1.2.3`).
 - `claude plugin validate --strict` passes (manifest, kebab-case `name`, `version`, `description`, `author`, paths inside the root).
 - Name does not pass as Anthropic's (`claude-*`, `anthropic-*`, `official` beside either).
 - `version` is bumped with every behavior change; users are pinned to it.
@@ -61,6 +66,34 @@ Sources: [Skill authoring best practices](https://platform.claude.com/docs/en/ag
 - Secrets come from `userConfig` with `sensitive: true`, not from files in the plugin.
 
 Sources: [Plugin manifest reference](https://code.claude.com/docs/en/plugins-reference).
+
+## Directory listing
+
+For a plugin headed to a public directory. `[lint]` here means `--directory`;
+`claude plugin validate --strict --profile directory` covers part of it, and
+the claude.ai portal runs more checks than either.
+
+- [lint] A README of at least 40 words outside code blocks; the listing uses it as the description.
+- [lint] A `LICENSE` file or a `license` field.
+- [lint] An icon: `icon` in `.claude-plugin/plugin.json`, or `.claude-plugin/icon.png`. PNG or JPEG, square, 512–2048 px a side, under 2 MB; SVG and WebP are refused. The portal takes it only on the first save or submit.
+- [lint] No `.DS_Store`. Files over 256 KiB (images aside), more than 512 files, binaries and unpinned registry packages are held for a human reviewer.
+- [lint] No top-level `bin/`: it stops installation in claude.ai and Cowork.
+- Listing fields `documentationUrl`, `supportUrl`, `privacyPolicyUrl`, `termsOfServiceUrl` (https) and `displayName` go in `.claude-plugin/plugin.json` only. A root `plugin.json` on the agent-plugins.org schema allows no extra properties, so an `icon` there breaks it.
+- Submitting needs a paid plan, one plugin per submission. No secrets in files.
+- OpenAI's directory reads `.codex-plugin/plugin.json`, with an `interface` block (`displayName`, `shortDescription`, `defaultPrompt`, `brandColor`, `logo`, `composerIcon`); a plugin with lifecycle hooks is not eligible there.
+
+Sources: [Pre-submission checklist](https://claude.com/docs/plugins/pre-submission-checklist),
+[Publish a plugin](https://code.claude.com/docs/en/plugins/publish), [Platform support](https://claude.com/docs/plugins/platform-support),
+[Codex plugins](https://developers.openai.com/codex/plugins/build).
+
+## Composition: skill, hook, agent or MCP
+
+- A hook only for what must happen the same way every time without the model deciding; a rule the model may weigh stays in skill text.
+- A subagent only for context isolation: a large search or review whose detail the main conversation should not hold.
+- An MCP server only for access to an external system or data; the skill teaches when and how to use its tools.
+- Each component works where the plugin is meant to run: claude.ai chat ignores agents, hooks and local MCP servers, so there the skill must stand alone.
+
+Sources: [Features overview](https://code.claude.com/docs/en/features-overview), [Platform support](https://claude.com/docs/plugins/platform-support).
 
 ## Hooks
 
@@ -104,5 +137,7 @@ Sources: [Claude prompting best practices](https://platform.claude.com/docs/en/b
 - Several prompt variants per case: format and wording swing scores, more on small models.
 - Deterministic graders (regex, tool used, file exists) before model judges; judges only for short outputs with concrete pass/fail rubrics.
 - Re-run after each model release and each platform update.
+- Trigger rate for a skill's description: the skill-creator skill's `scripts/run_eval.py` (or `run_loop.py` to also rewrite the description). About 20 queries, half that should trigger and half near misses that should not; 3 runs per query; `run_loop.py` holds out 40% to test the rewrite. It runs through `claude -p` with the Claude Code login, no API key. It writes a temporary command into the nearest `.claude/commands/` above the working directory, so start it from a directory with its own `.claude/`.
 
-Sources: [Plugin evals](https://code.claude.com/docs/en/plugin-evals), [arXiv 2510.05152](https://arxiv.org/abs/2510.05152).
+Sources: [Plugin evals](https://code.claude.com/docs/en/plugin-evals), [skill-creator](https://github.com/anthropics/skills/tree/main/skills/skill-creator),
+[arXiv 2510.05152](https://arxiv.org/abs/2510.05152).
