@@ -15,12 +15,15 @@ set -euo pipefail
 # The skill lives in skills/crew/ (the Agent Plugins layout).
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../skills/crew" && pwd)"
 
+command -v jq >/dev/null || { echo "crew inject hook: jq not found, no pointer added" >&2; exit 0; }
 prompt=$(jq -r '.prompt // empty' 2>/dev/null) || exit 0
 [[ -n "$prompt" ]] || exit 0
 
 matched=()
 for backend in agy opencode copilot codex grok hermes kimi muse; do
-  if printf '%s' "$prompt" | grep -qiwF -- "$backend"; then
+  # A here-string, not a pipe: with pipefail, grep -q leaving at its first
+  # match kills the writer and a long prompt reads as "no match".
+  if grep -qiwF -- "$backend" <<<"$prompt"; then
     matched+=("$backend")
   fi
 done
