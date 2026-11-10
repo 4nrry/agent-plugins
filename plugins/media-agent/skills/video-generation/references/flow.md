@@ -48,8 +48,8 @@ queued the job "due to high demand", and finished about a minute later.
 ## Flow Music
 
 flowmusic.app makes full songs with Lyria 3.5 on daily credits, but publishes
-no commercial terms: keep it out of a commercial piece until it does (`audio`
-skill).
+no commercial terms: keep it out of a commercial piece until it does
+(`stock-media` skill).
 
 ## Sources
 

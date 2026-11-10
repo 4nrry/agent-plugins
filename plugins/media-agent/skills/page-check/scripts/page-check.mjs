@@ -94,7 +94,18 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => {
   process.exit(sig === 'SIGINT' ? 130 : 143);
 });
 
+// A cold machine can take longer than the 20 s wait to bring Chrome up: seen
+// once on a CI runner (2026-11-10), with nothing on stderr. One more try with
+// a new profile; any other failure is reported as it is.
 async function launch(noSandbox) {
+  try { return await launchOnce(noSandbox); } catch (e) {
+    if (!e.slowStart) throw e;
+    console.error(`page-check: ${e.message.trimEnd()}\npage-check: trying once more`);
+    return launchOnce(noSandbox);
+  }
+}
+
+async function launchOnce(noSandbox) {
   if (typeof WebSocket === 'undefined') throw new Error('this Node has no built-in WebSocket: Node 22 or later is needed');
   const binary = findChrome();
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'page-check-')); temp.add(base);
@@ -114,7 +125,7 @@ async function launch(noSandbox) {
     chrome = proc;
     const url = await new Promise((resolve, reject) => {
       let buf = '';
-      const timer = setTimeout(() => reject(new Error('Chrome did not open its DevTools port in 20 s:\n' + buf.slice(-600))), 20000);
+      const timer = setTimeout(() => reject(Object.assign(new Error('Chrome did not open its DevTools port in 20 s:\n' + buf.slice(-600)), { slowStart: true })), 20000);
       proc.stderr.on('data', (d) => {
         buf = (buf + d).slice(-4000);
         const m = buf.match(/DevTools listening on (ws:\/\/\S+)/);
