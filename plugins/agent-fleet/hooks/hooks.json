@@ -10,6 +10,17 @@
         ]
       }
     ],
+    "SessionStart": [
+      {
+        "matcher": "compact|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}\"/hooks/inject.sh --forget"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Workflow",
