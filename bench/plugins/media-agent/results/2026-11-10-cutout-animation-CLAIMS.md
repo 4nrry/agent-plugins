@@ -43,6 +43,7 @@ wall time, frame extraction included. The first call of a cold server took 23 s 
   server.
 - A reviewer agent reading the diff cold found the stale cut-outs on a re-run
   with other options, props split by the column mean losing thin parts, and
-  ten smaller defects; all were fixed before merge and the cases above re-run.
+  smaller defects in argument handling; all were fixed before merge and the
+  cases above re-run.
 - Not measured: Safari and Firefox, a phone, a chroma key on the same clips,
   alpha video, and whether a viewer reads the 10 fps loops as stop motion.
