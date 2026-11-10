@@ -1,7 +1,7 @@
 # Motion for short vertical video
 
 Cut accents, kinetic text and their sounds. The first part comes from one
-series (Sinal Público, 2026-10) at 30 fps and 1080×1920, drawn per frame in
+series (2026-10) at 30 fps and 1080×1920, drawn per frame in
 numpy and PIL over 540×960 plates. Every effect is a function of the frame
 number, with no random state, so a re-render gives the same frames.
 
