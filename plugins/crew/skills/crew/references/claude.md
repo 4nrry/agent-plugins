@@ -43,9 +43,11 @@ the repo root, plus `--effort` with `"effort"` in the task.
 - `Stop`: the gate runs. While it fails, the stop is blocked with its output,
   up to `max_gate_attempts`; when it passes, the stop is blocked at most twice
   more if the final message lacks the JSON report.
-- The guard denies through its JSON answer: an unknown event, or an error
-  while it decides, denies rather than allows. A failure before that (the
-  interpreter not starting, input it cannot read) is not a deny.
+- The guard denies through its JSON answer. An error while it decides on a
+  tool call denies rather than allows. An error in the stop handler lets the
+  stop through; the verdict still runs the gate on the final tree. A failure
+  before the guard answers (the interpreter not starting, input it cannot
+  read) is not a deny.
 
 ## Task fields
 
