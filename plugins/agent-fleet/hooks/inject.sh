@@ -25,6 +25,7 @@ set -euo pipefail
 # The skill lives in skills/agent-fleet/ (the Agent Plugins layout).
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../skills/agent-fleet" && pwd)"
 
+command -v jq >/dev/null || { echo "agent-fleet inject hook: jq not found, skill not injected" >&2; exit 0; }
 prompt=$(jq -r '.prompt // empty' 2>/dev/null) || exit 0
 [[ -n "$prompt" ]] || exit 0
 
@@ -45,7 +46,10 @@ TOGETHER="paralel|parallel|ao[[:space:]]+mesmo[[:space:]]+tempo|at[[:space:]]+on
 NUM="[0-9]+|dois|duas|tr(e|ê)s|quatro|cinco|seis|sete|oito|dez|v(a|á)ri(o|a)s|alguns|two|three|four|five|six|eight|ten|several|multiple|many"
 FANOUT="fan[- ]?out|${B}(${NUM})[[:space:]]+${AGENT}${E}"
 
-matches() { printf '%s' "$prompt" | grep -qiE -- "$1"; }
+# A here-string, not a pipe: with pipefail, grep -q leaving at its first match
+# kills the writer (SIGPIPE) and the pipeline reads as "no match". A prompt of
+# a few thousand lines with the trigger near the top was missed that way.
+matches() { grep -qiE -- "$1" <<<"$prompt"; }
 if matches "$WORKFLOW"; then
   why="a fan-out or deep research"
 elif matches "$FANOUT" \
