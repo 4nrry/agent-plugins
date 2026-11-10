@@ -280,7 +280,7 @@ def check_skill(skill_md):
             linked_from_skill.add(p)
 
     for md in sorted(d.rglob("*.md")):
-        if md == skill_md or any(part in SKIP_DIRS for part in md.parts):
+        if md == skill_md or any(part in SKIP_DIRS for part in md.relative_to(d).parts):
             continue
         t = md.read_text(encoding="utf-8")
         lines = t.splitlines()
@@ -570,6 +570,12 @@ def self_test():
         rules = {f["rule"] for f in lint([nest])}
         if "nested-reference" not in rules or "toc" not in rules:
             fails.append(f"nesting/toc not flagged: {rules}")
+        # A checkout under a directory named like a skipped one (a git worktree
+        # lives in .../worktrees/<name>/) is still checked in full.
+        inside = t / "worktrees" / "wt"
+        shutil.copytree(nest, inside / "nest")
+        if "toc" not in {f["rule"] for f in lint([inside])}:
+            fails.append("references skipped when the checkout sits under a directory named 'worktrees'")
 
         plug = t / "plug"
         (plug / ".claude-plugin").mkdir(parents=True)
