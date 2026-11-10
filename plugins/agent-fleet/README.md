@@ -26,17 +26,20 @@ root.
 | Verifier | `scripts/verify_citations.py` | Fetches each cited URL and string-checks the quote, from a markdown report or a JSON claims file (`--claims`) |
 | YouTube captions | `scripts/yt_captions.py` | Caption text of a public video through yt-dlp when installed; exit 3 when it is not, never installs |
 | Workflow | `workflows/deep-research.js` | Claude Code's built-in deep research with per-phase `model:` and `effort:` overrides, returning its confirmed quotes for `--claims` |
-| Injection hook | `hooks/inject.sh` | `UserPromptSubmit`: loads the skill when the prompt names a fan-out (`ultracode`, deep research, dynamic workflow, `/dwf`, `/fleet`), asks for several subagents at once, or asks for "pesquisa" from many sources |
+| Injection hook | `hooks/inject.sh` | `UserPromptSubmit`: loads the skill when the prompt names a fan-out (`ultracode`, deep research, dynamic workflow, `/dwf`, `/fleet`), asks for several subagents at once, or asks for "pesquisa" from many sources. In Claude Code, the whole skill once per session, then a short pointer to it; `SessionStart` after a compaction or `/clear` runs `inject.sh --forget`, so the next match loads it whole again. Through the bridges for other harnesses, the whole skill on every match |
 | Routing hook | `hooks/check-routing.sh` | `PreToolUse` on `Workflow`: denies once a script with fewer `model:` overrides than `agent()` calls, once any other workflow invoked by name (its script cannot be read from the call), and the bare built-in name always. The count is textual: `model:` anywhere outside a `//` comment counts, a string included |
 
 ## What it runs, sends and fetches
 
 - `hooks/inject.sh` reads every prompt, on this machine only, and prints the
-  skill when its patterns match. `hooks/check-routing.sh` reads each `Workflow`
-  call and writes one empty marker file per script or workflow name it has
-  denied, in `${CLAUDE_PLUGIN_DATA}` (or
-  `~/.claude/plugins/data/agent-fleet-routing`). Both need `jq`, and the
-  routing hook `sha256sum`; without them they do nothing and say so on stderr.
+  skill when its patterns match. Where `${CLAUDE_PLUGIN_DATA}` is set it
+  writes one empty marker file per session under `injected/` there and
+  deletes those older than 7 days. `hooks/check-routing.sh` reads each
+  `Workflow` call and writes one empty marker file per script or workflow
+  name it has denied, in `${CLAUDE_PLUGIN_DATA}` (or
+  `~/.claude/plugins/data/agent-fleet-routing`).
+  Both need `jq`, and the routing hook `sha256sum`; without them they do
+  nothing and say so on stderr.
 - `fleet_worker.py` sends the question, the search angles and the page URLs to
   the provider of each CLI it is told to use, through crew: xAI (grok), Google
   (agy), OpenAI (codex), Anthropic (claude), opencode's Zen, or the provider
