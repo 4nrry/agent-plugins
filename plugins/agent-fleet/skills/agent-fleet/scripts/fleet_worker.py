@@ -70,7 +70,7 @@ from pathlib import Path
 BACKENDS = ("grok", "agy", "opencode", "hermes", "codex", "claude")
 MAX_FETCH = 15
 DEFAULT_JOBS = 4          # the lowest documented child cap is 10 (Hermes)
-DEFAULT_TIMEOUT = 300
+DEFAULT_TIMEOUT = 300     # seconds per worker turn; a choice, not a measured limit
 # Search and extract are long tool loops, so they run at low effort (the
 # SKILL's routing rule) whatever effort the backend's crew tier carries for
 # general work. A backend whose tier sets no effort (opencode's free models)
@@ -235,6 +235,37 @@ def conform(value, schema: dict, path: str = "$") -> list:
     return errs
 
 
+def prune(value, schema: dict):
+    """value with whatever conform() called the wrong type removed: a field
+    that is not what the schema says is dropped, and so is an array item. None
+    when value itself is the wrong type. conform() has already reported each
+    one; this keeps the rest of the reply readable instead of letting a
+    `"claims": null` or a string where an object belongs end the whole run."""
+    if "enum" in schema:
+        return value if any(value == e and type(value) is type(e) for e in schema["enum"]) else None
+    t = schema.get("type")
+    if t == "object":
+        if not isinstance(value, dict):
+            return None
+        props = schema.get("properties", {})
+        return {k: v for k, v in ((k, prune(v, props[k]) if k in props else v) for k, v in value.items())
+                if v is not None}
+    if t == "array":
+        if not isinstance(value, list):
+            return None
+        return [v for v in (prune(i, schema.get("items", {})) for i in value) if v is not None]
+    if t == "string":
+        return value if isinstance(value, str) else None
+    return value
+
+
+def read_json(path, what: str):
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        sys.exit(f"fleet_worker: cannot read the {what} file {path}: {e}")
+
+
 # --------------------------------------------------------------------------
 # Backends
 # --------------------------------------------------------------------------
@@ -289,6 +320,7 @@ def run_one(crew: str, backend: str, prompt: str, schema: dict, model, timeout: 
     if obj is not None:
         obj = clean_strings(obj)
         problems += conform(obj, schema)
+        obj = prune(obj, schema)
     return {"ok": obj is not None and not problems, "result": obj, "problems": problems,
             "usage": v.get("usage"), "model": v.get("model"), "version": v.get("version"),
             "warnings": v.get("warnings", []), "seconds": round(time.time() - t0)}
@@ -318,7 +350,9 @@ def select_sources(searches: list, max_fetch: int):
     for s in searches:
         engine = s.get("backend")
         for r in sorted((s.get("results") or []), key=lambda r: RANK.get(r.get("relevance"), 2)):
-            key = norm_url(r.get("url", ""))
+            if not r.get("url"):
+                continue          # nothing to fetch or merge by
+            key = norm_url(r["url"])
             if key in merged:
                 m = merged[key]
                 dupes.append({**r, "angle": s["angle"], "backend": engine, "dupOf": m["angle"]})
@@ -389,16 +423,20 @@ def pick_efforts(rows: dict, backends: list, tier: str, models: dict, override) 
 
 
 def phase_efforts(crew: str, backends: list, tier: str, models: dict, override) -> dict:
-    out = subprocess.run([sys.executable, crew, "backends"], capture_output=True, text=True, timeout=60)
     try:
+        out = subprocess.run([sys.executable, crew, "backends"], capture_output=True, text=True, timeout=60)
         rows = {r["backend"]: r for r in json.loads(out.stdout)}
-    except (ValueError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
         rows = {}
     return pick_efforts(rows, backends, tier, models, override)
 
 
 def cmd_search(a) -> int:
-    angles = json.loads(Path(a.angles).read_text(encoding="utf-8"))
+    angles = read_json(a.angles, "angles")
+    if not (isinstance(angles, list) and angles and all(
+            isinstance(x, dict) and isinstance(x.get("label"), str) and isinstance(x.get("query"), str)
+            for x in angles)):
+        sys.exit(f'fleet_worker: {a.angles} must be a list of {{"label": ..., "query": ...}} objects')
     backends = parse_backends(a.backend)
     models = parse_models(a.model, backends)
     crew = find_crew()
@@ -417,8 +455,11 @@ def cmd_search(a) -> int:
 
 
 def cmd_extract(a) -> int:
-    data = json.loads(Path(a.sources).read_text(encoding="utf-8"))
+    data = read_json(a.sources, "sources")
     sources = data.get("sources", []) if isinstance(data, dict) else data
+    if not (isinstance(sources, list) and all(isinstance(x, dict) and isinstance(x.get("url"), str)
+                                              for x in sources)):
+        sys.exit(f"fleet_worker: {a.sources} must hold a list of sources, each with a url (the search output)")
     backend = parse_backends(a.backend)
     if len(backend) != 1:
         sys.exit("fleet_worker: extract takes one backend")
@@ -451,7 +492,10 @@ def cmd_extract(a) -> int:
 
 def cmd_check(_a) -> int:
     crew = find_crew()
-    out = subprocess.run([sys.executable, crew, "backends"], capture_output=True, text=True, timeout=60)
+    try:
+        out = subprocess.run([sys.executable, crew, "backends"], capture_output=True, text=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        sys.exit("fleet_worker: `crew.py backends` did not answer in 60 s")
     try:
         rows = [{"backend": r["backend"], "path": r["bin"], "cheap": r["tiers"]["cheap"],
                  "live_tested_on": r["live_tested_on"]} for r in json.loads(out.stdout) if r["backend"] in BACKENDS]
@@ -488,6 +532,20 @@ def self_test() -> int:
     check(norm_url("https://www.Example.com/a/?x=1#f") == norm_url("http://example.com/a"), "norm_url")
     check(last_json_object('x {"a": 1} y {"b": {"c": 2}} z') == {"b": {"c": 2}}, "last JSON object")
     check(last_json_object("no json") is None, "no JSON -> None")
+    check(prune({"claims": None, "sourceQuality": "blog"}, EXTRACT_SCHEMA) == {"sourceQuality": "blog"},
+          "prune drops a null array")
+    check(prune({"claims": ["text", {"claim": "c", "quote": None, "importance": "central"},
+                            {"claim": "d", "quote": "q", "importance": ["x"]}], "sourceQuality": 3},
+                EXTRACT_SCHEMA) == {"claims": [{"claim": "c", "importance": "central"},
+                                               {"claim": "d", "quote": "q"}]},
+          "prune drops wrong-typed items and fields, keeps the rest")
+    check(prune("not an object", EXTRACT_SCHEMA) is None and prune({"results": "x"}, SEARCH_SCHEMA) == {},
+          "prune: wrong root, wrong array")
+    kept, _, _ = select_sources([{"angle": "a", "backend": "grok", "results": prune(
+        [{"url": None, "title": "t", "relevance": "high"}, {"url": "https://a.example/x", "title": "t",
+                                                            "relevance": "low"}],
+        SEARCH_SCHEMA["properties"]["results"])}], 5)
+    check([s["url"] for s in kept] == ["https://a.example/x"], "a result with no url is not a source")
     rows = {"grok": {"tiers": {"cheap": {"model": "grok-4.7", "effort": "xhigh"}}},
             "opencode": {"tiers": {"cheap": {"model": "opencode/x-free", "effort": None}}}}
     check(pick_efforts(rows, ["grok", "opencode"], "cheap", {}, None) == {"grok": "low", "opencode": None},
@@ -584,7 +642,8 @@ def main() -> int:
         return self_test()
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("check", help="which backends are installed, and at which version")
+    sub.add_parser("check", help="crew's path and, per web backend, its binary, cheap tier "
+                                   "and the version crew was last tested on")
     for name, inp in (("search", "angles"), ("extract", "sources")):
         p = sub.add_parser(name)
         p.add_argument("--backend", required=True,
