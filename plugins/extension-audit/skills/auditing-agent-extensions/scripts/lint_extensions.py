@@ -8,6 +8,8 @@ Usage:
     lint_extensions.py PATH [PATH...]       text report; exit 1 on any error
     lint_extensions.py PATH --json          findings as a JSON array
     lint_extensions.py PATH --plugin-validate   also run `claude plugin validate --strict`
+    lint_extensions.py PATH --directory     also apply the claude.ai plugin directory's
+                                            submission rules (README, license, icon, size)
     lint_extensions.py --self-test
 
 PATH is a repository, a plugin or a skill directory. Every SKILL.md below it is
@@ -34,6 +36,35 @@ TOC_AFTER_LINES = 100      # reference files longer than this need a table of co
 TOC_SEARCH_LINES = 30      # where to look for it
 
 RESERVED = ("anthropic", "claude")
+LISTING_MAX = 1536         # Claude Code cuts description + when_to_use here
+# Every frontmatter key Claude Code reads (code.claude.com/docs/en/skills).
+CLAUDE_CODE_KEYS = {"name", "description", "when_to_use", "argument-hint", "arguments",
+                    "disable-model-invocation", "user-invocable", "allowed-tools",
+                    "disallowed-tools", "model", "effort", "context", "agent", "background",
+                    "hooks", "paths", "shell", "metadata", "license", "compatibility"}
+# The Agent Skills spec keys: the only ones claude.ai uploads and the Skills API
+# accept; any other key there is a hard error, not ignored.
+PORTABLE_KEYS = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
+
+# claude.ai plugin directory (claude.com/docs/plugins/pre-submission-checklist).
+README_MIN_WORDS = 40
+REVIEW_FILE_BYTES = 256 * 1024     # a larger non-image file is held for a reviewer
+REVIEW_FILE_COUNT = 512
+ICON_MIN, ICON_MAX, ICON_MAX_BYTES = 512, 2048, 2 * 1024 * 1024
+ICON_PATHS = (".claude-plugin/icon.png", ".claude-plugin/icon.jpg", ".claude-plugin/icon.jpeg",
+              "assets/icon.png", "assets/icon.jpg", "assets/icon.jpeg")
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico"}
+LAUNCHERS = {"npx", "uvx", "bunx", "pnpx"}
+# Launcher options whose value names the package, and options that take some
+# other value (so that value is not mistaken for the package).
+PACKAGE_FLAGS = {"uvx": {"--from"}, "npx": {"-p", "--package"}, "pnpx": {"--package"},
+                 "bunx": {"-p", "--package"}}
+VALUE_FLAGS = {"uvx": {"-p", "--python", "--with", "--with-editable", "--with-requirements", "--index",
+                       "--index-url", "--extra-index-url", "--default-index", "-f", "--find-links",
+                       "-c", "--constraints", "--overrides", "--cache-dir", "--directory",
+                       "--project", "--env-file"},
+               "npx": {"-c", "--call", "--cache", "--registry", "-w", "--workspace", "--userconfig"},
+               "pnpx": {"--dir", "-C"}, "bunx": {"--bun-version"}}
 MARKETING = ("powerful", "comprehensive", "seamless", "cutting-edge", "state-of-the-art",
              "revolutionary", "robust", "world-class", "best-in-class", "supercharge")
 # Portuguese words with no English homograph, so a hit is not an English word
@@ -94,6 +125,53 @@ def unsafe_scalars(text):
     return bad
 
 
+def unclosed_quotes(text):
+    """Frontmatter keys whose quoted value never closes. A quoted scalar may
+    span lines, so the closing quote is looked for until the next key."""
+    m = FRONTMATTER.match(text)
+    lines = m.group(1).splitlines() if m else []
+    bad = []
+    for i, raw in enumerate(lines):
+        km = re.match(r"^([A-Za-z_][\w-]*):[ \t]+(['\"])(.*)$", raw)
+        if not km:
+            continue
+        q, rest = km.group(2), km.group(3)
+        if not _closes(q, "\n".join([rest, *_until_next_key(lines[i + 1:])])):
+            bad.append(km.group(1))
+    return bad
+
+
+def _closes(q, text):
+    """Whether a scalar opened by quote q closes in text. Inside single quotes
+    '' is a literal quote; inside double quotes a backslash escapes the next
+    character. Whatever follows the closing quote (a comment) is not read."""
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if q == '"' and c == "\\":
+            i += 2
+            continue
+        if c == q:
+            if q == "'" and text[i + 1:i + 2] == "'":
+                i += 2
+                continue
+            return True
+        i += 1
+    return False
+
+
+def _until_next_key(lines):
+    for l in lines:
+        if re.match(r"^[A-Za-z_][\w-]*:", l):
+            return
+        yield l
+
+
+def frontmatter_keys(text):
+    m = FRONTMATTER.match(text)
+    return re.findall(r"(?m)^([A-Za-z_][\w-]*):", m.group(1)) if m else []
+
+
 def prose(text):
     return CODE_FENCE.sub("", text)
 
@@ -126,6 +204,22 @@ def check_skill(skill_md):
         out.append(finding("error", skill_md, 1, "yaml",
                            f"{key}: unquoted value with ': ', ' #' or a trailing ':' is invalid YAML; "
                            "quote it or reword (strict parsers such as Copilot CLI drop the skill)"))
+    for key in unclosed_quotes(text):
+        out.append(finding("error", skill_md, 1, "yaml", f"{key}: quoted value is never closed"))
+    for key in frontmatter_keys(text):
+        if key not in CLAUDE_CODE_KEYS:
+            out.append(finding("error", skill_md, 1, "frontmatter-key",
+                               f"{key!r} is not a skill field Claude Code reads; "
+                               "claude.ai and the Skills API refuse the upload"))
+        elif key not in PORTABLE_KEYS:
+            out.append(finding("warn", skill_md, 1, "frontmatter-key",
+                               f"{key!r} is Claude Code only; claude.ai uploads and the Skills API "
+                               f"accept just {', '.join(sorted(PORTABLE_KEYS))}"))
+    for nested in sorted(d.rglob("SKILL.md")):
+        if nested != skill_md and not any(part in SKIP_DIRS for part in nested.relative_to(d).parts):
+            out.append(finding("warn", nested, 1, "nested-skill",
+                               f"SKILL.md inside the skill {d.name!r}; claude.ai and the Skills API "
+                               "refuse the upload"))
 
     name = fields.get("name", "")
     if not name:
@@ -148,6 +242,11 @@ def check_skill(skill_md):
             out.append(finding("error", skill_md, 1, "description", "contains an XML tag"))
         if FIRST_PERSON.search(desc):
             out.append(finding("warn", skill_md, 1, "description-person", "write in third person"))
+    listing = len(desc) + len(fields.get("when_to_use", ""))
+    if listing > LISTING_MAX:
+        out.append(finding("warn", skill_md, 1, "listing-length",
+                           f"description + when_to_use is {listing} chars; Claude Code cuts the "
+                           f"listing at {LISTING_MAX}, so put the key use case first"))
 
     n = len(body.splitlines())
     if n > BODY_MAX_LINES:
@@ -201,8 +300,160 @@ def check_skill(skill_md):
     return out
 
 
-def check_plugin(plugin, run_validate):
+def launcher_spec(cmd, args):
+    """The package a launcher runs, or None when cmd is not a launcher."""
+    tool = Path(cmd).name
+    if tool not in LAUNCHERS:
+        return None
+    it = iter(args)
+    for a in it:
+        flag, eq, val = a.partition("=")
+        if flag in PACKAGE_FLAGS[tool]:
+            return val if eq else next(it, "")
+        if flag in VALUE_FLAGS[tool]:
+            if not eq:
+                next(it, None)
+            continue
+        if not a.startswith("-"):
+            return a
+    return ""
+
+
+def pinned(spec):
+    """Exact version: uv's pkg==1.2.3 or npm's pkg@1.2.3 (not a range, not latest)."""
+    return bool(re.search(r"==\d[\w.+-]*$", spec) or re.search(r"(?<=.)@v?\d+\.\d+\.\d+[\w.+-]*$", spec))
+
+
+def _dict(v):
+    return v if isinstance(v, dict) else {}
+
+
+def _load_json(path):
+    """A JSON object from path, or {} when it is missing, unreadable or not an object;
+    `claude plugin validate` is the check that reports a malformed file."""
+    try:
+        return _dict(json.loads(path.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return {}
+
+
+def launchers(plugin):
+    """(file, package spec) for every npx/uvx-style launcher in MCP configs and hooks."""
+    found = []
+    for cfg in (plugin / ".mcp.json", plugin / "mcp.json"):
+        servers = _dict(_load_json(cfg).get("mcpServers"))
+        for srv in map(_dict, servers.values()):
+            args = srv.get("args")
+            spec = launcher_spec(str(srv.get("command", "")),
+                                 [str(a) for a in args] if isinstance(args, list) else [])
+            if spec is not None:
+                found.append((cfg, spec))
+    for hooks in sorted(plugin.rglob("hooks.json")):
+        if any(part in SKIP_DIRS for part in hooks.relative_to(plugin).parts):
+            continue
+        for groups in _dict(_load_json(hooks).get("hooks")).values():
+            for group in groups if isinstance(groups, list) else []:
+                for h in map(_dict, _dict(group).get("hooks") or []):
+                    words = str(h.get("command", "")).split()
+                    if words:
+                        spec = launcher_spec(words[0], words[1:])
+                        if spec is not None:
+                            found.append((hooks, spec))
+    return found
+
+
+def image_size(path):
+    """(format, width, height) from a PNG or JPEG header, or (format, None, None)."""
+    b = path.read_bytes()
+    if b[:8] == b"\x89PNG\r\n\x1a\n" and b[12:16] == b"IHDR":
+        return "png", int.from_bytes(b[16:20], "big"), int.from_bytes(b[20:24], "big")
+    if b[:2] == b"\xff\xd8":
+        i = 2
+        while i + 9 <= len(b):
+            if b[i] != 0xFF:
+                i += 1
+                continue
+            marker = b[i + 1]
+            if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7 or marker == 0xFF:
+                i += 1 if marker == 0xFF else 2
+                continue
+            seg = int.from_bytes(b[i + 2:i + 4], "big")
+            if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                return "jpeg", int.from_bytes(b[i + 7:i + 9], "big"), int.from_bytes(b[i + 5:i + 7], "big")
+            i += 2 + seg
+        return "jpeg", None, None
+    if b[:4] == b"RIFF" and b[8:12] == b"WEBP":
+        return "webp", None, None
+    if b.lstrip()[:5] in (b"<?xml", b"<svg ") or b"<svg" in b[:512]:
+        return "svg", None, None
+    return "unknown", None, None
+
+
+def check_directory(plugin, manifest):
+    """The claude.ai plugin directory's submission rules a file walk can decide."""
     out = []
+    readme = next((p for p in sorted(plugin.glob("*")) if p.name.lower() in ("readme.md", "readme")), None)
+    if readme is None:
+        out.append(finding("error", plugin, 0, "directory-readme", "no README; the listing uses it"))
+    else:
+        words = len(re.findall(r"\w+", CODE_FENCE.sub("", readme.read_text(encoding="utf-8", errors="replace"))))
+        if words < README_MIN_WORDS:
+            out.append(finding("error", readme, 1, "directory-readme",
+                               f"{words} words outside code blocks < {README_MIN_WORDS}"))
+    if not manifest.get("license") and not any(p.name.upper().startswith(("LICENSE", "LICENCE"))
+                                                for p in plugin.glob("*")):
+        out.append(finding("error", plugin, 0, "directory-license", "no LICENSE file and no license field"))
+
+    icon = manifest.get("icon")
+    icon_path = plugin / icon if isinstance(icon, str) else next(
+        (plugin / c for c in ICON_PATHS if (plugin / c).is_file()), None)
+    if icon_path is None:
+        out.append(finding("error", plugin / ".claude-plugin" / "plugin.json", 0, "directory-icon",
+                           "no icon: set icon in .claude-plugin/plugin.json or add .claude-plugin/icon.png"))
+    elif not icon_path.is_file():
+        out.append(finding("error", plugin / ".claude-plugin" / "plugin.json", 0, "directory-icon",
+                           f"icon {icon} does not exist"))
+    else:
+        fmt, w, h = image_size(icon_path)
+        size = icon_path.stat().st_size
+        if fmt not in ("png", "jpeg"):
+            out.append(finding("error", icon_path, 0, "directory-icon", f"{fmt} icon; use PNG or JPEG"))
+        elif w is None:
+            out.append(finding("warn", icon_path, 0, "directory-icon", "could not read the image size"))
+        elif w != h or not ICON_MIN <= w <= ICON_MAX:
+            out.append(finding("error", icon_path, 0, "directory-icon",
+                               f"{w}x{h}; needs square, {ICON_MIN}-{ICON_MAX} px a side"))
+        if size >= ICON_MAX_BYTES:
+            out.append(finding("error", icon_path, 0, "directory-icon", f"{size} bytes; needs < 2 MB"))
+        out.append(finding("warn", icon_path, 0, "directory-icon-once",
+                           "the portal takes the icon only on the first save or submit"))
+
+    files = [p for p in plugin.rglob("*") if p.is_file() and not any(x in SKIP_DIRS for x in p.relative_to(plugin).parts)]
+    for p in files:
+        if p.name == ".DS_Store":
+            out.append(finding("error", p, 0, "directory-files", ".DS_Store blocks a submission"))
+        elif p.suffix.lower() not in IMAGE_SUFFIXES and p.stat().st_size > REVIEW_FILE_BYTES:
+            out.append(finding("warn", p, 0, "directory-files",
+                               f"{p.stat().st_size // 1024} KiB > 256 KiB; held for a reviewer"))
+    if len(files) > REVIEW_FILE_COUNT:
+        out.append(finding("warn", plugin, 0, "directory-files",
+                           f"{len(files)} files > {REVIEW_FILE_COUNT}; held for a reviewer"))
+    if (plugin / "bin").is_dir():
+        out.append(finding("warn", plugin / "bin", 0, "directory-bin",
+                           "a top-level bin/ stops installation in claude.ai and Cowork"))
+    return out
+
+
+def check_plugin(plugin, run_validate, directory=False):
+    out = []
+    manifest = _load_json(plugin / ".claude-plugin" / "plugin.json")
+    for cfg, spec in launchers(plugin):
+        if not pinned(spec):
+            out.append(finding("warn", cfg, 0, "launcher-pin",
+                               f"{spec or 'a launcher'} without an exact version; the plugin directory "
+                               "refuses it and every install may get a different release"))
+    if directory:
+        out += check_directory(plugin, manifest)
     if (plugin / "commands").is_dir():
         out.append(finding("warn", plugin / "commands", 0, "commands-dir", "prefer skills/ for new components"))
     for script in sorted((plugin / "hooks").glob("*")) if (plugin / "hooks").is_dir() else []:
@@ -218,7 +469,10 @@ def check_plugin(plugin, run_validate):
         if not claude:
             out.append(finding("warn", plugin, 0, "plugin-validate", "claude not on PATH; validator skipped"))
         else:
-            r = subprocess.run([claude, "plugin", "validate", "--strict", str(plugin)],
+            cmd = [claude, "plugin", "validate", "--strict"]
+            if directory:
+                cmd += ["--profile", "directory"]
+            r = subprocess.run(cmd + [str(plugin)],
                                capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL)
             if r.returncode != 0:
                 tail = (r.stdout + r.stderr).strip().splitlines()[-3:]
@@ -240,14 +494,14 @@ def walk(root):
     return skills, plugins
 
 
-def lint(paths, run_validate=False):
+def lint(paths, run_validate=False, directory=False):
     out = []
     for root in paths:
         skills, plugins = walk(Path(root))
         for s in skills:
             out += check_skill(s)
         for p in plugins:
-            out += check_plugin(p, run_validate)
+            out += check_plugin(p, run_validate, directory)
     return out
 
 
@@ -327,6 +581,106 @@ def self_test():
         if not {"commands-dir", "hook-json"} <= rules:
             fails.append(f"plugin checks missed: {rules}")
 
+        fm = t / "fm"
+        fm.mkdir()
+        cases = {
+            "unclosed": ("description: \"Does a thing. Use when asked.\n", ("error", "yaml")),
+            "unknown": ("description: Does a thing.\nfoo: bar\n", ("error", "frontmatter-key")),
+            "cc-only": ("description: Does a thing.\nwhen_to_use: When asked.\n", ("warn", "frontmatter-key")),
+            "listing": ("description: Does a thing.\nwhen_to_use: " + "w" * 1600 + "\n", ("warn", "listing-length")),
+        }
+        for case, (front, want) in cases.items():
+            sk = fm / case
+            sk.mkdir()
+            (sk / "SKILL.md").write_text(f"---\nname: {case}\n{front}---\n# X\n", encoding="utf-8")
+            if want not in {(f["level"], f["rule"]) for f in lint([sk])}:
+                fails.append(f"{case}: missed {want}")
+        for ok_front in ("description: 'It''s fine. Use when asked.'\n",
+                         "description: \"Does a thing.\" # note\n",
+                         "description: 'Does a thing.'\n# a comment\nlicense: MIT\n",
+                         "description: \"Spans\n  two lines.\"\n",
+                         "description: \"Has a \\\" quote.\"\n"):
+            sk = fm / "quoted"
+            sk.mkdir(exist_ok=True)
+            (sk / "SKILL.md").write_text(f"---\nname: quoted\n{ok_front}---\n# X\n", encoding="utf-8")
+            if lint([sk]):
+                fails.append(f"valid quoting flagged: {ok_front!r} {lint([sk])}")
+        inner = fm / "quoted" / "sub"
+        inner.mkdir()
+        (inner / "SKILL.md").write_text("---\nname: sub\ndescription: Inner.\n---\n", encoding="utf-8")
+        if "nested-skill" not in {f["rule"] for f in lint([fm / "quoted"])}:
+            fails.append("nested SKILL.md not flagged")
+
+        for spec, want in (("kinocut==1.16.4", True), ("@scope/pkg@1.2.3", True), ("pkg@latest", False),
+                           ("pkg@^1.2.0", False), ("pkg", False), ("@scope/pkg", False)):
+            if pinned(spec) != want:
+                fails.append(f"pinned({spec!r}) != {want}")
+        if launcher_spec("uvx", ["-p", "3.12", "k==1.0"]) != "k==1.0" or \
+                launcher_spec("uvx", ["--with", "e==1.0", "k"]) != "k" or \
+                launcher_spec("uvx", ["--python=3.12", "k==1.0"]) != "k==1.0" or \
+                launcher_spec("npx", ["--package=p@1.0.0", "cmd"]) != "p@1.0.0" or \
+                launcher_spec("uvx", ["--from", "a==1.0", "kino"]) != "a==1.0" or \
+                launcher_spec("npx", ["-y", "b@2.0.0"]) != "b@2.0.0" or launcher_spec("node", ["x"]) is not None:
+            fails.append("launcher_spec misread a command")
+
+        dirp = t / "dirp"
+        (dirp / ".claude-plugin").mkdir(parents=True)
+        (dirp / ".claude-plugin" / "plugin.json").write_text(
+            '{"name": "dirp", "icon": "icon.svg"}', encoding="utf-8")
+        (dirp / ".mcp.json").write_text('{"mcpServers": {"s": {"command": "npx", "args": ["-y", "srv"]}}}',
+                                        encoding="utf-8")
+        (dirp / "README.md").write_text("Too short.\n```\n" + "word " * 50 + "\n```\n", encoding="utf-8")
+        (dirp / "icon.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'/>", encoding="utf-8")
+        (dirp / ".DS_Store").write_bytes(b"x")
+        (dirp / "bin").mkdir()
+        (dirp / "big.json").write_bytes(b" " * (REVIEW_FILE_BYTES + 1))
+        if lint([dirp]) != [f for f in lint([dirp]) if f["rule"] == "launcher-pin"] or not lint([dirp]):
+            fails.append(f"without --directory, expected only launcher-pin: {lint([dirp])}")
+        got = {(f["level"], f["rule"]) for f in lint([dirp], directory=True)}
+        for want in [("error", "directory-readme"), ("error", "directory-license"), ("error", "directory-icon"),
+                     ("error", "directory-files"), ("warn", "directory-files"), ("warn", "directory-bin"),
+                     ("warn", "launcher-pin")]:
+            if want not in got:
+                fails.append(f"directory: missed {want}")
+
+        broken = t / "broken"
+        (broken / ".claude-plugin").mkdir(parents=True)
+        (broken / ".claude-plugin" / "plugin.json").write_text("[]", encoding="utf-8")
+        (broken / ".mcp.json").write_text('{"mcpServers": {"s": "x", "t": {"command": "npx", "args": null}}}',
+                                          encoding="utf-8")
+        (broken / "hooks").mkdir()
+        (broken / "hooks" / "hooks.json").write_text('{"hooks": {"PreToolUse": ["x", {"hooks": [1]}]}}',
+                                                     encoding="utf-8")
+        (broken / "node_modules" / "dep").mkdir(parents=True)
+        (broken / "node_modules" / "dep" / "hooks.json").write_text(
+            '{"hooks": {"Stop": [{"hooks": [{"command": "npx foo"}]}]}}', encoding="utf-8")
+        try:
+            pins = [f for f in lint([broken], directory=True) if f["rule"] == "launcher-pin"]
+            if len(pins) != 1:
+                fails.append(f"malformed configs: expected the one npx in .mcp.json, got {pins}")
+        except Exception as exc:  # noqa: BLE001
+            fails.append(f"malformed configs crashed the linter: {exc!r}")
+
+        png = t / "png"
+        png.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + (1024).to_bytes(4, "big") * 2 + b"\x08\x06")
+        jpg = t / "jpg"
+        jpg.write_bytes(b"\xff\xd8\xff\xe0\x00\x10" + b"JFIF\x00" + b"\x00" * 9
+                        + b"\xff\xc0\x00\x11\x08" + (300).to_bytes(2, "big") + (600).to_bytes(2, "big") + b"\x03")
+        jpg_end = t / "jpg-end"
+        jpg_end.write_bytes(b"\xff\xd8\xff\xc0\x00\x11\x08" + (600).to_bytes(2, "big") * 2 + b"\x03")
+        if image_size(png) != ("png", 1024, 1024) or image_size(jpg) != ("jpeg", 600, 300) \
+                or image_size(jpg_end) != ("jpeg", 600, 600):
+            fails.append(f"image_size: {image_size(png)} {image_size(jpg)}")
+        good_plug = t / "good-plug"
+        (good_plug / ".claude-plugin").mkdir(parents=True)
+        (good_plug / ".claude-plugin" / "plugin.json").write_text('{"name": "good-plug", "license": "MIT"}',
+                                                                   encoding="utf-8")
+        (good_plug / ".claude-plugin" / "icon.png").write_bytes(png.read_bytes())
+        (good_plug / "README.md").write_text("word " * 45, encoding="utf-8")
+        errs = [f for f in lint([good_plug], directory=True) if f["level"] == "error"]
+        if errs:
+            fails.append(f"clean plugin failed --directory: {errs}")
+
     for f in fails:
         print("FAIL:", f)
     print(f"self-test: {'ok' if not fails else str(len(fails)) + ' failed'}")
@@ -340,8 +694,10 @@ def main():
     ap.add_argument("paths", nargs="+", type=Path)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--plugin-validate", action="store_true", help="also run claude plugin validate --strict")
+    ap.add_argument("--directory", action="store_true",
+                    help="also apply the claude.ai plugin directory's submission rules")
     a = ap.parse_args()
-    found = lint(a.paths, a.plugin_validate)
+    found = lint(a.paths, a.plugin_validate, a.directory)
     if a.json:
         print(json.dumps(found, indent=2, ensure_ascii=False))
     else:
