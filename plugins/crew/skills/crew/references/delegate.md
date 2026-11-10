@@ -2,6 +2,7 @@
 
 ## Contents
 
+- One run, start to finish
 - Ask first
 - When to delegate
 - Before the first run in a project
@@ -17,12 +18,25 @@ commits, or declares anything done. `scripts/crew.py` is the guard rail.
 [opencode.md](opencode.md), [copilot.md](copilot.md), [codex.md](codex.md),
 [grok.md](grok.md), [cursor.md](cursor.md), [claude.md](claude.md).
 
+## One run, start to finish
+
+1. Ask the user, if this backend has not run yet in the session.
+2. Commit, so the tree is clean.
+3. Write the task JSON outside the tree.
+4. `gate TASK.json --baseline` exits 0.
+5. `delegate TASK.json` in the background; leave the tree alone.
+6. Read the verdict: `ok`, `failures`, `warnings`, `guard_denials`.
+7. Review `git diff HEAD` against the source of truth.
+8. Commit or discard. The worker never commits.
+
+Each step is detailed below.
+
 ## Ask first
 
 Delegating and reviewing send the prompt, the files the worker reads and the
 diff to the backend's provider (Google, the Zen model's provider, GitHub) and
-spend the user's quota or credits. Ask before the first `delegate` or `review`
-of a session.
+spend the user's quota or credits. Ask before the first run on each backend
+in a session.
 
 ## When to delegate
 
@@ -107,6 +121,50 @@ read `warnings` and `guard_denials` too (repeated denials usually mean an
 ambiguous brief or an impossible gate). On failure the diff stays in the tree:
 finish it by hand or rewrite the task — re-delegating the same task tends to
 repeat the error.
+
+The shape, with made-up values for [task.example.json](task.example.json) and
+the long strings cut:
+
+```json
+{
+  "ok": true,
+  "mode": "delegate",
+  "backend": "agy",
+  "run_dir": "/repo/.git/crew/runs/20261110-141502-delegate-48211",
+  "model": "gemini-3.8-flash-high",
+  "failures": [],
+  "warnings": ["1 call(s) denied by the guards; see guard_denials"],
+  "changed": {
+    "in_scope": ["src/server/orders/orders.service.ts",
+                 "src/server/orders/orders.service.test.ts"],
+    "side_effects": [],
+    "out_of_scope": []
+  },
+  "gate": {"passed": true, "source": "final (run after agy)",
+           "hook_attempts": 2, "tail": "Test Files  1 passed (1)"},
+  "guard_denials": [{"tool": "run_command",
+                     "reason": "Command blocked (…): 'git commit -am wip'. …",
+                     "args": {"CommandLine": "git commit -am wip"}}],
+  "stop_events": [],
+  "report": {
+    "status": "done",
+    "files_changed": ["src/server/orders/orders.service.ts",
+                      "src/server/orders/orders.service.test.ts"],
+    "checks_run": ["npx vitest run src/server/orders PASS"],
+    "divergences": ["findById returns null instead of throwing: the new repository has no NotFound"],
+    "out_of_scope_needs": ["src/server/index.ts: register the service"],
+    "notes": ""
+  },
+  "agy": {"rc": 0, "wall_seconds": 412},
+  "next": "Nothing was committed. Review `git diff HEAD` …"
+}
+```
+
+`ok` is true here and the run still needs a decision: one divergence to accept
+or reject, and one file the worker could not touch. `changed` comes from git
+and `gate` from the script; `report` is the worker's own account. The block
+named after the backend (`agy` here) carries more fields, which differ by
+backend. A refusal prints only `{"ok": false, "refused": true, "failures": […]}`.
 
 ## Review the diff — after every run, ok or not
 
