@@ -41,7 +41,8 @@ libraries, their licenses, and `scripts/media-search.py`).
 - Room, phone or radio effects are the last step.
 - **Synthesized** effects need no license: `scripts/sfx-synth.py list` shows
   static, ticks, thuds, impacts, rain, wind, lamp hum, typing, a heartbeat
-  and a TV switching off, made with numpy from a seed (same seed, same file).
+  and a TV switching off, made from a seed (same seed, same file). It needs
+  numpy.
   Abstract or lo-fi pieces can use them for every effect.
 
 ## Fixing real recordings

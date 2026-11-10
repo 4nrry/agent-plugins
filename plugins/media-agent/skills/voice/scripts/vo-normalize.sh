@@ -53,7 +53,7 @@ for in_file in "$@"; do
   # Pass 2: apply with the measured values (linear=true only when it fits the true-peak limit).
   ffmpeg -hide_banner -loglevel error -y -i "$in_file" \
     -af "loudnorm=I=$target:TP=$tp:LRA=$lra:measured_I=$mi:measured_TP=$mtp:measured_LRA=$mlra:measured_thresh=$mth:linear=true:print_format=summary" \
-    -ar 48000 "$out" 2>/dev/null
+    -ar 48000 "$out"
 
   # Pass 3: speech has a high crest factor, so the true-peak ceiling leaves loudnorm
   # 1-2 LU under target on short sentences. Re-measure and add the missing gain
@@ -63,7 +63,7 @@ for in_file in "$@"; do
   if awk -v d="$diff" 'BEGIN { exit !(d > 0.3 || d < -0.3) }'; then
     lim=$(awk -v tp="$tp" 'BEGIN { printf "%.4f", 10 ^ (tp / 20) }')
     ffmpeg -hide_banner -loglevel error -y -i "$out" \
-      -af "volume=${diff}dB,alimiter=limit=$lim:attack=5:release=50:level=false" "$out.tmp.wav" 2>/dev/null
+      -af "volume=${diff}dB,alimiter=limit=$lim:attack=5:release=50:level=false" "$out.tmp.wav"
     mv "$out.tmp.wav" "$out"
   fi
 

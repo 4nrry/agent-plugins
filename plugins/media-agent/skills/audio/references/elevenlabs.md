@@ -8,7 +8,7 @@ Checked against the docs on 2026-10-26.
 |---|---|---|
 | Local file as input | yes, the script uploads it | not on its own: upload opens a picker the user must use |
 | Output | a file on disk | a signed URL that expires in 2 h; download at once |
-| Offers | SFX, music, voice isolation, transcription, dubbing, TTS | all that, plus third-party image and video models, Topaz upscale, music from video, audio effects, brand kit, chained flows |
+| Offers | SFX, music, voice isolation and transcription through the script; dubbing and TTS exist in the API, and the script does not call them | all that, plus third-party image and video models, Topaz upscale, music from video, audio effects, brand kit, chained flows |
 
 Input is a file on this machine: REST. Everything starts from a prompt, or the
 user wants the canvas: MCP.

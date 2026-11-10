@@ -7,10 +7,12 @@
   media-search.py pexels     "industrial plant drone" --type video|photo [--download DIR]  # PEXELS_API_KEY
   media-search.py pixabay    "wastewater treatment" --type video|photo [--download DIR]    # PIXABAY_API_KEY
 
-API keys come from the environment (use `bws run -- media-search.py ...` or a preloaded .env).
+API keys come from the environment, injected by a secrets manager's `run` (for example
+`bws run -- media-search.py ...`), never from a .env in the repo.
 Each result prints its license and attribution; check the item's license before publishing.
+Pixabay answers are kept for 24 h under the user cache directory, as its terms require.
 """
-import argparse, json, os, sys, urllib.parse, urllib.request
+import argparse, hashlib, json, os, sys, time, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
 
 UA = {"User-Agent": "media-agent-search/1.0"}
@@ -21,6 +23,25 @@ def get(url, headers=None, params=None):
     req = urllib.request.Request(url, headers={**UA, **(headers or {})})
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.load(r)
+
+def cached_get(name, url, params, hours=24):
+    """get(), with the answer kept for `hours` under the cache directory. The
+    file name is a hash of the request without its `key`, so no key is stored."""
+    ident = json.dumps([url, sorted((k, str(v)) for k, v in params.items() if k != "key" and v is not None)])
+    path = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache", "media-agent", name,
+                hashlib.sha256(ident.encode()).hexdigest()[:32] + ".json")
+    try:
+        if time.time() - path.stat().st_mtime < hours * 3600:
+            return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+    data = get(url, params=params)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data), encoding="utf-8")
+    except OSError:
+        pass                      # an unwritable cache costs a request, not the search
+    return data
 
 def download(url, dest: Path, headers=None):
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -91,11 +112,11 @@ def pexels(a):
             ext = Path(urllib.parse.urlparse(r["file"]).path).suffix or ".bin"
             print("→", download(r["file"], Path(a.download) / f"pexels-{r['id']}{ext}"))
 
-# ---------------- Pixabay: key as a parameter; 24 h caching required ----------------
+# ---------------- Pixabay: key as a parameter; 24 h caching required (cached_get) ----------------
 def pixabay(a):
     k = key("PIXABAY_API_KEY")
     if a.type == "video":
-        data = get("https://pixabay.com/api/videos/", params={"key": k, "q": a.query, "per_page": max(3, a.n), "video_type": "film"})
+        data = cached_get("pixabay", "https://pixabay.com/api/videos/", {"key": k, "q": a.query, "per_page": max(3, a.n), "video_type": "film"})
         out = []
         for v in data.get("hits", []):
             best = v["videos"].get("large") or v["videos"].get("medium")
@@ -104,7 +125,7 @@ def pixabay(a):
             out.append({"id": v["id"], "creator": v["user"], "duration_s": v["duration"], "w": best["width"], "h": best["height"],
                         "file": best["url"], "page": v["pageURL"], "license": "Pixabay Content License (commercial use; no standalone resale)"})
     else:
-        data = get("https://pixabay.com/api/", params={"key": k, "q": a.query, "per_page": max(3, a.n), "image_type": "photo", "orientation": "horizontal" if a.orientation == "landscape" else None})
+        data = cached_get("pixabay", "https://pixabay.com/api/", {"key": k, "q": a.query, "per_page": max(3, a.n), "image_type": "photo", "orientation": "horizontal" if a.orientation == "landscape" else None})
         out = [{"id": h["id"], "creator": h["user"], "w": h["imageWidth"], "h": h["imageHeight"], "file": h.get("largeImageURL"), "page": h["pageURL"],
                 "license": "Pixabay Content License (commercial use; no standalone resale)"} for h in data.get("hits", [])]
     row(out)
@@ -122,7 +143,14 @@ def main():
         s.add_argument("--type", default="audio" if name == "openverse" else "video", choices=["audio", "image", "video", "photo"])
         s.add_argument("--license", default="cc0", choices=list(FS_LIC))
         s.add_argument("--orientation", default="landscape", choices=["landscape", "portrait", "square"])
-    a = p.parse_args(); a.fn(a)
+    a = p.parse_args()
+    try:
+        a.fn(a)
+    except urllib.error.HTTPError as e:     # the host only: a URL can carry the key
+        sys.exit(f"media-search: {urllib.parse.urlsplit(e.url or '').hostname} answered HTTP {e.code} {e.reason} "
+                 "(401 or 403: the key; 429: the rate limit)")
+    except urllib.error.URLError as e:
+        sys.exit(f"media-search: no answer from the service: {e.reason}")
 
 if __name__ == "__main__":
     main()

@@ -19,7 +19,9 @@ delivery. These rules hold for any TTS; the engines and their traps are in
 - `text` is the caption; `say` is what the TTS speaks. Acronyms, brand names
   and numbers are written one way and spoken another: spell them out in `say`.
 - `duration` comes from the generated file (`ffprobe`), never an estimate.
-  Captions and music ducking derive from it.
+  Captions and music ducking derive from it. `scripts/vo-normalize.sh -j`
+  writes it per file in a JSON of its own: copy each `duration` into this one
+  by `id`.
 - Captions built from this JSON have no transcription errors. Use
   speech-to-text only for audio you did not generate (`audio` skill). For
   word-by-word captions, align each sentence's `say` to its file (`audio`
