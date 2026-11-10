@@ -1,6 +1,6 @@
 ---
 name: video-generation
-description: Generates short AI video shots with any video model — animate a chosen still, one camera move, resolution by use, check every clip. Use for a generated clip or generated b-roll, an animated photo, image-to-video or text-to-video, or when a video model or route is named (Veo, Omni, Google Flow, Grok Imagine, Sora, Kling). Stock footage is in the audio skill.
+description: Generates short AI video shots with any video model — animate a chosen still, one camera move, resolution by use, check every clip. Use for a generated clip or generated b-roll, an animated photo, image-to-video or text-to-video, or when a video model or route is named (Veo, Omni, Google Flow, Grok Imagine, Sora, Kling). Stock footage is in the stock-media skill.
 ---
 
 # Video generation

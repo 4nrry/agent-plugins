@@ -32,8 +32,9 @@ jq -n '{
     hookEventName: "PreToolUse",
     additionalContext: (
       "No media-agent skill is loaded yet. Before this Kinocut call, load the " +
-      "one that fits with the Skill tool: audio (music, SFX, stock media, noise " +
-      "removal, subtitles for a real recording), voice (narration, TTS), " +
+      "one that fits with the Skill tool: audio (music, SFX, noise removal, " +
+      "subtitles for a real recording), stock-media (library footage, photos, " +
+      "music and effects, with credits), voice (narration, TTS), " +
       "video-editing (a finished mp4), video-composition (a video built from " +
       "its source project), image-retouching (background removal, upscale, " +
       "inpainting), cutout-animation (a transparent looping animation from " +
