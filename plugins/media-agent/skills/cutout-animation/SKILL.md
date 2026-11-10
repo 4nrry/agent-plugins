@@ -23,19 +23,22 @@ page loads.
 - **The clip changes the pose; the page moves the subject.** Bobbing, crossing
   the screen, following the scroll are CSS or script on the element. They cost
   no frames and change without a new clip.
-- Check the clip on a frame strip (`video-generation`'s `contact-sheet.sh`)
+- Check the clip on a contact sheet (`video-generation`'s `contact-sheet.sh`)
   before removing any background. A wrong limb is cheaper to catch here.
 
 ## Choosing the loop
 
 - **A cycle:** trim to a stretch whose first and last frames show the same
-  pose (`--ss`, `--t`). Use it for a stroke that goes one way: a swim, a step,
-  a wave.
+  pose (`--ss`, `--t`), and pack it with `--drop-last`: left in, that pose is
+  held for two frames every time the loop comes round. Use it for a stroke
+  that goes one way: a swim, a step, a wave.
 - **Ping-pong:** play a short stretch forward and back (`--pingpong`). It
   halves the frames to cut out. Use it for sway, breathing and floating, not
   for a directional stroke, which reads wrong in reverse.
 - **10 to 12 frames per second.** It reads as stop motion and is half the
-  frames of the clip.
+  frames of the clip. Set it once, at extraction: `pack` plays the frames at
+  the rate `cutout-frames.sh` recorded, and its own `--fps` only changes the
+  speed.
 
 ## Frames and cut-outs
 
@@ -53,19 +56,25 @@ running and stops it at the end. A second run with the same clip and options
 does nothing; a changed clip, rate or trim starts the directory over, so old
 cut-outs never mix with new frames.
 
+It needs `ffmpeg`, `curl`, `COMFY_HOME` and the `image-retouching` skill
+installed beside this one: it runs that skill's `comfy-run.py` and
+`comfy-serve.sh`, so this folder copied alone stops before any frame is
+extracted, naming the missing script.
+`cutout_pack.py` needs Pillow.
+
 - This removes the background with a segmentation model, which is what was
   run on a grey studio sweep with a soft shadow. A chroma key needs a solid
   key colour behind the subject, which an approved still rarely has.
-- Look at `check.jpg` before packing: sample frames over the page's own
+- Look at the contact sheet (`check.jpg`) before packing: sample frames over the page's own
   colour. Count the limbs in every cell and look at the edges.
 
 ## Packing
 
 ```bash
 python3 scripts/cutout_pack.py pack work/octopus/cut -o octopus.webp --width 400 \
-    --still octopus-still.webp
+    --drop-last --still octopus-still.webp
 python3 scripts/cutout_pack.py pack work/seahorse/cut -o seahorse.webp --pingpong \
-    --sprite seahorse-sheet.webp --css seahorse-sheet.css
+    --still seahorse-still.webp --sprite seahorse-sheet.webp --css seahorse-sheet.css
 ```
 
 - **One crop box for the whole clip**, the union of every frame's box. Cropped
