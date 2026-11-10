@@ -2,16 +2,17 @@
 """crew: run another vendor's agent CLI headless as an isolated worker.
 
 The host agent (in any tool) plans and reviews; the worker answers (`ask`,
-`review`) or executes one well-scoped slice (`delegate`, on agy, opencode or
-copilot). This script is the guard rail between them. Subcommands:
+`review`) or executes one well-scoped slice (`delegate`, on agy, opencode,
+copilot, codex, grok, cursor or claude). This script is the guard rail between
+them. Subcommands:
 
-  delegate TASK.json   run the task under agy with guard hooks and a gate
+  delegate TASK.json   run the task under the backend's guard hooks and a gate
   review [PROMPT...]   read-only second opinion (agy: --mode plan + --json-schema)
   ask BACKEND PROMPT   one read-only turn with any agent CLI, or the next turn of
                        a session (--session); backends and tiers in backends.py
   backends             list backends, tiers, binaries and test status
   gate TASK.json       run the task's gate by hand (--baseline: commands only)
-  hook pre|stop|start  agy workspace hook handlers (installed per run)
+  hook EVENT           the guard handlers each backend's hooks call (installed per run)
   hook oc-pre          the opencode guard plugin's handler (same policy)
   hook cp-pre|cp-stop  GitHub Copilot CLI repo hooks (same policy, gate on agentStop)
   --self-test          exercises everything that does not need agy itself
@@ -3244,7 +3245,8 @@ def read_prompt(a) -> str:
 def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None, session=None,
             cwd=None, timeout_s=600, allow_same_vendor=False, env=None, web=False, schema=None) -> dict:
     """One turn with a worker CLI. Returns the verdict; never trusts the exit code alone.
-    `web`: the backend's read-only web profile (search and fetch, no file tools).
+    `web`: the backend's web profile, search and fetch. Only the backends in
+    WEB_ONLY lose their file tools with it; the verdict's `read_only` says which.
     `schema`: a JSON object is expected back, natively where the CLI supports it,
     else asked for in the prompt; it lands in the verdict's `structured`."""
     import backends
@@ -3328,7 +3330,9 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
     return {"ok": not failures, "backend": backend, "tier": tier, "model": r["model"],
             "effort": r["effort"], "session": parsed.get("session") or preset or session,
             "text": parsed.get("text"), "structured": structured, "usage": parsed.get("usage"),
-            "read_only": "web search and fetch only" if web else spec["read_only"],
+            "read_only": spec["read_only"] if not web else "web search and fetch only"
+            if backend in backends.WEB_ONLY else
+            spec["read_only"] + "; web search and fetch added, files under --cwd still readable",
             "version": version, "failures": failures, "warnings": warnings,
             "left_processes_stopped": sorted(left), "duration_s": round(time.time() - t0, 1),
             "rundir": rundir}
@@ -4517,7 +4521,7 @@ def main(argv=None) -> int:
     d.add_argument("--backend", choices=BACKENDS, help="overrides the task's backend field")
     d.add_argument("--repo")
     d.add_argument("--no-quota-probe", action="store_true", help="agy only")
-    r = sub.add_parser("review", help="read-only second opinion (--mode plan)")
+    r = sub.add_parser("review", help="read-only second opinion on a change")
     r.add_argument("prompt", nargs="*")
     r.add_argument("--prompt-file")
     r.add_argument("--diff", help="range for `git diff`, e.g. HEAD~1 or main...HEAD")
@@ -4552,10 +4556,12 @@ def main(argv=None) -> int:
     k.add_argument("--timeout", default="10m")
     k.add_argument("--allow-same-vendor", action="store_true",
                    help="allow a backend from the host's own vendor")
-    k.add_argument("--web", action="store_true", help="web search and fetch only, no file tools")
+    k.add_argument("--web", action="store_true",
+                   help="add web search and fetch; claude, grok and hermes then have no file tools, "
+                        "agy, opencode and codex can still read --cwd")
     k.add_argument("--schema", help="JSON schema file: the reply's object lands in `structured`")
     sub.add_parser("backends", help="list backends, tiers, binaries and test status")
-    h = sub.add_parser("hook", help="agy hook handler (installed per run)")
+    h = sub.add_parser("hook", help="guard handler a backend's hooks call (installed per run)")
     h.add_argument("event", choices=["pre", "stop", "start", "oc-pre", "cp-pre", "cp-stop",
                                      "cx-start", "cx-pre", "cx-stop", "gk-start", "gk-pre", "gk-stop",
                                      "cu-start", "cu-pre", "cl-start", "cl-pre", "cl-stop"])
@@ -4567,6 +4573,9 @@ def main(argv=None) -> int:
         if a.cmd in ("ask", "delegate", "review") and os.environ.get(RUN_ENV):
             raise Refusal(f"called from inside crew run {os.environ[RUN_ENV]}: a worker does not "
                           "start workers")
+        if a.cmd in ("ask", "delegate", "review") and not os.path.isdir("/proc"):
+            raise Refusal("crew needs Linux: without /proc it cannot find and stop what a run "
+                          "leaves behind")
         return {"delegate": cmd_delegate, "review": cmd_review, "gate": cmd_gate,
                 "ask": cmd_ask, "backends": cmd_backends}[a.cmd](a)
     except Refusal as exc:

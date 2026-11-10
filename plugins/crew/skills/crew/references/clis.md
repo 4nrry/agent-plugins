@@ -3,7 +3,7 @@
 Stable facts per CLI. Flags drift between releases: check `<cli> --help` before
 relying on a row, and the linked docs when it matters. Installed versions and
 when each row was last confirmed:
-`bench/shared/2026-10-21-agent-cli-inventory-CLAIMS.md`.
+the agent-cli-inventory record in [bench/shared](https://github.com/4nrry/agent-plugins/tree/main/bench/shared).
 
 ## Contents
 
@@ -68,8 +68,9 @@ failed or cut runs. Judge from the event stream and a gate.
 | ZCode | `~/.agents/skills`, `~/.zcode/skills` | `.agents`, `.zcode` | installs Claude Code marketplaces (`zcode plugins marketplace add <dir>`) with skills, hooks and MCP; skills then load twice beside linked ones | `~/.zcode/cli/config.json`, `hooks.enabled` | — |
 | Muse Code | `~/.agents/skills`, `~/.claude/skills` | `.agents/skills` | Agent Plugins and Claude-compatible bundles (`muse plugins install`, `marketplace add`); an Agent Plugins root drops `hooks/hooks.json` | `hooks` in `~/.config/muse/settings.json`, Claude's contract | interactive, once per folder |
 
-`~/.agents/skills` is the one folder nearly every tool reads; `link_skills.py`
-at the repo root links this marketplace's skills there.
+`~/.agents/skills` is the one folder nearly every tool reads; the repository's
+[`scripts/link_skills.py`](https://github.com/4nrry/agent-plugins/blob/main/scripts/link_skills.py) (`just link-skills`)
+links this marketplace's skills there.
 
 Agent Plugins (agent-plugins.org, 1.0.0) is the open package format: a
 `plugin.json` at the plugin root, skills only in `skills/<name>/SKILL.md`, MCP
@@ -100,14 +101,14 @@ Use the native mechanism for the host's own models; use another CLI for another
 vendor's quota or model family. A native subagent or workflow step can itself
 call another CLI, and a host can ask another CLI to run its own workflow
 headless (for example `claude -p` running `agent-fleet:deep-research`).
-Per-harness subagent definitions: `agent-fleet/references/harnesses.md`.
+Per-harness subagent definitions: the agent-fleet plugin's
+[harnesses.md](https://github.com/4nrry/agent-plugins/blob/main/plugins/agent-fleet/skills/agent-fleet/references/harnesses.md).
 
 ## Traps
 
 - A worker loads its user's global instructions, skills, MCP servers and hooks
   unless told not to. Grok loads all of Claude Code's; strip them per run
-  (`fleet_worker.py` in agent-fleet shows the flags for grok, agy, opencode and
-  Hermes).
+  (`scripts/backends.py` holds the flags crew passes for each backend).
 - Headless write access needs a per-tool permission bypass; a guard must then
   be the CLI's own pre-tool hook, installed for the run only.
 - A worker that loads crew could delegate again; crew refuses to run when

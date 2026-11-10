@@ -1,5 +1,6 @@
 ---
 name: crew
+compatibility: Linux (/proc), python3, git, and the worker's CLI installed and logged in.
 description: Uses another vendor's agent CLI as an isolated subagent to spend spare quota there — agy (Gemini), opencode (free Zen models), Codex, Grok, Hermes, Copilot, Cursor, Muse, Kimi, or Claude Code when the host is not Claude. Covers a read-only question or multi-turn conversation (ask), a second opinion on a diff (review), and one bounded coding slice under guard hooks and a mechanical gate (delegate), each returning a JSON verdict. Use when the user wants another vendor's model to answer, review or do part of the work, wants to offload a slice, or names one of these CLIs as a worker. Not for the host's own models, which its native subagents serve.
 ---
 
@@ -10,12 +11,17 @@ headless for one turn, or resumed for the next. You write the question or the
 task, read the verdict, and check the result. The worker never decides design
 or commits.
 
-Commands run from this skill's directory: `python3 scripts/crew.py ...`.
+`scripts/crew.py` below stands for its full path in this skill's directory.
+Run it from the repository the worker should see, or pass `--repo`
+(`delegate`, `review`, `gate`) or `--cwd` (`ask`): both default to the current
+directory, so a run started inside this skill's folder points the worker at
+the wrong repository or is refused.
 
 ## Before the first run
 
-- Ask the user. A run sends the prompt, and any files the worker reads, to that
-  vendor, and spends their quota. Copilot spends AI credits on every run.
+- Ask the user before the first run on each backend in a session. A run sends
+  the prompt, and any files the worker reads, to that vendor, and spends their
+  quota. Copilot spends AI credits on every run.
 - Never route to your own vendor: from Claude Code, use your own subagents for
   Haiku or Sonnet. `ask` refuses a `claude` worker inside Claude Code.
 - Workers do not start workers: crew refuses to run inside a crew run
@@ -45,10 +51,12 @@ python3 scripts/crew.py ask <backend> --session <session> --prompt-file next.md 
 ```
 
 The worker runs read-only in `--cwd`. The verdict's `read_only` says how each
-backend enforces this, and a changed work tree fails the run. `--web` swaps the
-file tools for web search and fetch (claude, agy, opencode, grok, codex,
-hermes); grok and hermes also search X posts, users and threads, which other
-engines cannot read. `--schema file.json` returns the reply's JSON object in `structured`,
+backend enforces this, and a changed work tree fails the run. `--web` adds web
+search and fetch (claude, agy, opencode, grok, codex, hermes). Only claude,
+grok and hermes lose their file tools with it; agy, opencode and codex can
+still read what is under `--cwd`, so for a question that must not see the
+repository, point `--cwd` at an empty directory. grok and hermes also search X
+posts, users and threads, which other engines cannot read. `--schema file.json` returns the reply's JSON object in `structured`,
 natively where the CLI supports it.
 
 Hermes gets no file tools, so put the code in the prompt. Kimi has no verified
@@ -60,13 +68,14 @@ it never trusts the CLI's exit code alone. Pass `session` back to continue.
 ## review: a second opinion on a change
 
 ```bash
-python3 scripts/crew.py review [--backend <backend>] [--diff HEAD~1] [--tier cheap|mid|top] [--model m] --prompt-file q.md
+python3 scripts/crew.py review [--repo repo] [--backend <backend>] [--diff HEAD~1] [--tier cheap|mid|top] [--model m] --prompt-file q.md
 ```
 
-Any backend `ask` runs. agy, opencode and Copilot stay read-only through crew's
-guard hooks; the others through their own read-only mode, with one more turn in
-the same session when the reply lacks the JSON report. Hermes sees only the
-question and the diff.
+Any backend `ask` runs; the default is agy. agy, opencode and Copilot stay
+read-only through crew's guard hooks, and take `--model` only: `--tier` and
+`--effort` apply to the other backends, which run through their own read-only
+mode, with one more turn in the same session when the reply lacks the JSON
+report. Hermes sees only the question and the diff.
 
 It returns schema'd findings. Check each finding's evidence in the code before
 repeating it, and say which ones you confirmed.

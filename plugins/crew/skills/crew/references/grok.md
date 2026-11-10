@@ -1,7 +1,7 @@
 # crew through Grok Build
 
-Read [delegate.md](delegate.md) first. Commands run from the crew skill's
-directory (the one holding `SKILL.md`). Requires `grok` on PATH and logged in;
+Read [delegate.md](delegate.md) first. `scripts/crew.py` is in the crew skill's
+directory; run it from the task's repository, or pass `--repo`. Requires `grok` on PATH and logged in;
 a version other than the tested one is a warning (Grok updates itself).
 
 ```bash
@@ -73,9 +73,8 @@ and `--no-subagents`, plus `-m` and `--reasoning-effort`.
 
 **Long context.** Grok Build has no flag for its 500k window (the TUI's
 `/context-window`). `[model."grok-4.7"]` with `context_window = 500000` in
-`~/.grok/config.toml` sets it for every session, crew's included (set on this
-machine since 2026-10-26): on 2026-10-25 a 268,743-token request went through
-with it. The `GROK_CONFIG`
+`~/.grok/config.toml` sets it for every session, crew's included: with it set
+on the tested host, a 268,743-token request went through. The `GROK_CONFIG`
 overlay drops `model.*`, so crew cannot set it per run. Before 1.0.74 Grok could
 fall back to the smaller window after an idle spell or a failed request, and
 compact early (its changelog, `~/.grok/CHANGELOG.md`).
