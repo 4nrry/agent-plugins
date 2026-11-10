@@ -47,6 +47,14 @@ worker flags are in crew's `references/clis.md`.
 - **Antigravity, opencode, Hermes**: no scripted fan-out; Hermes has a Kanban
   board of worker profiles.
 
+## A blocked host, in each harness's words
+
+- **Claude Code**: WebFetch answers "unable to fetch from <host>" without
+  contacting it; the built-in browser and Claude in Chrome answer "not allowed"
+  for a host they refuse.
+- **`verify_citations.py`**: `HTTP 403` or `HTTP 404` is the host's answer about
+  one page; `URLError` is no answer at all.
+
 ## Isolation traps
 
 - Grok Build loads Claude Code's plugins, skills, hooks and `CLAUDE.md`, plus

@@ -17,6 +17,9 @@
 # block work.
 set -euo pipefail
 
+for tool in jq sha256sum; do
+  command -v "$tool" >/dev/null || { echo "agent-fleet routing hook: $tool not found, routing not checked" >&2; exit 0; }
+done
 input=$(cat)
 tool_input=$(jq -c '.tool_input // empty' <<<"$input" 2>/dev/null) || exit 0
 [[ -n "$tool_input" ]] || exit 0

@@ -13,7 +13,8 @@ an HTTP 429 on 2026-10-28. The first non-empty track in that order wins.
 
 Exit 0 with the text; 3 when yt-dlp is missing (treat the source as
 unreachable); 1 when no track yields text (a 200 with an empty body is the
-usual silent failure).
+usual silent failure, and so is a missing JavaScript runtime) or yt-dlp does
+not finish in 180 s.
 """
 
 import argparse
@@ -54,7 +55,11 @@ def main():
                "--no-warnings", "-o", str(Path(tmp) / "v.%(ext)s")]
         for r in runtimes:
             cmd += ["--js-runtimes", r]
-        proc = subprocess.run(cmd + [a.url], capture_output=True, text=True, timeout=180)
+        try:
+            proc = subprocess.run(cmd + [a.url], capture_output=True, text=True, timeout=180)
+        except subprocess.TimeoutExpired:
+            print("no caption text for %s: yt-dlp did not finish in 180 s" % a.url, file=sys.stderr)
+            sys.exit(1)
         for track in order:
             f = Path(tmp) / ("v.%s.json3" % track)
             text = render(f) if f.is_file() and f.stat().st_size else ""

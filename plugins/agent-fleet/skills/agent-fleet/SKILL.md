@@ -68,46 +68,53 @@ record in [bench/shared](https://github.com/4nrry/agent-plugins/tree/main/bench/
   extract on grok, agy, hermes, codex, claude or opencode (never the host's own
   vendor), read-only, through the crew plugin's `ask`. See
   [references/cli-workers.md](references/cli-workers.md). Ask the user before
-  the first run: it spends their quota or sends the question to that provider.
+  the first run on each backend in a session: it spends their quota there and
+  sends the question to that provider.
 - Search X only when the question is about posts, announcements, an account
   or what people say, or the user asks for it.
 
 ## Verifying what comes back
 
 - Every claim carries a fetched URL and a verbatim quote. Check by fetching and
-  string-matching, no model in the loop: run `scripts/verify_citations.py`
-  (`--self-test` first) on a markdown report, or with `--claims` on a JSON
-  file whose claims carry a quote and a URL. It is the only check that catches
-  a real quote on the wrong source.
-- Read the match ratio, not pass/fail. About half or less means written from
-  memory. Below about a sentence a high ratio means presence, not support:
-  check where a short quote landed, unless it is a distinctive identifier.
-  Read `n_skipped` too: a clean result over many skipped quotes checked little.
-- An unreachable page is neither pass nor fail. Read the error: "unable to
-  fetch from <host>" means the host was never contacted, so every page there
-  will fail the same way; an HTTP status (404, 403) means the host answered
-  about that one page. After one block, send no more fetch agents to that
-  host. A browser tool (the harness's built-in one, or the user's own through
-  an extension) renders scripts and carries the user's session, but may refuse
-  the same host: reddit.com was refused by every route tried, while
-  stackoverflow.com opened only in the user's Chrome. Past that, use the
-  site's official API, an archive mirror, or ask the user to read the page.
-  Keep a per-project list of blocked hosts and the route that worked.
+  string-matching, no model in the loop: run `scripts/verify_citations.py
+  REPORT.md -o result.json` (`--self-test` first), or `--claims FILE.json -o
+  result.json` on a JSON file whose claims carry `quote` and `sourceUrl`,
+  `source` or `url`. It is the only check that catches a real quote on the
+  wrong source.
+- Read the match ratio, not pass/fail: the terminal shows totals only, and
+  each quote's `ratio_on_attributed`, `best_url`, `wrong_source` and
+  `fusion_suspected` are in the `-o` file under `citations`. About half or
+  less means written from memory. Below about a sentence a high ratio means
+  presence, not support: check where a short quote landed, unless it is a
+  distinctive identifier. Read `n_skipped` too: a clean result over many
+  skipped quotes checked little.
+- An unreachable page is neither pass nor fail. Read the error: a refusal
+  that names the host means the host was never contacted, so every page there
+  will fail the same way (the wording per harness is in
+  [references/harnesses.md](references/harnesses.md)); an HTTP status (404,
+  403) means the host answered about that one page. After one block, send no
+  more fetch agents to that host. A browser tool (the harness's built-in one,
+  or the user's own through an extension) renders scripts and carries the
+  user's session, but may refuse the same host. Past that, use the site's
+  official API, an archive mirror, or ask the user to read the page. Keep a
+  per-project list of blocked hosts and the route that worked.
 - A YouTube page fetched as a web page returns its chrome, not the words: do
   not count it as fetched. `scripts/yt_captions.py URL [--lang pt]` returns the
-  caption text when yt-dlp is installed, and exits 3 when it is not: then the
-  video is unreachable; never install yt-dlp for it. Automatic captions are
+  caption text when yt-dlp is installed. Exit 3 means it is not installed and
+  exit 1 that no caption text came back: either way the video is unreachable;
+  never install yt-dlp for it. Automatic captions are
   speech recognition with no date or version attached: quote them as what was
   said in the video, not as a fact. Gemini through agy did not watch a YouTube
-  URL; it saw only the text. Both measurements are in the repository's
-  `bench/plugins/agent-fleet/results/`, the blocked-hosts-youtube record.
+  URL; it saw only the text. That measurement and the blocked hosts tried
+  are in the blocked-hosts-youtube record under
+  [bench/plugins/agent-fleet/results](https://github.com/4nrry/agent-plugins/tree/main/bench/plugins/agent-fleet/results).
 - A vendor is interested in comparisons and authoritative on its own
   published terms. For prices, plan limits, licence text and support windows,
   the vendor's own page is the required source and a third-party summary the
   weaker one; for performance and comparison claims its material is demoted.
   A price or limit carries its unit and billing period ("$9 per user/month,
   billed annually"): without them the number is wrong, not just short.
-- Verify verdicts in both directions: the breadth tier under-marks uncertainty,
-  an adversarial pass over-marks caveats. A contester's caveat is a claim to
-  check, not a correction to accept.
-- Rewrite verifier text to your own register before using it.
+- Verify verdicts in both directions: the cheap tier under-marks uncertainty,
+  the adversarial pass over-marks caveats. A caveat from the adversarial pass
+  is a claim to check, not a correction to accept.
+- Rewrite the adversarial pass's text to your own register before using it.
