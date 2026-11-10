@@ -5,6 +5,7 @@
 //                  [--budget-kb N] [--contrast-area 10] [--no-contrast]
 //                  [--wait-ms 600] [--no-sandbox]
 //   page-check.mjs --self-test
+//   page-check.mjs --help
 //
 // For each width: loads the page in headless Chrome and records console
 // errors, failed requests and broken images, in the page and in the frames it
@@ -669,6 +670,7 @@ async function selfTest() {
       ['frame from another site: its missing image', has(host.errors, 'gone-in-frame.png'), host.errors],
       ['budget: a 0.1 KB budget is exceeded', (await one('good.html', 'w', { budgetKb: 0.1 })).errors.some((e) => e.startsWith('weight:'))],
       ['budget: a 500 KB budget is not', !(await one('good.html', 'w2', { budgetKb: 500 })).errors.some((e) => e.startsWith('weight:'))],
+      ['--help prints the usage and exits 0', (() => { const r = spawnSync(process.execPath, [process.argv[1], '--help'], { encoding: 'utf8' }); return r.status === 0 && r.stdout.startsWith('usage:') && !r.stderr; })()],
       ['a host without its scheme is a URL', toUrl('localhost:8080/x') === 'http://localhost:8080/x' && toUrl('data:text/html,x') === 'data:text/html,x'],
     ];
     let failedChecks = 0;
@@ -681,10 +683,11 @@ async function selfTest() {
   } finally { server.close(); server.closeAllConnections?.(); removeDir(dir); temp.delete(dir); }
 }
 
-const USAGE = 'usage: page-check.mjs URL_OR_FILE -o OUTDIR [--widths 1440x900,390x844] [--stops 5] [--budget-kb N] [--contrast-area 10] [--no-contrast] [--wait-ms 600] [--no-sandbox]\n       page-check.mjs --self-test';
+const USAGE = 'usage: page-check.mjs URL_OR_FILE -o OUTDIR [--widths 1440x900,390x844] [--stops 5] [--budget-kb N] [--contrast-area 10] [--no-contrast] [--wait-ms 600] [--no-sandbox]\n       page-check.mjs --self-test\n       page-check.mjs --help';
 
 async function main() {
   const argv = process.argv.slice(2);
+  if (argv.includes('--help') || argv.includes('-h')) { console.log(USAGE); return 0; }
   if (argv.includes('--self-test')) return selfTest();
   let opts;
   try { opts = parseArgs(argv); if (!opts.target || !opts.out) throw new Error(USAGE); }
