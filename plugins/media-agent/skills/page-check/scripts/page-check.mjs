@@ -174,11 +174,12 @@ const needed = (sizePx, weight) => (sizePx >= 24 || (sizePx >= 18.66 && weight >
 
 // Contrast of one text block against the pixels actually behind it. The text's
 // own alpha is applied over every sampled pixel, so see-through text is judged
-// against what shows through it.
-function blockContrast(img, block) {
+// against what shows through it. The boxes are in layout pixels and the capture
+// may not be (a phone shrinks a page that has no viewport meta), hence the scale.
+function blockContrast(img, block, scale) {
   const [r, g, b] = block.rgb, a = block.alpha, ratios = [];
   for (const q of block.rects) {
-    const x0 = Math.max(0, Math.floor(q.x)), y0 = Math.max(0, Math.floor(q.y)), x1 = Math.min(img.w, Math.ceil(q.x + q.w)), y1 = Math.min(img.h, Math.ceil(q.y + q.h));
+    const x0 = Math.max(0, Math.floor(q.x * scale)), y0 = Math.max(0, Math.floor(q.y * scale)), x1 = Math.min(img.w, Math.ceil((q.x + q.w) * scale)), y1 = Math.min(img.h, Math.ceil((q.y + q.h) * scale));
     const step = Math.max(1, Math.round(Math.sqrt(((x1 - x0) * (y1 - y0)) / 300)));
     for (let y = y0; y < y1; y += step) for (let x = x0; x < x1; x += step) {
       const i = (y * img.w + x) * img.bpp, pr = img.px[i], pg = img.px[i + 1], pb = img.px[i + 2];
@@ -188,36 +189,99 @@ function blockContrast(img, block) {
   return ratios;
 }
 
-// Runs in the page: every run of visible HTML text in the viewport, with the
-// boxes of its lines, its colour as the browser resolves it, and its size.
+// Runs in the page: every run of HTML text that is really on screen in the
+// viewport, with the boxes of its lines, its colour as the browser resolves it,
+// and its size. A line that an ancestor's overflow cuts away, or that something
+// else covers from end to end (a fixed header), is not on screen: the pixels
+// there belong to something else. Form fields are text too.
 const TEXT_BLOCKS = `(() => {
   const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+  if (!document.body) return { vw, blocks: [] };
   const cv = document.createElement('canvas'); cv.width = cv.height = 1;
   const cx = cv.getContext('2d', { willReadFrequently: true });
   const rgba = (css) => { cx.clearRect(0, 0, 1, 1); cx.fillStyle = '#000'; cx.fillStyle = css; cx.fillRect(0, 0, 1, 1); const d = cx.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2], d[3] / 255]; };
-  const out = [];
+  const clip = (el, r) => {
+    let pos = 'static';   // an absolutely positioned box is only clipped by its containing blocks, a fixed one by none
+    for (let p = el; p && pos !== 'fixed'; p = p.parentElement) {
+      const s = getComputedStyle(p);
+      if (pos === 'absolute' && s.position === 'static' && s.transform === 'none') continue;
+      if (p !== document.body && p !== document.documentElement) {
+        const b = p.getBoundingClientRect();
+        if (s.overflowX !== 'visible') { r.l = Math.max(r.l, b.left); r.r = Math.min(r.r, b.right); }
+        if (s.overflowY !== 'visible') { r.t = Math.max(r.t, b.top); r.b = Math.min(r.b, b.bottom); }
+      }
+      pos = s.position;
+    }
+    r.l = Math.max(r.l, 0); r.t = Math.max(r.t, 0); r.r = Math.min(r.r, vw); r.b = Math.min(r.b, vh);
+    return r.r - r.l > 2 && r.b - r.t > 2 ? r : null;
+  };
+  const rowCovered = (el, r, y) => {   // something unrelated lies over this row of the box from end to end
+    for (const f of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+      const x = r.l + (r.r - r.l) * f, top = document.elementFromPoint(x, y);
+      if (!top || top === el || el.contains(top) || top.contains(el)) return false;
+      if (!document.elementsFromPoint(x, y).includes(el)) return false;   // it takes no pointer: cannot tell, so measure it
+    }
+    return true;
+  };
+  const uncovered = (el, r) => {       // the box, or the bands of it between two rows that nothing covers
+    const h = r.b - r.t;
+    if (![r.t + 0.5, (r.t + r.b) / 2, r.b - 0.5].some((y) => rowCovered(el, r, y))) return [r];
+    const n = Math.max(1, Math.round(h / 2)), ys = Array.from({ length: n + 1 }, (_, i) => r.t + 0.5 + (h - 1) * i / n), free = ys.map((y) => !rowCovered(el, r, y)), parts = [];
+    for (let i = 0, start = -1; i <= n; i++) {
+      if (free[i] && start < 0) start = i;
+      if (start >= 0 && (!free[i] || i === n)) { const end = free[i] ? i : i - 1; if (ys[end] - ys[start] > 2) parts.push({ l: r.l, r: r.r, t: ys[start], b: ys[end] }); start = -1; }
+    }
+    return parts;
+  };
+  const out = [], seen = new Map();
+  const add = (el, text, boxes, color, s) => {
+    let op = 1; for (let p = el; p; p = p.parentElement) op *= parseFloat(getComputedStyle(p).opacity);
+    const c = rgba(color); if (op * c[3] < 0.05) return;
+    const rects = boxes.map((q) => clip(el, { l: q.left, t: q.top, r: q.right, b: q.bottom })).filter(Boolean).flatMap((q) => uncovered(el, q)).map((q) => ({ x: q.l, y: q.t, w: q.r - q.l, h: q.b - q.t }));
+    if (!rects.length) return;
+    let b = seen.get(el);
+    if (!b) { b = { key: '', text: '', rects: [], rgb: c.slice(0, 3), alpha: op * c[3], size: parseFloat(s.fontSize), weight: parseInt(s.fontWeight, 10) || 400 }; seen.set(el, b); out.push(b); }
+    b.text = (b.text + ' ' + text).trim().slice(0, 60); b.rects.push(...rects);
+  };
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-  const seen = new Map();
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
     const text = n.textContent.trim(); if (text.length < 3) continue;
     const el = n.parentElement; if (!el || el.namespaceURI !== 'http://www.w3.org/1999/xhtml' || /^(SCRIPT|STYLE|NOSCRIPT|TEXTAREA|OPTION)$/.test(el.tagName)) continue;
     const s = getComputedStyle(el); if (s.visibility === 'hidden' || s.display === 'none') continue;
-    let op = 1; for (let p = el; p; p = p.parentElement) op *= parseFloat(getComputedStyle(p).opacity);
-    const c = rgba(s.color); if (op * c[3] < 0.05) continue;
     const range = document.createRange(); range.selectNodeContents(n);
-    const rects = [...range.getClientRects()].filter((r) => r.width > 2 && r.height > 2 && r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw).map((r) => ({ x: r.left, y: r.top, w: r.width, h: r.height }));
-    if (!rects.length) continue;
-    let b = seen.get(el);
-    if (!b) { b = { key: '', text: '', rects: [], rgb: c.slice(0, 3), alpha: op * c[3], size: parseFloat(s.fontSize), weight: parseInt(s.fontWeight, 10) || 400, top: 0 }; seen.set(el, b); out.push(b); }
-    b.text = (b.text + ' ' + text).trim().slice(0, 60); b.rects.push(...rects);
+    add(el, text, [...range.getClientRects()], s.webkitTextFillColor || s.color, s);
+  }
+  for (const el of document.querySelectorAll('input, textarea')) {
+    if (/^(checkbox|radio|range|color|file|hidden|image)$/.test(el.type)) continue;
+    const s = getComputedStyle(el); if (s.visibility === 'hidden' || s.display === 'none') continue;
+    const shown = el.value || el.placeholder || ''; if (shown.trim().length < 3) continue;
+    const q = el.getBoundingClientRect(), px = (v) => parseFloat(v) || 0;
+    const box = { left: q.left + px(s.borderLeftWidth) + px(s.paddingLeft), top: q.top + px(s.borderTopWidth) + px(s.paddingTop), right: q.right - px(s.borderRightWidth) - px(s.paddingRight), bottom: q.bottom - px(s.borderBottomWidth) - px(s.paddingBottom) };
+    add(el, el.type === 'password' ? 'a password field' : shown.trim(), [box], el.value ? s.webkitTextFillColor || s.color : getComputedStyle(el, '::placeholder').color, s);
   }
   for (const [el, b] of seen) {
     b.key = el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\\s+/).slice(0, 2).join('.') : '') + ' "' + b.text + '"';
   }
-  return out.slice(0, 400);
+  return { vw, blocks: out.slice(0, 400) };
 })()`;
-const HIDE_TEXT = `(() => { const s = document.createElement('style'); s.id = '__page_check_hide'; s.textContent = '*, *::before, *::after, ::placeholder { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; caret-color: transparent !important; text-decoration-color: transparent !important; }'; document.head.appendChild(s); return true; })()`;
-const SHOW_TEXT = `(() => { document.getElementById('__page_check_hide')?.remove(); return true; })()`;
+// Hiding the text must not start the page's own colour transition, or the
+// capture would catch the glyphs half faded; nor may showing it again.
+const HIDE_TEXT = `(() => {
+  const host = document.head || document.documentElement, style = (id, css) => { const s = document.createElement('style'); s.id = id; s.textContent = css; host.appendChild(s); };
+  style('__page_check_still', '*, *::before, *::after, ::placeholder { transition: none !important; }');
+  void document.documentElement.getBoundingClientRect();
+  style('__page_check_hide', '*, *::before, *::after, ::placeholder { color: transparent !important; -webkit-text-fill-color: transparent !important; text-shadow: none !important; caret-color: transparent !important; text-decoration-color: transparent !important; }');
+  return true;
+})()`;
+const SHOW_TEXT = `(() => {
+  document.getElementById('__page_check_hide')?.remove();
+  void document.documentElement.getBoundingClientRect();
+  document.getElementById('__page_check_still')?.remove();
+  return true;
+})()`;
+// Resolves when the transitions and finite animations now running have ended
+// (2 s at most): text caught halfway through its entrance is not its contrast.
+const AT_REST = `Promise.race([Promise.all(document.getAnimations().filter((a) => a.playState === 'running' && a.effect && Number.isFinite(a.effect.getComputedTiming().endTime)).map((a) => a.finished.catch(() => 0))), new Promise((r) => setTimeout(r, 2000))]).then(() => true)`;
 
 // Runs in the page. Returns what can be measured without looking.
 const MEASURE = `(() => {
@@ -247,7 +311,7 @@ const MEASURE = `(() => {
     title: document.title, lang: root.lang || '',
   };
 })()`;
-const BROKEN = `[...document.images].filter((i) => i.complete && !i.naturalWidth && (i.currentSrc || i.src)).map((i) => i.currentSrc || i.src).slice(0, 12)`;
+const BROKEN = `[...(document.images || [])].filter((i) => i.complete && !i.naturalWidth && (i.currentSrc || i.src)).map((i) => i.currentSrc || i.src).slice(0, 12)`;
 
 async function checkViewport(cdp, url, vp, opts, outdir) {
   const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' });
@@ -282,7 +346,7 @@ async function checkViewport(cdp, url, vp, opts, outdir) {
     else if (method === 'Network.loadingFailed') { const r = requests.get(p.requestId); open.delete(p.requestId); lastActivity = Date.now(); if (r && !p.canceled) fail(r.url, `request failed: ${p.errorText} ${r.url}`); }
     else if (method === 'Runtime.exceptionThrown') { const d = p.exceptionDetails, x = d.exception; errors.push('page error: ' + String(x?.description ?? (x && 'value' in x ? `${d.text} ${x.value}` : d.text)).split('\n')[0]); }
     else if (method === 'Runtime.consoleAPICalled' && p.type === 'error') errors.push('console error: ' + p.args.map((a) => ('value' in a ? String(a.value) : a.description ?? a.type)).join(' ').slice(0, 200));
-    else if (method === 'Log.entryAdded' && p.entry.level === 'error' && p.entry.source !== 'network') errors.push('browser error: ' + p.entry.text.slice(0, 200));
+    else if (method === 'Log.entryAdded' && p.entry.level === 'error' && p.entry.source !== 'network' && p.entry.source !== 'worker') errors.push('browser error: ' + p.entry.text.slice(0, 200));
     else if (method === 'Page.javascriptDialogOpening') {
       warnings.push(`the page opened a dialog (${p.type}: "${p.message.slice(0, 60)}"); it was accepted so that the check could go on`);
       cdp.send('Page.handleJavaScriptDialog', { accept: true }, sid, 5000).catch(() => {});
@@ -349,13 +413,14 @@ async function checkViewport(cdp, url, vp, opts, outdir) {
     for (let i = 0; i < 40 && !swept; i++) {
       const y = Math.round(Math.min(Math.max(0, height - vp.h), i * vp.h * 0.9));
       await scrollTo(y); await sleep(Math.min(opts.waitMs, 300));
+      if (opts.contrast) await evaluate(AT_REST);
       for (let k = 0; opts.contrast && k < 2; k++) {
-        const blocks = await evaluate(TEXT_BLOCKS);
+        const { vw, blocks } = await evaluate(TEXT_BLOCKS);
         await evaluate(HIDE_TEXT);
         const img = decodePng(await shot());
         await evaluate(SHOW_TEXT);
         for (const b of blocks) {
-          const ratios = blockContrast(img, b); if (ratios.length < 8) continue;
+          const ratios = blockContrast(img, b, img.w / vw); if (ratios.length < 8) continue;
           const need = needed(b.size, b.weight), under = ratios.filter((x) => x < need).length / ratios.length;
           ratios.sort((x, y) => x - y);
           const cur = worst.get(b.key);
@@ -445,7 +510,10 @@ function toUrl(target) {
 async function run(target, opts) {
   const url = toUrl(target);
   fs.mkdirSync(opts.out, { recursive: true });
-  for (const f of fs.readdirSync(opts.out)) if (/^\d+x\d+-\d+\.png$/.test(f)) fs.rmSync(path.join(opts.out, f), { force: true });   // an earlier run's screenshots
+  try {   // an earlier run's screenshots, as its own report lists them, and nothing else in the directory
+    const old = JSON.parse(fs.readFileSync(path.join(opts.out, 'report.json'), 'utf8'));
+    for (const v of old.viewports) for (const f of v.shots) if (/^\d+x\d+-\d+\.png$/.test(path.basename(f))) fs.rmSync(path.join(opts.out, path.basename(f)), { force: true });
+  } catch {}
   const { cdp, close } = await launch(opts.noSandbox);
   try {
     const viewports = [];
@@ -509,6 +577,8 @@ async function selfTest() {
       <p style="color:#bbb">Pale grey words on a white page are hard to read.</p>
       <p style="color:rgba(255,255,255,.8);padding:6px;width:300px;background:linear-gradient(90deg,#123 0 50%,#9cf 50% 100%)">Half of this line sits on a light patch.</p>
       <p style="height:18px;overflow:hidden;width:120px">A long sentence that cannot fit in one short line of a narrow box.</p>
+      <p style="color:#000;-webkit-text-fill-color:#fff">Filled white on white, whatever the colour says.</p>
+      <input value="a pale grey value in a field" style="color:#ddd;border:0;width:300px">
       <div class="spin"></div><img src="missing.png" alt=""><script>console.error('boom'); null.x</script></html>`);
     // Things that are easy to get wrong in the checker itself: motion only at
     // the top of a tall page, an image that loads only when scrolled to, an
@@ -525,7 +595,22 @@ async function selfTest() {
       <div class="spin"></div><h1 id="main">A tall page with traps in it</h1><p class="late">This sentence fades in after a short delay.</p>
       <div style="height:3000px"></div><img loading="lazy" src="gone.png" width="50" height="50" alt=""><p>The end of the page.</p>
       <script>alert('hello'); if (matchMedia('(prefers-reduced-motion: reduce)').matches) console.error('reduced only');</script></html>`);
-    fs.writeFileSync(path.join(dir, 'nometa.html'), '<!doctype html><html lang="en"><title>No viewport meta</title><h1>A page a phone will shrink</h1><p>It never says how wide it wants to be laid out.</p></html>');
+    // Traps for the contrast measure: text under a fixed header, a clipped
+    // carousel slide and a closed accordion in white on white, text with its
+    // own colour transition, and text that fades in when scrolled to.
+    fs.writeFileSync(path.join(dir, 'calm.html'), `<!doctype html><html lang="en"><meta name="viewport" content="width=device-width"><title>Calm</title>
+      <style>body{margin:0;font:16px sans-serif;color:#222;background:#fff}
+      header{position:fixed;top:0;left:0;right:0;height:80px;background:#123;color:#fff;z-index:2}main{padding-top:90px}
+      .t{transition:all 1s}.rv{opacity:0;transition:opacity .9s}.rv.in{opacity:1}
+      .car{width:300px;overflow:hidden;white-space:nowrap}.car div{display:inline-block;width:300px}.car .two{color:#fff}
+      .acc{height:0;overflow:hidden;color:#fff}
+      @media (prefers-reduced-motion:reduce){.rv{transition:none}}</style>
+      <header><p>A fixed header in white on dark</p></header><main><h2 class="t">A heading in dark on white</h2>
+      ${Array.from({ length: 40 }, (_, i) => `<p class="${i % 2 ? 't' : 'rv'}">Paragraph ${i} in dark grey on white, easy to read and long enough.</p>`).join('')}
+      <div class="car"><div>Slide one is dark and visible.</div><div class="two">Slide two is white and clipped away.</div></div>
+      <div class="acc"><p>Closed accordion text in white that nobody sees.</p></div></main>
+      <script>const io = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting && e.target.classList.add('in'))); document.querySelectorAll('.rv').forEach((el) => io.observe(el));</script></html>`);
+    fs.writeFileSync(path.join(dir, 'nometa.html'), '<!doctype html><html lang="en"><title>No viewport meta</title><body style="margin:0;width:980px"><div style="float:left;width:490px;height:300px;background:#123;color:#fff"><p>White words on a dark panel that is fine to read.</p></div><h1>A page a phone will shrink</h1><p>It never says how wide it wants to be laid out.</p></html>');
     const opts = { ...parseArgs([]), widths: [{ w: 800, h: 600 }], stops: 3, waitMs: 300 };
     const one = async (target, out, more = {}) => {
       const v = (await run(target.includes('://') ? target : path.join(dir, target), { ...opts, out: path.join(dir, out), ...more })).viewports[0];
@@ -535,6 +620,8 @@ async function selfTest() {
     const good = await one('good.html', 'g');
     const bad = await one('bad.html', 'b');
     const tricky = await one('tricky.html', 't', { contrast: false });
+    const calm = await one('calm.html', 'c');
+    fs.writeFileSync(path.join(dir, 'g', '1920x1080-2.png'), png);                    // somebody else's file with a name like ours
     const phone = await one('nometa.html', 'g', { widths: [{ w: 390, h: 700 }] });   // into the first run's directory
     const t0 = Date.now(), plain = await one(origin + '/redir', 'p'), plainMs = Date.now() - t0;
     const host = await one(origin + '/host.html', 'h');
@@ -568,8 +655,13 @@ async function selfTest() {
       ['tricky page: clipped off-canvas menu is not overflow', !has(tricky.errors, 'horizontal overflow'), tricky.errors],
       ['tricky page: a screen-reader-only link is not cut text', !has(tricky.warnings, 'text cut off'), tricky.warnings],
       ['tricky page: a delayed entrance is not invisible text', !has(tricky.warnings, 'text invisible'), tricky.warnings],
+      ['bad page: text-fill-color is the colour that counts', bad.errors.some((e) => e.startsWith('low contrast') && e.includes('Filled white')), bad.errors],
+      ['bad page: the value of a form field is text', bad.errors.some((e) => e.startsWith('low contrast') && e.includes('a pale grey value')), bad.errors],
+      ['calm page: covered, clipped, transitioning and fading-in text raise nothing', calm.errors.length === 0 && calm.contrast.failing === 0, calm.errors],
+      ['calm page: its text was measured', calm.contrast.blocks >= 30, calm.contrast.blocks],
       ['phone without a viewport meta: named, not called overflow', has(phone.errors, 'no <meta name="viewport">') && !has(phone.errors, 'horizontal overflow'), phone.errors],
-      ['same directory: the first run\'s screenshots are gone', fs.readdirSync(path.join(dir, 'g')).filter((f) => f.endsWith('.png')).every((f) => f.startsWith('390x700-')), fs.readdirSync(path.join(dir, 'g'))],
+      ['phone without a viewport meta: contrast is read at the capture\'s scale', !has(phone.errors, 'low contrast'), phone.errors],
+      ['same directory: the first run\'s screenshots are gone and nothing else', fs.readdirSync(path.join(dir, 'g')).filter((f) => f.endsWith('.png') && !f.startsWith('390x700-')).join() === '1920x1080-2.png', fs.readdirSync(path.join(dir, 'g'))],
       ['server: a redirect and a missing favicon are not errors', plain.errors.length === 0 && plain.warnings.length === 0, [plain.errors, plain.warnings]],
       ['server: the redirect does not hold the run up', plainMs < 15000, plainMs],
       ['server: a compressed script counts at its transfer size', plain.weight.totalKb < 50, plain.weight],
@@ -584,7 +676,7 @@ async function selfTest() {
     const left = mine().filter((f) => !there.has(f) && f !== path.basename(dir));
     if (left.length) { failedChecks++; console.log('FAIL a temporary directory was left: ' + left.join(', ')); }
     if (failedChecks) { console.log(`self-test: ${failedChecks} of ${checks.length + 1} failed`); return 1; }
-    console.log(`self-test OK — ${checks.length + 1} checks: a clean page, a page with ten planted defects, a page of traps for the checker, a phone, a server`);
+    console.log(`self-test OK — ${checks.length + 1} checks: a clean page, a page with twelve planted defects, two pages of traps for the checker, a phone, a server`);
     return 0;
   } finally { server.close(); server.closeAllConnections?.(); removeDir(dir); temp.delete(dir); }
 }

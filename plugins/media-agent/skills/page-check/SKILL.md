@@ -15,8 +15,8 @@ node scripts/page-check.mjs https://staging.example.com/ -o check --widths 1440x
 
 It needs Node 22 or later and Chrome or Chromium, and no packages. Run
 `node scripts/page-check.mjs --self-test` once on a new machine: it plants
-ten defects in a page and checks that each is found, then checks the checker
-itself on a page of traps, a phone and a small local server.
+twelve defects in a page and checks that each is found, then checks the
+checker itself on two pages of traps, a phone and a small local server.
 
 Exit 0 is no error, 1 is at least one `ERROR`, and 2 means the check did not
 run (no Chrome, Chrome died, bad arguments). Exit 2 says nothing about the
@@ -66,6 +66,10 @@ its lowest ratio and its median, from its worst capture.
   a fix; lowering the opacity to make it "quieter" is the bug.
 - The measure ignores `text-shadow` and outlines, so text that relies on one
   reads better than its number.
+- Only text that is on screen is measured: not a line under a fixed header,
+  a slide clipped out of a carousel or a closed accordion. An entrance is
+  given up to 2 s to finish first. The value and the placeholder of a form
+  field count as text, and `-webkit-text-fill-color` is the colour when set.
 
 ## What the motion lines mean
 
@@ -98,5 +102,6 @@ speed or touch. Contrast is measured for HTML text only: not text inside an
 image, a canvas or SVG. Nothing is hovered, focused, clicked or typed, so a
 menu, a dialog or a form state is never seen. A page that scrolls inside an
 element instead of the document gets a warning and only its first screen is
-checked. It does not judge focus order, type choice or whether the motion
+checked; a page that sends itself to another address is checked as whatever
+it became. It does not judge focus order, type choice or whether the motion
 feels right. Say which of these nobody checked.
