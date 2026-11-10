@@ -15,20 +15,31 @@ node scripts/page-check.mjs https://staging.example.com/ -o check --widths 1440x
 
 It needs Node 22 or later and Chrome or Chromium, and no packages. Run
 `node scripts/page-check.mjs --self-test` once on a new machine: it plants
-ten defects in a page and checks that each is found.
+ten defects in a page and checks that each is found, then checks the checker
+itself on a page of traps, a phone and a small local server.
+
+Exit 0 is no error, 1 is at least one `ERROR`, and 2 means the check did not
+run (no Chrome, Chrome died, bad arguments). Exit 2 says nothing about the
+page: do not report it as a pass or as a finding.
 
 ## Order of work
 
 1. **Run it and fix every `ERROR` first.** They are facts, not taste: a
-   console or page error, a request that failed, a broken image, a page wider
-   than its viewport, text with too little contrast, a weight over the
-   budget, motion that does not stop.
+   console or page error (in the page or in a frame it embeds), a request
+   that failed, a broken image, a page wider than its viewport or laid out
+   wider than the phone, text with too little contrast, a weight over the
+   budget, motion that does not stop. `the check could not finish` means the
+   page hung the browser, usually a script that never returns.
 2. **Read the warnings.** Text invisible on the first screen is usually
-   content waiting for a script to reveal it; text cut off by its box is a
-   fixed height meeting a longer string.
-3. **Then look at the screenshots**, every width, top to bottom. Overlaps, a
-   wrong crop, a character that came out wrong and anything about taste are
-   only visible here.
+   content waiting for a script to reveal it (a tooltip waiting for a hover
+   shows up here too); text cut off by its box is a fixed height meeting a
+   longer string. A dialog the page opened was accepted for you. `the network
+   did not go quiet` names the request that stayed open: a stream or a poll
+   is fine, an image that never answers is not.
+3. **Then look at the screenshots** (`<width>x<height>-<stop>.png`; a new run
+   replaces the old ones), every width, top to bottom. Overlaps, a wrong
+   crop, a character that came out wrong and anything about taste are only
+   visible here.
 4. **One fix, one run.** Re-run after each fix and say which run the claim
    "it works" comes from.
 
@@ -63,21 +74,29 @@ its lowest ratio and its median, from its worst capture.
   frame sheet (`cutout-animation`); for a scroll effect, compare the
   screenshots at consecutive stops.
 - `under reduced motion: YES` is an error. The page was loaded again with
-  `prefers-reduced-motion: reduce` and still moved. CSS animations need the
-  media query; an animated image or a video needs a still to swap in, because
-  the browser does not stop those for you.
+  `prefers-reduced-motion: reduce` and still moved at one of the scroll
+  stops, which the message names. CSS animations need the media query; an
+  animated image or a video needs a still to swap in, because the browser
+  does not stop those for you.
+- An error marked `only under prefers-reduced-motion` came from that second
+  load alone: the branch of the script that handles reduced motion is broken.
 - A page with a clock, a caret or a video counts as moving. Say so instead of
   silencing the check.
 
 ## Weight
 
-The total is everything the page loaded after being scrolled to the bottom,
-so lazy images are counted. The five largest files are listed: start with the
-first one. Pick the budget before the run, not after seeing the number.
+The total is what came over the wire, frames included, after the script
+scrolled down the whole page so that lazy images load. A compressed file
+counts compressed; a local file has no transfer size and counts at its own.
+The five largest files are listed: start with the first one. Pick the budget
+before the run, not after seeing the number.
 
 ## What it does not tell you
 
 Chrome only, on this machine: not Safari, not Firefox, not a real phone's
 speed or touch. Contrast is measured for HTML text only: not text inside an
-image, a canvas or SVG. It does not judge focus order, type choice or whether
-the motion feels right. Say which of these nobody checked.
+image, a canvas or SVG. Nothing is hovered, focused, clicked or typed, so a
+menu, a dialog or a form state is never seen. A page that scrolls inside an
+element instead of the document gets a warning and only its first screen is
+checked. It does not judge focus order, type choice or whether the motion
+feels right. Say which of these nobody checked.

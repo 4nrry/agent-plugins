@@ -6,84 +6,133 @@
 //                  [--wait-ms 600] [--no-sandbox]
 //   page-check.mjs --self-test
 //
-// For each width: loads the page in headless Chrome, records console errors,
-// failed requests and broken images, measures horizontal overflow, text that is
-// invisible or cut off, the contrast of every text block against the pixels
-// really behind it (the text is hidden and the page captured twice per
-// screenful), and the weight of what was downloaded, takes a screenshot at each
-// scroll stop, and checks whether the page moves at rest and whether it still
-// moves under prefers-reduced-motion.
+// For each width: loads the page in headless Chrome and records console
+// errors, failed requests and broken images, in the page and in the frames it
+// embeds. Measures horizontal overflow, text that is invisible or cut off, and
+// the contrast of every text block against the pixels really behind it (the
+// text is hidden and the page captured twice per screenful). Scrolls down the
+// whole page so that lazy content loads, adds up what was transferred, takes a
+// screenshot at each scroll stop, and checks at each stop whether the page
+// moves at rest and whether it still moves under prefers-reduced-motion.
 //
-// Writes OUTDIR/report.json and OUTDIR/<width>-<stop>.png. Exit 1 when there is
-// an error-level finding, 0 otherwise. Needs Node 22 or later and Chrome or
-// Chromium (set CHROME to choose the binary). No npm packages.
+// Writes OUTDIR/report.json and OUTDIR/<width>x<height>-<stop>.png, replacing
+// the screenshots an earlier run left there. Exit 0 when nothing is at error
+// level, 1 when something is, 2 when the check could not run (bad arguments,
+// no Chrome, Chrome died). Needs Node 22 or later and Chrome or Chromium (set
+// CHROME to choose the binary). No npm packages.
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import zlib from 'node:zlib';
 
 function findChrome() {
-  const names = [process.env.CHROME, 'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'chrome'].filter(Boolean);
-  for (const n of names) {
-    if (n.includes('/')) { if (fs.existsSync(n)) return n; continue; }
+  const which = (n) => {
+    if (n.includes('/')) return fs.existsSync(n) ? n : null;
     const r = spawnSync('sh', ['-c', 'command -v "$1"', 'sh', n], { encoding: 'utf8' });
-    if (r.status === 0 && r.stdout.trim()) return r.stdout.trim();
+    return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : null;
+  };
+  const chosen = process.env.CHROME;
+  if (chosen) {
+    const found = which(chosen);
+    if (!found) throw new Error(`CHROME is set to "${chosen}", which was not found`);
+    return found;
   }
+  for (const n of ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'chrome']) { const found = which(n); if (found) return found; }
   throw new Error('no Chrome or Chromium found; set CHROME to the binary');
 }
 
 // A minimal Chrome DevTools Protocol client over Node's built-in WebSocket.
+// Every call has a time limit, and all of them fail at once if Chrome goes away:
+// a promise that never settles would let the process end with nothing said.
 class Cdp {
   constructor(ws) {
-    this.ws = ws; this.id = 0; this.pending = new Map(); this.handlers = [];
+    this.ws = ws; this.id = 0; this.pending = new Map(); this.handlers = new Set(); this.closed = null;
     ws.addEventListener('message', (e) => {
       const m = JSON.parse(e.data);
       if (m.id && this.pending.has(m.id)) {
-        const { resolve, reject } = this.pending.get(m.id); this.pending.delete(m.id);
+        const { resolve, reject, timer } = this.pending.get(m.id); this.pending.delete(m.id); clearTimeout(timer);
         m.error ? reject(new Error(`${m.error.message} (${m.error.code})`)) : resolve(m.result);
       } else if (m.method) {
         for (const h of this.handlers) h(m.method, m.params, m.sessionId);
       }
     });
+    const drop = () => {
+      if (this.closed) return;
+      this.closed = new Error('Chrome went away before the check finished');
+      for (const { reject, timer } of this.pending.values()) { clearTimeout(timer); reject(this.closed); }
+      this.pending.clear();
+    };
+    ws.addEventListener('close', drop); ws.addEventListener('error', drop);
   }
-  send(method, params = {}, sessionId) {
+  send(method, params = {}, sessionId, timeoutMs = 30000) {
+    if (this.closed) return Promise.reject(this.closed);
     const id = ++this.id;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`Chrome did not answer ${method} in ${timeoutMs / 1000} s (a page stuck in a script does this)`)); }, timeoutMs);
+      this.pending.set(id, { resolve, reject, timer });
       this.ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
   }
-  on(fn) { this.handlers.push(fn); }
+  on(fn) { this.handlers.add(fn); return () => this.handlers.delete(fn); }
 }
 
+// What must not outlive the run: Chrome with its helpers, and the temporary
+// directories. Chrome gets its own process group so that all of it can be
+// killed, and its own TMPDIR so that what it scatters goes with the profile.
+const temp = new Set();
+let chrome = null;
+const killTree = (proc) => { try { process.kill(-proc.pid, 'SIGKILL'); } catch { try { proc.kill('SIGKILL'); } catch {} } };
+const removeDir = (dir) => { try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch {} };
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(sig, () => {
+  if (chrome) killTree(chrome);
+  for (const dir of temp) removeDir(dir);
+  process.exit(sig === 'SIGINT' ? 130 : 143);
+});
+
 async function launch(noSandbox) {
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'page-check-'));
+  if (typeof WebSocket === 'undefined') throw new Error('this Node has no built-in WebSocket: Node 22 or later is needed');
+  const binary = findChrome();
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'page-check-')); temp.add(base);
+  const profile = path.join(base, 'profile'), tmp = path.join(base, 'tmp');
+  fs.mkdirSync(profile); fs.mkdirSync(tmp);
   const args = ['--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`, '--no-first-run',
     '--no-default-browser-check', '--hide-scrollbars', '--mute-audio', ...(noSandbox ? ['--no-sandbox'] : []), 'about:blank'];
-  const proc = spawn(findChrome(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
-  const url = await new Promise((resolve, reject) => {
-    let buf = '';
-    const timer = setTimeout(() => reject(new Error('Chrome did not open its DevTools port in 20 s:\n' + buf.slice(-600))), 20000);
-    proc.stderr.on('data', (d) => {
-      buf += d;
-      const m = buf.match(/DevTools listening on (ws:\/\/\S+)/);
-      if (m) { clearTimeout(timer); resolve(m[1]); }
-    });
-    proc.on('exit', (code) => { clearTimeout(timer); reject(new Error(`Chrome exited with ${code}:\n` + buf.slice(-600))); });
-  });
-  const ws = new WebSocket(url);
-  await new Promise((resolve, reject) => { ws.addEventListener('open', resolve); ws.addEventListener('error', () => reject(new Error('could not connect to Chrome'))); });
-  const close = async () => {   // the profile can only be removed once Chrome has let go of it
-    try { ws.close(); } catch {}
-    const gone = new Promise((resolve) => proc.once('exit', resolve));
-    try { proc.kill(); } catch {}
-    await Promise.race([gone, sleep(5000)]);
-    try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); } catch {}
+  let proc = null;
+  const gone = () => new Promise((resolve) => (proc.exitCode !== null || proc.signalCode !== null ? resolve() : proc.once('exit', resolve)));
+  const discard = async () => {
+    if (proc && proc.pid) { killTree(proc); await Promise.race([gone(), sleep(2000)]); }
+    removeDir(base); await sleep(200); removeDir(base);
+    temp.delete(base); chrome = null;
   };
-  return { cdp: new Cdp(ws), close };
+  try {
+    proc = spawn(binary, args, { stdio: ['ignore', 'ignore', 'pipe'], detached: process.platform !== 'win32', env: { ...process.env, TMPDIR: tmp } });
+    chrome = proc;
+    const url = await new Promise((resolve, reject) => {
+      let buf = '';
+      const timer = setTimeout(() => reject(new Error('Chrome did not open its DevTools port in 20 s:\n' + buf.slice(-600))), 20000);
+      proc.stderr.on('data', (d) => {
+        buf = (buf + d).slice(-4000);
+        const m = buf.match(/DevTools listening on (ws:\/\/\S+)/);
+        if (m) { clearTimeout(timer); resolve(m[1]); }
+      });
+      proc.on('error', (e) => { clearTimeout(timer); reject(new Error(`could not start ${binary}: ${e.message}`)); });
+      proc.on('exit', (code, sig) => { clearTimeout(timer); reject(new Error(`${binary} exited with ${code ?? sig} before opening its DevTools port` + (buf ? ':\n' + buf.slice(-600) : ''))); });
+    });
+    const ws = new WebSocket(url);
+    await new Promise((resolve, reject) => { ws.addEventListener('open', resolve); ws.addEventListener('error', () => reject(new Error('could not connect to Chrome'))); });
+    const cdp = new Cdp(ws);
+    const close = async () => {   // ask Chrome to leave, then make sure all of it did
+      await Promise.race([cdp.send('Browser.close', {}, undefined, 3000).catch(() => {}), sleep(3000)]);
+      await Promise.race([gone(), sleep(3000)]);
+      try { ws.close(); } catch {}
+      await discard();
+    };
+    return { cdp, close };
+  } catch (e) { await discard(); throw e; }
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -172,96 +221,135 @@ const SHOW_TEXT = `(() => { document.getElementById('__page_check_hide')?.remove
 
 // Runs in the page. Returns what can be measured without looking.
 const MEASURE = `(() => {
-  const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+  const root = document.documentElement, vw = root.clientWidth, vh = window.innerHeight;
   const label = (el) => (el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (typeof el.className === 'string' && el.className ? '.' + el.className.trim().split(/\\s+/).slice(0, 2).join('.') : '')) + ' "' + (el.textContent || '').trim().replace(/\\s+/g, ' ').slice(0, 40) + '"';
   const clippedBy = (el) => { for (let p = el.parentElement; p; p = p.parentElement) { const o = getComputedStyle(p).overflowX; if (o !== 'visible' && p.getBoundingClientRect().right <= vw + 1) return true; } return false; };
   const ownText = (el) => [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join(' ');
   const opacity = (el) => { let o = 1; for (let p = el; p; p = p.parentElement) { const s = getComputedStyle(p); if (s.visibility === 'hidden') return 0; o *= parseFloat(s.opacity); } return o; };
-  const wide = [], hidden = [], cut = [];
+  // The viewport takes its overflow from <html>, or from <body> when <html> leaves it visible.
+  const ox = getComputedStyle(root).overflowX, viewportX = ox !== 'visible' || !document.body ? ox : getComputedStyle(document.body).overflowX;
+  const wide = [], hidden = [], cut = []; let inner = '';
   for (const el of document.querySelectorAll('body *')) {
     const r = el.getBoundingClientRect();
     if (!r.width || !r.height) continue;
     const s = getComputedStyle(el);
     if (s.position !== 'fixed' && r.right > vw + 1 && !clippedBy(el)) wide.push(label(el) + ' right=' + Math.round(r.right));
+    if (!inner && /auto|scroll/.test(s.overflowY) && el.clientHeight >= vh * 0.5 && el.scrollHeight > el.clientHeight + vh * 0.5) inner = label(el).split(' "')[0];
     const text = ownText(el);
     if (text.length >= 12 && r.top < vh && r.bottom > 0 && opacity(el) < 0.05) hidden.push(label(el));
-    if (text.length >= 12 && /hidden|clip/.test(s.overflowY) && el.scrollHeight > el.clientHeight + 2) cut.push(label(el) + ' ' + el.scrollHeight + '>' + el.clientHeight);
+    if (text.length >= 12 && /hidden|clip/.test(s.overflowY) && el.clientHeight >= 8 && el.clientWidth >= 8 && (s.webkitLineClamp || 'none') === 'none' && el.scrollHeight > el.clientHeight + 2) cut.push(label(el) + ' ' + el.scrollHeight + '>' + el.clientHeight);
   }
+  const meta = document.querySelector('meta[name="viewport" i]');
   return {
-    viewport: vw + 'x' + vh, pageHeight: document.documentElement.scrollHeight, scrollWidth: document.documentElement.scrollWidth,
+    layoutWidth: vw, pageHeight: root.scrollHeight, scrollWidth: root.scrollWidth, sidewaysClipped: /hidden|clip/.test(viewportX),
+    innerScroller: root.scrollHeight <= vh + 1 ? inner : '', viewportMeta: meta ? meta.content : null, iconLinked: !!document.querySelector('link[rel~="icon" i]'),
     wide: wide.slice(0, 8), hiddenAtRest: hidden.slice(0, 8), cutText: cut.slice(0, 8),
-    brokenImages: [...document.images].filter((i) => i.complete && !i.naturalWidth && (i.currentSrc || i.src)).map((i) => i.currentSrc || i.src).slice(0, 8),
-    title: document.title, lang: document.documentElement.lang || '',
+    title: document.title, lang: root.lang || '',
   };
 })()`;
+const BROKEN = `[...document.images].filter((i) => i.complete && !i.naturalWidth && (i.currentSrc || i.src)).map((i) => i.currentSrc || i.src).slice(0, 12)`;
 
 async function checkViewport(cdp, url, vp, opts, outdir) {
   const { targetId } = await cdp.send('Target.createTarget', { url: 'about:blank' });
   const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
-  const S = (m, p) => cdp.send(m, p, sessionId);
-  const errors = [], warnings = [], requests = new Map();
-  let inflight = 0, lastActivity = Date.now(), loaded = false;
-  cdp.on((method, p, sid) => {
-    if (sid !== sessionId) return;
-    if (method === 'Network.requestWillBeSent') { requests.set(p.requestId, { url: p.request.url, type: p.type || 'Other', bytes: 0, data: 0 }); inflight++; lastActivity = Date.now(); }
-    else if (method === 'Network.responseReceived') { const r = requests.get(p.requestId); if (r) { r.status = p.response.status; if (p.response.status >= 400) errors.push(`request failed: ${p.response.status} ${p.response.url}`); } }
+  const S = (m, p, ms) => cdp.send(m, p, sessionId, ms);
+  const name = `${vp.w}x${vp.h}`, mobile = vp.w < 768;
+  const errors = [], warnings = [], requests = new Map(), open = new Map(), failed = new Set(), sessions = new Set();
+  let lastActivity = Date.now(), loaded = false, stuck = false, favicon = '';
+  const isFavicon = (u) => { try { return new URL(u).pathname === '/favicon.ico'; } catch { return false; } };
+  const fail = (u, msg) => { failed.add(u); if (isFavicon(u)) favicon = msg; else errors.push(msg); };
+  // A frame from another site, or a worker, is a target of its own: it is held
+  // at its start until it is being listened to, then let go.
+  const follow = (sid) => {
+    sessions.add(sid);
+    const C = (m, p) => cdp.send(m, p, sid, 5000).catch(() => {});
+    return Promise.all([C('Page.enable'), C('Runtime.enable'), C('Network.enable'), C('Log.enable'),
+      C('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: true, flatten: true })]).then(() => C('Runtime.runIfWaitingForDebugger'));
+  };
+  const off = cdp.on((method, p, sid) => {
+    if (!sessions.has(sid)) return;
+    if (method === 'Target.attachedToTarget') follow(p.sessionId);
+    else if (method === 'Target.detachedFromTarget') sessions.delete(p.sessionId);
+    else if (method === 'Network.requestWillBeSent') {   // a redirect, or a frame seen from both sides, repeats the id
+      let r = requests.get(p.requestId);
+      if (!r) { r = { url: p.request.url, type: p.type || 'Other', bytes: 0, data: 0, done: false }; requests.set(p.requestId, r); }
+      else { r.url = p.request.url; if (p.redirectResponse) r.bytes += p.redirectResponse.encodedDataLength || 0; }
+      open.set(p.requestId, p.request.url); lastActivity = Date.now();
+    }
+    else if (method === 'Network.responseReceived') { if (p.response.status >= 400) fail(p.response.url, `request failed: ${p.response.status} ${p.response.url}`); }
     else if (method === 'Network.dataReceived') { const r = requests.get(p.requestId); if (r) r.data += p.dataLength; }
-    else if (method === 'Network.loadingFinished') { const r = requests.get(p.requestId); if (r) r.bytes = p.encodedDataLength; inflight--; lastActivity = Date.now(); }
-    else if (method === 'Network.loadingFailed') { const r = requests.get(p.requestId); inflight--; lastActivity = Date.now(); if (r && !p.canceled) errors.push(`request failed: ${p.errorText} ${r.url}`); }
-    else if (method === 'Runtime.exceptionThrown') errors.push('page error: ' + (p.exceptionDetails.exception?.description || p.exceptionDetails.text).split('\n')[0]);
-    else if (method === 'Runtime.consoleAPICalled' && p.type === 'error') errors.push('console error: ' + p.args.map((a) => a.value ?? a.description ?? '').join(' ').slice(0, 200));
-    else if (method === 'Page.loadEventFired') loaded = true;
+    else if (method === 'Network.loadingFinished') { const r = requests.get(p.requestId); if (r && !r.done) { r.bytes += p.encodedDataLength || 0; r.done = true; } open.delete(p.requestId); lastActivity = Date.now(); }
+    else if (method === 'Network.loadingFailed') { const r = requests.get(p.requestId); open.delete(p.requestId); lastActivity = Date.now(); if (r && !p.canceled) fail(r.url, `request failed: ${p.errorText} ${r.url}`); }
+    else if (method === 'Runtime.exceptionThrown') { const d = p.exceptionDetails, x = d.exception; errors.push('page error: ' + String(x?.description ?? (x && 'value' in x ? `${d.text} ${x.value}` : d.text)).split('\n')[0]); }
+    else if (method === 'Runtime.consoleAPICalled' && p.type === 'error') errors.push('console error: ' + p.args.map((a) => ('value' in a ? String(a.value) : a.description ?? a.type)).join(' ').slice(0, 200));
+    else if (method === 'Log.entryAdded' && p.entry.level === 'error' && p.entry.source !== 'network') errors.push('browser error: ' + p.entry.text.slice(0, 200));
+    else if (method === 'Page.javascriptDialogOpening') {
+      warnings.push(`the page opened a dialog (${p.type}: "${p.message.slice(0, 60)}"); it was accepted so that the check could go on`);
+      cdp.send('Page.handleJavaScriptDialog', { accept: true }, sid, 5000).catch(() => {});
+    }
+    else if (method === 'Page.loadEventFired' && sid === sessionId) loaded = true;
   });
-  await S('Page.enable'); await S('Runtime.enable'); await S('Network.enable');
-  await S('Emulation.setDeviceMetricsOverride', { width: vp.w, height: vp.h, deviceScaleFactor: 1, mobile: vp.w < 768 });
-  const evaluate = async (expression) => {
-    const r = await S('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
-    if (r.exceptionDetails) throw new Error('evaluate failed: ' + r.exceptionDetails.text);
-    return r.result.value;
-  };
-  const settle = async () => {   // load event, then half a second with nothing in flight (15 s at most)
-    const t0 = Date.now();
-    while (Date.now() - t0 < 15000 && !(loaded && inflight <= 0 && Date.now() - lastActivity > 500)) await sleep(100);
-    if (!loaded) warnings.push('the load event did not fire in 15 s');
-    await evaluate('document.fonts ? document.fonts.ready.then(() => true) : true');
-  };
-  const shot = async () => Buffer.from((await S('Page.captureScreenshot', { format: 'png' })).data, 'base64');
-  const moves = async () => {    // two captures of the same view: different bytes mean something is animating
-    const a = await shot(); await sleep(opts.waitMs); const b = await shot();
-    return crypto.createHash('sha1').update(a).digest('hex') !== crypto.createHash('sha1').update(b).digest('hex');
-  };
+  try {
+    await follow(sessionId);
+    await S('Emulation.setDeviceMetricsOverride', { width: vp.w, height: vp.h, deviceScaleFactor: 1, mobile });
+    const evaluate = async (expression) => {
+      const r = await S('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+      if (r.exceptionDetails) throw new Error('evaluate failed: ' + r.exceptionDetails.text);
+      return r.result.value;
+    };
+    const calm = () => open.size === 0 && Date.now() - lastActivity > 500;
+    const settle = async () => {   // the load event, then half a second with nothing in flight
+      const t0 = Date.now(), limit = stuck ? 3000 : 15000;
+      while (Date.now() - t0 < limit && !(loaded && calm())) await sleep(100);
+      if (!stuck && !(loaded && calm())) {
+        stuck = true;              // it will not get better: later waits are short
+        const waiting = open.size ? `${open.size} request(s) still open, such as ${[...open.values()][0].slice(0, 120)}` : 'requests keep starting';
+        warnings.push(`${loaded ? 'the network did not go quiet' : 'the load event did not fire'} in 15 s: ${waiting}; the weight counts what had arrived`);
+      }
+      await evaluate('Promise.race([document.fonts ? document.fonts.ready : 0, new Promise((r) => setTimeout(r, 3000))]).then(() => true)');
+    };
+    const quiet = async (ms) => { const t0 = Date.now(); while (!stuck && Date.now() - t0 < ms && !calm()) await sleep(100); };
+    const shot = async () => Buffer.from((await S('Page.captureScreenshot', { format: 'png' })).data, 'base64');
+    const sha = (b) => crypto.createHash('sha1').update(b).digest('hex');
+    const scrollTo = (y) => evaluate(`window.scrollTo({ top: ${y}, behavior: 'instant' })`);
+    // Two captures of the same view: different bytes mean something is animating.
+    const movingAt = async (ys, keep) => {
+      const moving = [];
+      for (const [i, y] of ys.entries()) {
+        await scrollTo(y); await sleep(opts.waitMs); await quiet(3000);
+        const a = await shot(); if (keep) keep(i, a);
+        await sleep(opts.waitMs);
+        if (sha(a) !== sha(await shot())) moving.push(y);
+      }
+      return moving;
+    };
 
-  const nav = await S('Page.navigate', { url });
-  if (nav.errorText) { errors.push(`could not load ${url}: ${nav.errorText}`); await cdp.send('Target.closeTarget', { targetId }); return { viewport: `${vp.w}x${vp.h}`, errors, warnings, shots: [] }; }
-  await settle();
-  const m = await evaluate(MEASURE);
-  if (m.scrollWidth > vp.w + 1) errors.push(`horizontal overflow: the page is ${m.scrollWidth}px wide in a ${vp.w}px viewport` + (m.wide.length ? '; sticking out: ' + m.wide.join(' | ') : ''));
-  for (const src of m.brokenImages) errors.push('broken image: ' + src);
-  for (const t of m.hiddenAtRest) warnings.push('text invisible on the first screen: ' + t);
-  for (const t of m.cutText) warnings.push('text cut off by its box: ' + t);
-  if (!m.title) warnings.push('the page has no <title>');
+    const nav = await S('Page.navigate', { url });
+    if (nav.errorText) { errors.push(`could not load ${url}: ${nav.errorText}`); return { viewport: name, notChecked: true, errors, warnings, shots: [] }; }
+    await settle();
+    const m = await evaluate(MEASURE);
+    if (m.hiddenAtRest.length) {   // an entrance that had not started yet is not invisible text
+      await sleep(1500);
+      const later = (await evaluate(MEASURE)).hiddenAtRest;
+      m.hiddenAtRest = m.hiddenAtRest.filter((t) => later.includes(t));
+    }
+    if (m.layoutWidth > vp.w + 1) errors.push(`the page is laid out ${m.layoutWidth}px wide on a ${vp.w}px screen and shrunk to fit: ` + (m.viewportMeta === null ? 'it has no <meta name="viewport">' : `its viewport meta is "${m.viewportMeta}"`));
+    else if (m.scrollWidth > m.layoutWidth + 1 && !m.sidewaysClipped) errors.push(`horizontal overflow: the page is ${m.scrollWidth}px wide in a ${vp.w}px viewport` + (m.wide.length ? '; sticking out: ' + m.wide.join(' | ') : ''));
+    for (const t of m.hiddenAtRest) warnings.push('text invisible on the first screen: ' + t);
+    for (const t of m.cutText) warnings.push('text cut off by its box: ' + t);
+    if (!m.title) warnings.push('the page has no <title>');
+    if (m.innerScroller) warnings.push(`the page scrolls inside ${m.innerScroller}, not the document: only its first screen was checked`);
 
-  const movesAtRest = await moves();
-  const shots = [];
-  const maxY = Math.max(0, m.pageHeight - vp.h);
-  for (let i = 0; i < opts.stops; i++) {
-    const y = opts.stops === 1 ? 0 : Math.round(maxY * i / (opts.stops - 1));
-    await evaluate(`window.scrollTo(0, ${y})`); await sleep(opts.waitMs);
-    const file = path.join(outdir, `${vp.w}-${i + 1}.png`);
-    fs.writeFileSync(file, await shot()); shots.push(file);
-    if (maxY === 0) break;
-  }
-
-  // Contrast: hide the text, capture what is behind it, twice per screenful so
-  // that something moving behind the text is caught, and keep each block's
-  // worst capture.
-  let contrastReport = null;
-  if (opts.contrast) {
+    // One pass down the whole page, nine tenths of a screen at a time, so that
+    // lazy content loads. With contrast on, each screenful is captured twice
+    // with its text hidden, so that something moving behind the text is caught,
+    // and each block keeps its worst capture.
     const worst = new Map();
-    const screens = Math.min(40, Math.max(1, Math.ceil(m.pageHeight / (vp.h * 0.9))));
-    for (let i = 0; i < screens; i++) {
-      await evaluate(`window.scrollTo(0, ${Math.round(Math.min(maxY, i * vp.h * 0.9))})`); await sleep(Math.min(opts.waitMs, 300));
-      for (let k = 0; k < 2; k++) {
+    let height = m.pageHeight, swept = false;
+    for (let i = 0; i < 40 && !swept; i++) {
+      const y = Math.round(Math.min(Math.max(0, height - vp.h), i * vp.h * 0.9));
+      await scrollTo(y); await sleep(Math.min(opts.waitMs, 300));
+      for (let k = 0; opts.contrast && k < 2; k++) {
         const blocks = await evaluate(TEXT_BLOCKS);
         await evaluate(HIDE_TEXT);
         const img = decodePng(await shot());
@@ -275,35 +363,55 @@ async function checkViewport(cdp, url, vp, opts, outdir) {
         }
         if (k === 0) await sleep(opts.waitMs);
       }
+      height = await evaluate('document.documentElement.scrollHeight');   // lazy content can make the page grow
+      swept = y >= height - vp.h;
     }
-    const list = [...worst.values()].sort((a, b) => b.under - a.under);
-    const fmt = (b) => `${b.key}: ${Math.round(b.under * 100)}% of its area under ${b.need}:1 (lowest ${b.min.toFixed(1)}, median ${b.median.toFixed(1)}; ${b.size}px, weight ${b.weight}${b.alpha < 0.995 ? ', text alpha ' + b.alpha.toFixed(2) : ''})`;
-    for (const b of list) {
-      if (b.under * 100 >= opts.contrastArea) errors.push('low contrast: ' + fmt(b));
-      else if (b.under * 100 >= 2) warnings.push('contrast dips: ' + fmt(b));
+    if (!swept) warnings.push('the page is taller than 40 screens (or keeps growing): the rest was not scrolled through');
+    await quiet(8000);
+    for (const src of await evaluate(BROKEN)) if (!failed.has(src)) errors.push('broken image: ' + src);
+
+    let contrastReport = null;
+    if (opts.contrast) {
+      const list = [...worst.values()].sort((a, b) => b.under - a.under);
+      const fmt = (b) => `${b.key}: ${Math.round(b.under * 100)}% of its area under ${b.need}:1 (lowest ${b.min.toFixed(1)}, median ${b.median.toFixed(1)}; ${b.size}px, weight ${b.weight}${b.alpha < 0.995 ? ', text alpha ' + b.alpha.toFixed(2) : ''})`;
+      for (const b of list) {
+        if (b.under * 100 >= opts.contrastArea) errors.push('low contrast: ' + fmt(b));
+        else if (b.under * 100 >= 2) warnings.push('contrast dips: ' + fmt(b));
+      }
+      contrastReport = { blocks: list.length, failing: list.filter((b) => b.under * 100 >= opts.contrastArea).length, worst: list.slice(0, 10).map((b) => ({ ...b, under: +b.under.toFixed(3), min: +b.min.toFixed(2), median: +b.median.toFixed(2) })) };
     }
-    contrastReport = { blocks: list.length, failing: list.filter((b) => b.under * 100 >= opts.contrastArea).length, worst: list.slice(0, 10).map((b) => ({ ...b, under: +b.under.toFixed(3), min: +b.min.toFixed(2), median: +b.median.toFixed(2) })) };
-    await evaluate('window.scrollTo(0, 0)');
+
+    // Screenshots at the scroll stops, and whether the page moves there.
+    const maxY = Math.max(0, height - vp.h), shots = [];
+    const ys = maxY === 0 || opts.stops === 1 ? [0] : Array.from({ length: opts.stops }, (_, i) => Math.round(maxY * i / (opts.stops - 1)));
+    const restAt = await movingAt(ys, (i, png) => { const file = path.join(outdir, `${name}-${i + 1}.png`); fs.writeFileSync(file, png); shots.push(file); });
+
+    // Weight: what came over the wire. A local file has no transfer size, so
+    // it counts at its own size.
+    await quiet(3000);
+    const all = [...requests.values()].filter((r) => !r.url.startsWith('data:')).map((r) => ({ url: r.url, type: r.type, bytes: r.bytes > 0 ? r.bytes : r.data }));
+    const total = all.reduce((s, r) => s + r.bytes, 0);
+    const byType = {};
+    for (const r of all) byType[r.type] = (byType[r.type] || 0) + r.bytes;
+    const weight = { totalKb: Math.round(total / 1024), byTypeKb: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, Math.round(v / 1024)])),
+      largest: all.sort((a, b) => b.bytes - a.bytes).slice(0, 5).map((r) => `${Math.round(r.bytes / 1024)} KB ${r.url.split('/').pop().slice(0, 60) || r.url}`) };
+    if (opts.budgetKb && total > opts.budgetKb * 1024) errors.push(`weight: ${weight.totalKb} KB loaded, over the ${opts.budgetKb} KB budget; largest: ${weight.largest.join(', ')}`);
+    if (favicon && m.iconLinked) errors.push(favicon);   // the browser's own guess at /favicon.ico is not the page's fault
+
+    // Reduced motion is read at load by most scripts, so emulate it and load
+    // again. An error that only this load produces is kept and marked.
+    await S('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+    loaded = false; lastActivity = Date.now();
+    const first = new Set(errors), before = errors.length;
+    await S('Page.reload'); await settle();
+    for (const e of new Set(errors.splice(before))) if (!first.has(e)) errors.push('only under prefers-reduced-motion: ' + e);
+    const reducedAt = await movingAt(ys);
+    if (reducedAt.length) errors.push(`still moving under prefers-reduced-motion at scroll ${reducedAt.join(', ')}px: two captures ${opts.waitMs} ms apart differ`);
+    return { viewport: name, pageHeight: height, errors: [...new Set(errors)], warnings: [...new Set(warnings)], movesAtRest: restAt.length > 0, movesReduced: reducedAt.length > 0, weight, contrast: contrastReport, shots };
+  } finally {
+    off();
+    await cdp.send('Target.closeTarget', { targetId }, undefined, 5000).catch(() => {});
   }
-
-  const all = [...requests.values()].map((r) => ({ url: r.url, type: r.type, bytes: Math.max(r.bytes, r.data) }));
-  const total = all.reduce((s, r) => s + r.bytes, 0);
-  const byType = {};
-  for (const r of all) byType[r.type] = (byType[r.type] || 0) + r.bytes;
-  const weight = { totalKb: Math.round(total / 1024), byTypeKb: Object.fromEntries(Object.entries(byType).map(([k, v]) => [k, Math.round(v / 1024)])),
-    largest: all.sort((a, b) => b.bytes - a.bytes).slice(0, 5).map((r) => `${Math.round(r.bytes / 1024)} KB ${r.url.split('/').pop().slice(0, 60) || r.url}`) };
-  if (opts.budgetKb && total > opts.budgetKb * 1024) errors.push(`weight: ${weight.totalKb} KB loaded, over the ${opts.budgetKb} KB budget; largest: ${weight.largest.join(', ')}`);
-
-  // Reduced motion is read at load by most scripts, so emulate it and load again.
-  await S('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
-  loaded = false; lastActivity = Date.now();
-  const before = errors.length;
-  await S('Page.reload'); await settle();
-  errors.length = before;        // the reload repeats the same load errors
-  const movesReduced = await moves();
-  if (movesReduced) errors.push('still moving under prefers-reduced-motion: two captures ' + opts.waitMs + ' ms apart differ');
-  await cdp.send('Target.closeTarget', { targetId });
-  return { viewport: `${vp.w}x${vp.h}`, pageHeight: m.pageHeight, errors: [...new Set(errors)], warnings: [...new Set(warnings)], movesAtRest, movesReduced, weight, contrast: contrastReport, shots };
 }
 
 function parseArgs(argv) {
@@ -326,19 +434,28 @@ function parseArgs(argv) {
 }
 
 function toUrl(target) {
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(target)) return target;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(target) || /^(data|about):/i.test(target)) return target;
   const p = path.resolve(target);
-  if (!fs.existsSync(p)) throw new Error(`${target} is neither a URL nor an existing file`);
-  return pathToFileURL(p).href;
+  if (fs.existsSync(p)) return pathToFileURL(p).href;
+  // localhost:8080/x, 127.0.0.1/x, devbox:3000 — a host given without its scheme
+  if (/^(localhost|\d{1,3}(\.\d{1,3}){3})(:\d+)?(\/.*)?$/i.test(target) || /^[a-z0-9.-]+:\d+(\/.*)?$/i.test(target)) return 'http://' + target;
+  throw new Error(`${target} is neither a URL nor an existing file`);
 }
 
 async function run(target, opts) {
   const url = toUrl(target);
   fs.mkdirSync(opts.out, { recursive: true });
+  for (const f of fs.readdirSync(opts.out)) if (/^\d+x\d+-\d+\.png$/.test(f)) fs.rmSync(path.join(opts.out, f), { force: true });   // an earlier run's screenshots
   const { cdp, close } = await launch(opts.noSandbox);
   try {
     const viewports = [];
-    for (const vp of opts.widths) viewports.push(await checkViewport(cdp, url, vp, opts, opts.out));
+    for (const vp of opts.widths) {
+      try { viewports.push(await checkViewport(cdp, url, vp, opts, opts.out)); }
+      catch (e) {
+        if (cdp.closed) throw e;   // without Chrome there is nothing more to check
+        viewports.push({ viewport: `${vp.w}x${vp.h}`, notChecked: true, errors: ['the check could not finish: ' + e.message], warnings: [], shots: [] });
+      }
+    }
     const report = { url, checkedAt: new Date().toISOString(), viewports };
     fs.writeFileSync(path.join(opts.out, 'report.json'), JSON.stringify(report, null, 1));
     return report;
@@ -347,7 +464,8 @@ async function run(target, opts) {
 
 function print(report) {
   for (const v of report.viewports) {
-    console.log(`\n${v.viewport}  page ${v.pageHeight ?? '?'}px tall  ${v.weight ? v.weight.totalKb + ' KB' : ''}  moves at rest: ${v.movesAtRest ? 'yes' : 'no'}  under reduced motion: ${v.movesReduced ? 'YES' : 'no'}`);
+    console.log(v.notChecked ? `\n${v.viewport}  not checked`
+      : `\n${v.viewport}  page ${v.pageHeight}px tall  ${v.weight.totalKb} KB  moves at rest: ${v.movesAtRest ? 'yes' : 'no'}  under reduced motion: ${v.movesReduced ? 'YES' : 'no'}`);
     for (const e of v.errors) console.log('  ERROR ' + e);
     for (const w of v.warnings) console.log('  warn  ' + w);
     if (v.weight) console.log('  largest: ' + v.weight.largest.join(', '));
@@ -357,7 +475,26 @@ function print(report) {
 }
 
 async function selfTest() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'page-check-test-'));
+  const mine = () => fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith('page-check-'));
+  const there = new Set(mine());
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'page-check-test-')); temp.add(dir);
+  // A local server for what a file cannot show: a redirect, a compressed
+  // response, a missing favicon, a frame from another site.
+  const filler = 'const filler = "' + 'abcdefghij'.repeat(30000) + '";';   // 300 KB that gzip folds to about 1 KB
+  const served = {
+    '/plain.html': () => '<!doctype html><html lang="en"><meta name="viewport" content="width=device-width"><title>Plain</title><h1>A plain page on a server</h1><p>Nothing on this page is wrong.</p><script src="/big.js"></script></html>',
+    '/frame.html': () => `<!doctype html><html lang="en"><title>Frame</title><p>Inside a frame from another site.</p><img src="/gone-in-frame.png" alt=""><script>console.error('boom in the frame')</script></html>`,
+    '/host.html': (port) => `<!doctype html><html lang="en"><meta name="viewport" content="width=device-width"><title>Host</title><h1>A page with a frame from another site</h1><iframe src="http://localhost:${port}/frame.html" width="400" height="200" title="frame"></iframe></html>`,
+  };
+  const server = http.createServer((req, res) => {
+    const p = new URL(req.url, 'http://x').pathname;
+    if (p === '/redir') { res.writeHead(302, { location: '/plain.html' }); return res.end(); }
+    if (p === '/big.js') { res.writeHead(200, { 'content-type': 'text/javascript', 'content-encoding': 'gzip' }); return res.end(zlib.gzipSync(filler)); }
+    if (!served[p]) { res.writeHead(404, { 'content-type': 'text/plain' }); return res.end('not here'); }
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(served[p](server.address().port));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
   try {
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
     fs.writeFileSync(path.join(dir, 'dot.png'), png);
@@ -373,48 +510,92 @@ async function selfTest() {
       <p style="color:rgba(255,255,255,.8);padding:6px;width:300px;background:linear-gradient(90deg,#123 0 50%,#9cf 50% 100%)">Half of this line sits on a light patch.</p>
       <p style="height:18px;overflow:hidden;width:120px">A long sentence that cannot fit in one short line of a narrow box.</p>
       <div class="spin"></div><img src="missing.png" alt=""><script>console.error('boom'); null.x</script></html>`);
-    const opts = { ...parseArgs([]), out: path.join(dir, 'out'), widths: [{ w: 800, h: 600 }], stops: 3, waitMs: 300 };
-    const good = (await run(path.join(dir, 'good.html'), { ...opts, out: path.join(dir, 'g') })).viewports[0];
-    const bad = (await run(path.join(dir, 'bad.html'), { ...opts, out: path.join(dir, 'b') })).viewports[0];
+    // Things that are easy to get wrong in the checker itself: motion only at
+    // the top of a tall page, an image that loads only when scrolled to, an
+    // error that only the reduced-motion load raises, a dialog, and three
+    // things that are not defects (a screen-reader-only link, an off-canvas
+    // menu behind overflow-x: hidden, an entrance that starts after a delay).
+    fs.writeFileSync(path.join(dir, 'tricky.html'), `<!doctype html><html lang="en"><meta name="viewport" content="width=device-width"><title>Tricky</title>
+      <style>body{margin:0;font:16px sans-serif;overflow-x:hidden}
+      .spin{width:40px;height:40px;background:red;animation:s 1s linear infinite}@keyframes s{to{transform:rotate(360deg)}}
+      .sr{position:absolute;width:1px;height:1px;overflow:hidden}
+      nav{position:absolute;left:100%;top:0;width:300px;height:40px;background:#ddd}
+      .late{animation:in .3s .9s both}@keyframes in{from{opacity:0}}</style>
+      <a class="sr" href="#main">Skip to the main content of this page</a><nav>An off-canvas menu waiting to slide in</nav>
+      <div class="spin"></div><h1 id="main">A tall page with traps in it</h1><p class="late">This sentence fades in after a short delay.</p>
+      <div style="height:3000px"></div><img loading="lazy" src="gone.png" width="50" height="50" alt=""><p>The end of the page.</p>
+      <script>alert('hello'); if (matchMedia('(prefers-reduced-motion: reduce)').matches) console.error('reduced only');</script></html>`);
+    fs.writeFileSync(path.join(dir, 'nometa.html'), '<!doctype html><html lang="en"><title>No viewport meta</title><h1>A page a phone will shrink</h1><p>It never says how wide it wants to be laid out.</p></html>');
+    const opts = { ...parseArgs([]), widths: [{ w: 800, h: 600 }], stops: 3, waitMs: 300 };
+    const one = async (target, out, more = {}) => {
+      const v = (await run(target.includes('://') ? target : path.join(dir, target), { ...opts, out: path.join(dir, out), ...more })).viewports[0];
+      if (v.notChecked) throw new Error(`self-test: ${target} was not checked: ${v.errors.join('; ')}`);
+      return v;
+    };
+    const good = await one('good.html', 'g');
+    const bad = await one('bad.html', 'b');
+    const tricky = await one('tricky.html', 't', { contrast: false });
+    const phone = await one('nometa.html', 'g', { widths: [{ w: 390, h: 700 }] });   // into the first run's directory
+    const t0 = Date.now(), plain = await one(origin + '/redir', 'p'), plainMs = Date.now() - t0;
+    const host = await one(origin + '/host.html', 'h');
     const has = (list, s) => list.some((x) => x.includes(s));
     const checks = [
       ['good page: no errors', good.errors.length === 0, good.errors],
       ['good page: no warnings', good.warnings.length === 0, good.warnings],
       ['good page: moves at rest', good.movesAtRest === true],
       ['good page: still under reduced motion', good.movesReduced === false],
-      ['good page: three screenshots', good.shots.length === 3 && good.shots.every((f) => fs.statSync(f).size > 500)],
+      ['good page: three screenshots named by viewport', good.shots.length === 3 && path.basename(good.shots[0]) === '800x600-1.png', good.shots],
       ['good page: weight counted', good.weight.totalKb >= 0 && good.weight.largest.length >= 1],
+      ['good page: contrast measured and nothing failing', good.contrast.blocks >= 3 && good.contrast.failing === 0, good.contrast],
       ['bad page: overflow', has(bad.errors, 'horizontal overflow')],
       ['bad page: overflow names the strip', has(bad.errors, 'a strip much wider')],
-      ['bad page: broken or failed image', has(bad.errors, 'missing.png')],
+      ['bad page: the missing image, once', bad.errors.filter((e) => e.includes('missing.png')).length === 1, bad.errors],
       ['bad page: console error', has(bad.errors, 'console error: boom')],
       ['bad page: page error', has(bad.errors, 'page error')],
       ['bad page: moves under reduced motion', has(bad.errors, 'prefers-reduced-motion')],
       ['bad page: invisible text', has(bad.warnings, 'text invisible')],
       ['bad page: cut text', has(bad.warnings, 'text cut off')],
       ['bad page: no title', has(bad.warnings, 'no <title>')],
-      ['good page: contrast measured and nothing failing', good.contrast.blocks >= 3 && good.contrast.failing === 0, good.contrast],
       ['bad page: pale grey text', bad.errors.some((e) => e.startsWith('low contrast') && e.includes('Pale grey'))],
       ['bad page: see-through text over a light patch', bad.errors.some((e) => e.startsWith('low contrast') && e.includes('Half of this line') && e.includes('text alpha 0.80'))],
       ['bad page: the pale text is nearly all under', bad.contrast.worst.some((b) => b.key.includes('Pale grey') && b.under > 0.9)],
       ['bad page: see-through white on dark is not over-rated', bad.contrast.worst.some((b) => b.key.includes('Half of this line') && b.median < 21)],
       ['bad page: the half-and-half line is about half under', bad.contrast.worst.some((b) => b.key.includes('Half of this line') && b.under > 0.3 && b.under < 0.7)],
-      ['budget: a 0.1 KB budget is exceeded', (await run(path.join(dir, 'good.html'), { ...opts, out: path.join(dir, 'w'), budgetKb: 0.1 })).viewports[0].errors.some((e) => e.startsWith('weight:'))],
-      ['budget: a 500 KB budget is not', !(await run(path.join(dir, 'good.html'), { ...opts, out: path.join(dir, 'w2'), budgetKb: 500 })).viewports[0].errors.some((e) => e.startsWith('weight:'))],
+      ['tricky page: motion at the top of a tall page is seen under reduced motion', has(tricky.errors, 'still moving under prefers-reduced-motion at scroll 0'), tricky.errors],
+      ['tricky page: the lazy image at the bottom, once, with contrast off', tricky.errors.filter((e) => e.includes('gone.png')).length === 1, tricky.errors],
+      ['tricky page: an error only the reduced-motion load raises', has(tricky.errors, 'only under prefers-reduced-motion: console error: reduced only'), tricky.errors],
+      ['tricky page: the dialog is accepted and reported', has(tricky.warnings, 'opened a dialog'), tricky.warnings],
+      ['tricky page: clipped off-canvas menu is not overflow', !has(tricky.errors, 'horizontal overflow'), tricky.errors],
+      ['tricky page: a screen-reader-only link is not cut text', !has(tricky.warnings, 'text cut off'), tricky.warnings],
+      ['tricky page: a delayed entrance is not invisible text', !has(tricky.warnings, 'text invisible'), tricky.warnings],
+      ['phone without a viewport meta: named, not called overflow', has(phone.errors, 'no <meta name="viewport">') && !has(phone.errors, 'horizontal overflow'), phone.errors],
+      ['same directory: the first run\'s screenshots are gone', fs.readdirSync(path.join(dir, 'g')).filter((f) => f.endsWith('.png')).every((f) => f.startsWith('390x700-')), fs.readdirSync(path.join(dir, 'g'))],
+      ['server: a redirect and a missing favicon are not errors', plain.errors.length === 0 && plain.warnings.length === 0, [plain.errors, plain.warnings]],
+      ['server: the redirect does not hold the run up', plainMs < 15000, plainMs],
+      ['server: a compressed script counts at its transfer size', plain.weight.totalKb < 50, plain.weight],
+      ['frame from another site: its console error', has(host.errors, 'boom in the frame'), host.errors],
+      ['frame from another site: its missing image', has(host.errors, 'gone-in-frame.png'), host.errors],
+      ['budget: a 0.1 KB budget is exceeded', (await one('good.html', 'w', { budgetKb: 0.1 })).errors.some((e) => e.startsWith('weight:'))],
+      ['budget: a 500 KB budget is not', !(await one('good.html', 'w2', { budgetKb: 500 })).errors.some((e) => e.startsWith('weight:'))],
+      ['a host without its scheme is a URL', toUrl('localhost:8080/x') === 'http://localhost:8080/x' && toUrl('data:text/html,x') === 'data:text/html,x'],
     ];
-    let failed = 0;
-    for (const [name, ok, detail] of checks) { if (!ok) { failed++; console.log('FAIL ' + name + (detail ? ' ' + JSON.stringify(detail) : '')); } }
-    if (failed) { console.log(`self-test: ${failed} of ${checks.length} failed`); return 1; }
-    console.log(`self-test OK — ${checks.length} checks on a clean page and a page with ten planted defects`);
+    let failedChecks = 0;
+    for (const [name, ok, detail] of checks) { if (!ok) { failedChecks++; console.log('FAIL ' + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); } }
+    const left = mine().filter((f) => !there.has(f) && f !== path.basename(dir));
+    if (left.length) { failedChecks++; console.log('FAIL a temporary directory was left: ' + left.join(', ')); }
+    if (failedChecks) { console.log(`self-test: ${failedChecks} of ${checks.length + 1} failed`); return 1; }
+    console.log(`self-test OK — ${checks.length + 1} checks: a clean page, a page with ten planted defects, a page of traps for the checker, a phone, a server`);
     return 0;
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  } finally { server.close(); server.closeAllConnections?.(); removeDir(dir); temp.delete(dir); }
 }
+
+const USAGE = 'usage: page-check.mjs URL_OR_FILE -o OUTDIR [--widths 1440x900,390x844] [--stops 5] [--budget-kb N] [--contrast-area 10] [--no-contrast] [--wait-ms 600] [--no-sandbox]\n       page-check.mjs --self-test';
 
 async function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--self-test')) return selfTest();
   let opts;
-  try { opts = parseArgs(argv); if (!opts.target || !opts.out) throw new Error('usage: page-check.mjs URL_OR_FILE -o OUTDIR [--widths 1440x900,390x844] [--stops 5] [--budget-kb N]'); }
+  try { opts = parseArgs(argv); if (!opts.target || !opts.out) throw new Error(USAGE); }
   catch (e) { console.error('page-check: ' + e.message); return 2; }
   const report = await run(opts.target, opts);
   print(report);
@@ -423,4 +604,5 @@ async function main() {
   return errors ? 1 : 0;
 }
 
+process.exitCode = 2;   // if the process ever ends without reaching the line below, that is not a pass
 main().then((code) => process.exit(code), (e) => { console.error('page-check: ' + e.message); process.exit(2); });
