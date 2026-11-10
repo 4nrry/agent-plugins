@@ -26,6 +26,9 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 SELF_TEST_TIMEOUT = 120
+# A Node self-test may drive a real browser: page-check's takes about 65 s on
+# the development machine, and a CI runner is slower.
+NODE_SELF_TEST_TIMEOUT = 300
 
 failures: list[str] = []
 warnings: list[str] = []
@@ -174,7 +177,8 @@ def check_marketplace(plugin_dirs: dict) -> None:
 
 def check_plugins() -> dict:
     """2. plugin.json parses, is named after its directory, and has a version.
-    A root plugin.json beside it (the open manifest) carries the same version.
+    A root plugin.json beside it (the open manifest) carries the same version
+    and description, and a root mcp.json the same servers as .mcp.json.
     7. Any bench/ path cited in its description exists."""
     global checks_run
     found = {}
@@ -196,6 +200,11 @@ def check_plugins() -> dict:
             if other is not None and other.get("version") != d.get("version"):
                 fail(rel(manifest), f"version {d.get('version')!r} != {rel(root_manifest)} "
                                     f"{other.get('version')!r}; Claude Code reads this one")
+            checks_run += 1
+            if other is not None and other.get("description") != d.get("description"):
+                fail(rel(manifest), f"description differs from {rel(root_manifest)}; "
+                                    f"the two manifests describe one plugin")
+        check_mcp_pair(plugin_dir)
         found[name] = plugin_dir
 
         for cited in re.findall(r"bench/[A-Za-z0-9._/-]+", d.get("description", "")):
@@ -205,6 +214,30 @@ def check_plugins() -> dict:
     if not found:
         fail("plugins/", "no plugin manifests found")
     return found
+
+
+def mcp_servers(p: pathlib.Path):
+    """Servers as a host sees them: no $schema, and stdio when type is unset."""
+    d = load_json(p)
+    if d is None:
+        return None
+    servers = d.get("mcpServers") if isinstance(d, dict) else None
+    if not isinstance(servers, dict) or not all(isinstance(c, dict) for c in servers.values()):
+        fail(rel(p), "mcpServers is not an object of server objects")
+        return None
+    return {name: {"type": "stdio", **cfg} for name, cfg in servers.items()}
+
+
+def check_mcp_pair(plugin_dir: pathlib.Path) -> None:
+    """The open mcp.json and Claude Code's .mcp.json start the same servers."""
+    global checks_run
+    hidden, open_ = plugin_dir / ".mcp.json", plugin_dir / "mcp.json"
+    if not (hidden.is_file() and open_.is_file()):
+        return
+    checks_run += 1
+    a, b = mcp_servers(hidden), mcp_servers(open_)
+    if a is not None and b is not None and a != b:
+        fail(rel(hidden), f"servers differ from {rel(open_)}: {sorted(set(a) ^ set(b)) or 'same names, different settings'}")
 
 
 def check_hooks(plugin_dirs: dict) -> None:
@@ -394,24 +427,41 @@ def check_self_tests() -> None:
     That is what caught the bench/ move — score_hook_grep.py resolved the repo
     root by counting directory levels, and namespacing bench/ by plugin moved
     it two levels deeper.
+
+    Python and Node scripts both. Node ones run when node is on PATH and are
+    reported as skipped when it is not; until this covered them, page-check's
+    44-check self-test never ran here.
     """
     global checks_run
-    for script in sorted(REPO.rglob("*.py")):
-        if ".git" in script.parts or script.name == "validate.py":
+    node = shutil.which("node")
+    scripts = sorted([*REPO.rglob("*.py"), *REPO.rglob("*.mjs")])
+    skipped = 0
+    for script in scripts:
+        if ".git" in script.parts or "node_modules" in script.parts or script.name == "validate.py":
             continue
         if "--self-test" not in script.read_text(encoding="utf-8"):
             continue
+        if script.suffix == ".mjs":
+            if not node:
+                skipped += 1
+                continue
+            cmd, timeout = [node, str(script), "--self-test"], NODE_SELF_TEST_TIMEOUT
+            tools["node"] = tool_version("node")
+        else:
+            cmd, timeout = [sys.executable, str(script), "--self-test"], SELF_TEST_TIMEOUT
         checks_run += 1
         try:
-            proc = subprocess.run([sys.executable, str(script), "--self-test"],
-                                  capture_output=True, text=True,
-                                  timeout=SELF_TEST_TIMEOUT, cwd=REPO)
+            proc = subprocess.run(cmd, capture_output=True, text=True,
+                                  timeout=timeout, cwd=REPO)
         except subprocess.TimeoutExpired:
-            fail(rel(script), f"--self-test exceeded {SELF_TEST_TIMEOUT}s")
+            fail(rel(script), f"--self-test exceeded {timeout}s")
             continue
         if proc.returncode != 0:
             fail(rel(script), "--self-test failed:\n"
                  + (proc.stdout + proc.stderr).strip()[:2000])
+    if skipped:
+        tools["node"] = "absent"
+        warn("node", f"not installed — {skipped} Node self-test(s) skipped")
 
 
 LINTER = REPO / "plugins/extension-audit/skills/auditing-agent-extensions/scripts/lint_extensions.py"
