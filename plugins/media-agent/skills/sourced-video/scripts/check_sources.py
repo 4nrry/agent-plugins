@@ -30,6 +30,8 @@ def load(path):
         text = Path(path).read_text(encoding="utf-8")
     except OSError as e:
         stop(f"cannot read {path}: {e.strerror}")
+    except UnicodeDecodeError:
+        stop(f"{path} is not UTF-8 text")
     if path.endswith(".json"):
         try:
             return json.loads(text)
@@ -92,7 +94,10 @@ def main():
     if len(sys.argv) != 2:
         print(__doc__, file=sys.stderr)
         sys.exit(2)
-    problems = check(load(sys.argv[1]))
+    spec = load(sys.argv[1])
+    if not isinstance(spec, dict):
+        stop(f"{sys.argv[1]} holds no spec: its top level must be a mapping (see references/spec.md)")
+    problems = check(spec)
     for p in problems:
         print("-", p)
     print("ok" if not problems else "%d problem(s)" % len(problems))

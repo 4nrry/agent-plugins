@@ -122,8 +122,9 @@ def main():
         if not alive(a.server):
             serve = os.path.join(HERE, "comfy-serve.sh")
             log_path = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "comfy-run.log")
-            port = urllib.parse.urlsplit(a.server).port
-            env = dict(os.environ, COMFY_PORT=str(port)) if port else None   # the port this command will poll
+            url = urllib.parse.urlsplit(a.server)
+            port = url.port or (443 if url.scheme == "https" else 80)        # the port this command will poll
+            env = dict(os.environ, COMFY_PORT=str(port))
             with open(log_path, "ab") as log:
                 proc = subprocess.Popen([serve], stdout=log, stderr=subprocess.STDOUT, env=env)
             for _ in range(STARTUP_POLLS):
