@@ -22,8 +22,8 @@ wall time, frame extraction included. The first call of a cold server took 23 s 
 | Turtle | the whole clip, 6.0 s | 60 | 60 frames, 400x478 | 1064 KB | not written |
 | Seahorse | ping-pong of 3.0 s | 30 | 58 frames, 330x717 | 1539 KB | 1450 KB (12x5, last frame held twice) |
 
-- WebP quality 74, `method=4`, `minimize_size`; the still of frame 1 is 21 to
-  29 KB at quality 82.
+- Animated WebP: quality 74, `method=4`, `minimize_size`. Sprite sheet:
+  quality 74, `method=6`. The still of frame 1 is 21 to 29 KB at quality 82.
 - `cutout_pack.py pack` on the octopus frames writes the same bytes as the
   file in the prototype.
 - **Sprite CSS, checked in headless Chromium.** The octopus sheet's two
@@ -34,8 +34,15 @@ wall time, frame extraction included. The first call of a cold server took 23 s 
   one with a held frame, was not checked in a browser.
 - **Props.** `split` cut one matted image of five kelp strands into five
   files and refused a seven-prop image given two names.
-- `cutout-frames.sh` on 0.5 s of one clip: 5 frames in 18 s including the
-  server start, the server stopped at the end, and a second run did nothing
-  and started no server.
+- `cutout-frames.sh` on 0.5 s of one clip: 5 frames in 16 s including the
+  server start, and the server stopped at the end. A second run with the same
+  options took 0.05 s, re-extracted nothing and started no server. A third
+  with another `--ss` and `--t` replaced every frame and cut-out (3 of each
+  left, none from the first run). `--ss` past the end of the clip and a
+  `COMFY_SERVER` with nothing listening both exited 1 without starting a
+  server.
+- A reviewer agent reading the diff cold found the stale cut-outs on a re-run
+  with other options, props split by the column mean losing thin parts, and
+  ten smaller defects; all were fixed before merge and the cases above re-run.
 - Not measured: Safari and Firefox, a phone, a chroma key on the same clips,
   alpha video, and whether a viewer reads the 10 fps loops as stop motion.

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Extract frames from a clip and remove the background from each one, using the
-# image-retouching skill's headless ComfyUI (BiRefNet). Resumable: a frame whose
-# cut-out already exists is skipped. Starts the ComfyUI server when none is
-# running and stops it at the end; a server that was already up is left alone.
+# image-retouching skill's headless ComfyUI (BiRefNet). A second run with the
+# same clip and options does nothing; a changed clip or option starts the
+# directory over. Starts the ComfyUI server when none is running and stops it
+# at the end; a server that was already up is left alone.
 #
 #   cutout-frames.sh clip.mp4 outdir [--fps 10] [--ss 1.45] [--t 3.6]
 #
-# Writes outdir/frames/f001.png ... and outdir/cut/f001.png ... (RGBA).
+# Writes outdir/frames/f0001.png ... and outdir/cut/f0001.png ... (RGBA).
 # Needs ffmpeg, curl and COMFY_HOME (see the image-retouching skill).
 set -euo pipefail
 [ "$#" -ge 2 ] || { sed -n '2,11p' "$0"; exit 2; }
@@ -27,35 +28,49 @@ here=$(cd "$(dirname "$0")" && pwd)
 retouch="$here/../../image-retouching/scripts"
 [ -f "$retouch/comfy-run.py" ] || { echo "cutout-frames: $retouch/comfy-run.py not found (the image-retouching skill ships it)" >&2; exit 1; }
 [ -n "${COMFY_HOME:-}" ] || { echo "cutout-frames: set COMFY_HOME (directory with ComfyUI/ and .venv/)" >&2; exit 2; }
-command -v ffmpeg >/dev/null || { echo "cutout-frames: ffmpeg is not on PATH" >&2; exit 1; }
-server="${COMFY_SERVER:-http://127.0.0.1:${COMFY_PORT:-8188}}"
+for tool in ffmpeg curl; do
+  command -v "$tool" >/dev/null || { echo "cutout-frames: $tool is not on PATH" >&2; exit 1; }
+done
+# A server named by COMFY_SERVER is someone else's: use it, never start one for it.
+local_server="http://127.0.0.1:${COMFY_PORT:-8188}"
+server="${COMFY_SERVER:-$local_server}"
+up() { curl -sf -o /dev/null --max-time 2 "$server/system_stats"; }
 
 mkdir -p "$out/frames" "$out/cut"
-# -ss before -i seeks on keyframes and can shift the cut; after -i it is exact.
-ffmpeg -v error -y -i "$clip" "${trim[@]}" -vf "fps=$fps" "$out/frames/f%03d.png"
+shopt -s nullglob
+# What the frames on disk were made from. A different clip, rate or trim makes
+# every old frame and cut-out wrong, so the directory starts over.
+made="$(stat -c '%n %s %Y' "$clip") fps=$fps ${trim[*]:-}"
+if [ "$(cat "$out/.cutout-frames" 2>/dev/null)" != "$made" ]; then
+  rm -f -- "$out/frames"/f*.png "$out/cut"/f*.png "$out/.cutout-frames"
+  # -ss after -i is exact; before -i it seeks on keyframes and can shift the cut.
+  ffmpeg -v error -y -i "$clip" "${trim[@]}" -vf "fps=$fps" "$out/frames/f%04d.png"
+  printf '%s\n' "$made" > "$out/.cutout-frames"
+fi
+frames=("$out/frames"/f*.png)
+[ "${#frames[@]}" -gt 0 ] || { rm -f -- "$out/.cutout-frames"; echo "cutout-frames: ffmpeg wrote no frames (is --ss past the end of the clip?)" >&2; exit 1; }
 
-todo=0
-for f in "$out/frames"/f*.png; do
-  [ -s "$out/cut/$(basename "$f")" ] || todo=$((todo + 1))
+todo=()
+for f in "${frames[@]}"; do
+  [ -s "$out/cut/$(basename "$f")" ] || todo+=("$f")
 done
 
 started=""
 stop_server() { [ -z "$started" ] || kill "$started" 2>/dev/null || true; }
 trap stop_server EXIT
-if [ "$todo" -gt 0 ] && ! curl -s -o /dev/null --max-time 2 "$server/system_stats"; then
+if [ "${#todo[@]}" -gt 0 ] && ! up; then
+  [ "$server" = "$local_server" ] || { echo "cutout-frames: no ComfyUI answering at $server (COMFY_SERVER)" >&2; exit 1; }
   "$retouch/comfy-serve.sh" >"$out/comfy-serve.log" 2>&1 &
   started=$!
   for _ in $(seq 1 90); do
-    curl -s -o /dev/null --max-time 2 "$server/system_stats" && break
+    up && break
     kill -0 "$started" 2>/dev/null || { echo "cutout-frames: ComfyUI exited; see $out/comfy-serve.log" >&2; exit 1; }
     sleep 2
   done
+  up || { echo "cutout-frames: ComfyUI did not answer at $server in 180 s; see $out/comfy-serve.log" >&2; exit 1; }
 fi
 
-n=0
-for f in "$out/frames"/f*.png; do
-  o="$out/cut/$(basename "$f")"
-  [ -s "$o" ] || python3 "$retouch/comfy-run.py" background "$f" -o "$o" --server "$server" >/dev/null
-  n=$((n + 1))
+for f in "${todo[@]}"; do
+  python3 "$retouch/comfy-run.py" background "$f" -o "$out/cut/$(basename "$f")" --server "$server" >/dev/null
 done
-echo "$n frames -> $out/cut"
+echo "${#frames[@]} frames -> $out/cut (${#todo[@]} cut out now)"

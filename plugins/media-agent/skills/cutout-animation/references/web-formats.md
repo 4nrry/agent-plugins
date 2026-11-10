@@ -29,9 +29,9 @@ Neither script here writes alpha video.
 
 ## Sprite sheet
 
-`cutout_pack.py pack --sprite sheet.webp --css sheet.css` writes a grid and
-the rules that play it: one `steps()` animation across the columns and one
-down the rows.
+`cutout_pack.py pack CUTDIR -o octopus.webp --sprite octopus-sheet.webp --css octopus-sheet.css`
+writes a grid beside the animated WebP, and the rules that play it: one
+`steps()` animation across the columns and one down the rows.
 
 ```html
 <link rel="stylesheet" href="octopus-sheet.css">
@@ -39,7 +39,11 @@ down the rows.
 ```
 
 - The class is the sheet's file name without the extension, and the CSS
-  points at `<name>.webp` beside it.
+  points at `<name>.webp` beside it. So the name has to work as a class:
+  letters, digits, `-` and `_`, not starting with a digit; `pack` refuses
+  anything else.
+- The two durations are whole milliseconds and the long one is an exact
+  multiple of the short one, so the rows and columns stay in phase.
 - The grid has to be full for two `steps()` animations to stay in phase. When
   the frame count has no divisor that fits WebP's 16383 px side, the last
   frame is held to fill the grid; `pack` says how many times.

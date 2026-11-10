@@ -20,6 +20,7 @@ Needs Pillow for everything but --self-test, which checks the arithmetic.
 """
 import argparse
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -73,10 +74,11 @@ def grid(n, frame_w, frame_h, max_cols=12):
 
 def steps_css(name, w, h, cols, rows, fps):
     """CSS that plays a full cols x rows sheet: x steps across, y steps down."""
-    row_s, all_s = cols / fps, cols * rows / fps
-    return (f".{name}{{width:{w}px;height:{h}px;background:url({name}.webp) 0 0/{cols * w}px {rows * h}px no-repeat;"
-            f"animation:{name}-x {row_s:g}s steps({cols}) infinite"
-            + (f",{name}-y {all_s:g}s steps({rows}) infinite" if rows > 1 else "") + "}\n"
+    row_ms = round(1000 * cols / fps)        # whole milliseconds, and the column
+    all_ms = row_ms * rows                   # cycle an exact multiple: no drift
+    return (f".{name}{{width:{w}px;height:{h}px;background:url(\"{name}.webp\") 0 0/{cols * w}px {rows * h}px no-repeat;"
+            f"animation:{name}-x {row_ms}ms steps({cols}) infinite"
+            + (f",{name}-y {all_ms}ms steps({rows}) infinite" if rows > 1 else "") + "}\n"
             f"@keyframes {name}-x{{to{{background-position-x:-{cols * w}px}}}}\n"
             + (f"@keyframes {name}-y{{to{{background-position-y:-{rows * h}px}}}}\n" if rows > 1 else "")
             + f"@media (prefers-reduced-motion:reduce){{.{name}{{animation:none}}}}\n")
@@ -97,23 +99,71 @@ def _clean(im, floor):
     return im
 
 
+def natural(path):
+    """Sort key that puts f2 before f10 and f1000 after f999."""
+    return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", Path(path).name)]
+
+
+def css_name(sprite):
+    """The sheet's stem, when it can be a CSS class and the CSS can point at it."""
+    p = Path(sprite)
+    return p.stem if p.suffix == ".webp" and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]*", p.stem) else None
+
+
+def hex_rgb(text):
+    """(r, g, b) from #rgb or #rrggbb, or None."""
+    t = text.lstrip("#")
+    if len(t) == 3:
+        t = "".join(c * 2 for c in t)
+    if not re.fullmatch(r"[0-9A-Fa-f]{6}", t):
+        return None
+    return tuple(int(t[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def column_runs(alpha_bytes, width, min_len):
+    """Props by column: a column counts when ANY pixel in it is opaque, so a thin
+    tendril or bar still belongs to its prop."""
+    return runs([max(alpha_bytes[x::width]) for x in range(width)], min_len, threshold=0)
+
+
 def _frames(cutdir, floor):
     Image = _pil()
-    files = sorted(Path(cutdir).glob("*.png"))
+    files = sorted(Path(cutdir).glob("*.png"), key=natural)
     if not files:
         sys.exit(f"cutout_pack: no PNG frames in {cutdir}")
-    return [_clean(Image.open(f), floor) for f in files]
+    fr = [_clean(Image.open(f), floor) for f in files]
+    odd = [f.name for f, im in zip(files, fr) if im.size != fr[0].size]
+    if odd:
+        sys.exit(f"cutout_pack: frames differ in size from {files[0].name} ({fr[0].size[0]}x{fr[0].size[1]}): "
+                 + ", ".join(odd[:5]) + "; are two runs mixed in this directory?")
+    return fr
+
+
+def _parent(path):
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
 
 
 def cmd_pack(a):
     Image = _pil()
+    if a.fps <= 0 or a.width <= 0:
+        sys.exit("cutout_pack: --fps and --width must be above zero")
+    if a.css and not a.sprite:
+        sys.exit("cutout_pack: --css needs --sprite: the CSS plays the sprite sheet")
+    if a.sprite and not css_name(a.sprite):
+        sys.exit("cutout_pack: --sprite must be NAME.webp with NAME made of letters, digits, - and _ "
+                 "and not starting with a digit: it becomes the CSS class")
     fr = _frames(a.cutdir, a.alpha_floor)
-    box = union_box([f.getchannel("A").getbbox() for f in fr], fr[0].size)
+    try:
+        box = union_box([f.getchannel("A").getbbox() for f in fr], fr[0].size)
+    except ValueError as e:
+        sys.exit(f"cutout_pack: {e}")
     h = round(a.width * (box[3] - box[1]) / (box[2] - box[0]))
     fr = [f.crop(box).resize((a.width, h), Image.LANCZOS) for f in fr]
     seq = [fr[i] for i in pingpong(len(fr))] if a.pingpong else fr
     out = Path(a.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
+    for target in (a.out, a.still, a.sprite, a.css):
+        if target:
+            _parent(target)
     seq[0].save(out, "WEBP", save_all=True, append_images=seq[1:], duration=round(1000 / a.fps),
                 loop=0, quality=a.quality, method=4, minimize_size=True)
     print(f"{out}: {len(seq)} frames, {a.width}x{h}, {out.stat().st_size // 1024} KB")
@@ -121,7 +171,10 @@ def cmd_pack(a):
         fr[0].save(a.still, "WEBP", quality=82, method=6)
         print(f"{a.still}: {Path(a.still).stat().st_size // 1024} KB")
     if a.sprite:
-        cols, rows, padn = grid(len(seq), a.width, h)
+        try:
+            cols, rows, padn = grid(len(seq), a.width, h)
+        except ValueError as e:
+            sys.exit(f"cutout_pack: {e}")
         cells = seq + [seq[-1]] * padn
         sheet = Image.new("RGBA", (cols * a.width, rows * h), (0, 0, 0, 0))
         for i, f in enumerate(cells):
@@ -130,17 +183,15 @@ def cmd_pack(a):
         print(f"{a.sprite}: {cols}x{rows} cells, {Path(a.sprite).stat().st_size // 1024} KB"
               + (f", last frame held {padn}x to fill the grid" if padn else ""))
         if a.css:
-            Path(a.css).write_text(steps_css(Path(a.sprite).stem, a.width, h, cols, rows, a.fps), encoding="utf-8")
+            Path(a.css).write_text(steps_css(css_name(a.sprite), a.width, h, cols, rows, a.fps), encoding="utf-8")
             print(a.css)
 
 
 def cmd_split(a):
     Image = _pil()
     im = _clean(Image.open(a.image), a.alpha_floor)
-    alpha = im.getchannel("A")
-    cols = alpha.resize((im.width, 1), Image.BOX).tobytes()
-    found = runs(cols, a.min_width)
-    names = a.names.split(",")
+    found = column_runs(im.getchannel("A").tobytes(), im.width, a.min_width)
+    names = [n.strip() for n in a.names.split(",") if n.strip()]
     if len(found) != len(names):
         sys.exit(f"cutout_pack: found {len(found)} props, {len(names)} names given; "
                  "the props must not touch or overlap side by side")
@@ -159,7 +210,10 @@ def cmd_split(a):
 
 def cmd_sheet(a):
     Image = _pil()
-    bg = tuple(int(a.bg.lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
+    bg = hex_rgb(a.bg)
+    if bg is None:
+        sys.exit(f"cutout_pack: --bg {a.bg!r} is not #rgb or #rrggbb")
+    _parent(a.out)
     cell = (360, 480)
     sheet = Image.new("RGB", (cell[0] * a.n, cell[1] * len(a.cutdirs)), bg)
     for row, d in enumerate(a.cutdirs):
@@ -199,6 +253,21 @@ def self_test():
         pass
     css = steps_css("octopus", 400, 406, 12, 3, 10)
     assert "steps(12)" in css and "steps(3)" in css and "-4800px" in css and "-1218px" in css
+    assert "octopus-x 1200ms" in css and "octopus-y 3600ms" in css
+    odd = steps_css("s", 100, 100, 12, 3, 7)               # 12/7 s is not a whole ms:
+    assert "s-x 1714ms" in odd and "s-y 5142ms" in odd     # the long cycle is still 3 x the short one
+    assert sorted(["f10.png", "f2.png", "f1000.png", "f999.png"], key=natural) == ["f2.png", "f10.png", "f999.png", "f1000.png"]
+    assert css_name("out dir/sheet-2.webp") == "sheet-2"
+    assert css_name("a.v2.webp") is None and css_name("2x.webp") is None and css_name("sheet.png") is None
+    assert hex_rgb("#abc") == (170, 187, 204) and hex_rgb("08384C") == (8, 56, 76) and hex_rgb("#12") is None
+    w, hgt = 12, 4                                          # two props; the second has a 1 px bar joining two blobs
+    px = [[0] * w for _ in range(hgt)]
+    for y in range(hgt):
+        for x in (1, 2, 3, 6, 7, 10, 11):
+            px[y][x] = 255
+    px[0][8] = px[0][9] = 255
+    flat = bytes(v for row in px for v in row)
+    assert column_runs(flat, w, 2) == [(1, 4), (6, 12)]
     assert "octopus-y" not in steps_css("octopus", 400, 406, 12, 1, 10)
     print("self-test OK — one crop box per clip, ping-pong order, prop columns, grid sizes and steps() CSS")
     return 0

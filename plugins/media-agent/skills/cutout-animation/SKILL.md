@@ -49,7 +49,9 @@ python3 scripts/cutout_pack.py sheet work/octopus/cut -o check.jpg --bg '#08384C
 
 `cutout-frames.sh` extracts the frames and removes each background with the
 `image-retouching` skill's headless ComfyUI. It starts the server when none is
-running and stops it at the end; a second run skips frames already done.
+running and stops it at the end. A second run with the same clip and options
+does nothing; a changed clip, rate or trim starts the directory over, so old
+cut-outs never mix with new frames.
 
 - This removes the background with a segmentation model, which is what was
   run on a grey studio sweep with a soft shadow. A chroma key needs a solid
@@ -87,5 +89,6 @@ python3 ../image-retouching/scripts/comfy-run.py background props.png -o props-c
 python3 scripts/cutout_pack.py split props-cut.png -o props --names kelp1,kelp2,kelp3
 ```
 
-`split` refuses when the count of props it finds differs from the names
-given: two props that touch come out as one.
+`split` finds a prop wherever a column holds any opaque pixel, and refuses
+when the count differs from the names given: two props that touch, or overlap
+side by side, come out as one.
