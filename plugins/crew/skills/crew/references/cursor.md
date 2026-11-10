@@ -1,7 +1,7 @@
 # crew through Cursor CLI
 
-Read [delegate.md](delegate.md) first. Commands run from the crew skill's
-directory (the one holding `SKILL.md`). Requires `cursor-agent` on PATH and
+Read [delegate.md](delegate.md) first. `scripts/crew.py` is in the crew skill's
+directory; run it from the task's repository, or pass `--repo`. Requires `cursor-agent` on PATH and
 logged in; a version other than the tested one is a warning.
 
 ```bash
@@ -17,8 +17,9 @@ Cursor's own plan.
 
 Tell the user two things:
 
-- **No OS sandbox.** Cursor's sandbox does not start on this machine (an
-  AppArmor error), so the run uses `--sandbox disabled`. crew's hooks are the
+- **No OS sandbox.** crew runs Cursor with `--sandbox disabled` for everyone:
+  on the Linux host it was tested on, Cursor's sandbox did not start (an
+  AppArmor error). crew's hooks are the
   only limit, as with opencode. Do not use Cursor for a slice where an escape
   is expensive.
 - **Workspace trust.** The run passes `--trust`, which marks the repo as

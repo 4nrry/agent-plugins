@@ -1,7 +1,7 @@
 # crew through Copilot CLI
 
-Read [delegate.md](delegate.md) first. Commands run from the crew skill's
-directory (the one holding `SKILL.md`). Requires `copilot` on PATH and logged in; a version other
+Read [delegate.md](delegate.md) first. `scripts/crew.py` is in the crew skill's
+directory; run it from the task's repository, or pass `--repo`. Requires `copilot` on PATH and logged in; a version other
 than the tested one is a warning.
 
 ```bash
