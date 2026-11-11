@@ -24,10 +24,16 @@ LIVE = {"claude": "2.1.310", "agy": "1.4.7", "opencode": "2.1.4", "grok": "1.0.7
         "codex": "0.164.0", "hermes": "0.22.5", "copilot": "1.0.103", "cursor": "2026.10.22-27dcf5f"}
 
 # From these versions on, the backend's read-only mode for `ask` is known not to
-# hold. agy 1.5.5 wrote a file in print mode under --mode plan, with and
-# without --disable-slash-commands (two runs, 2026-11-11); it still denies
+# hold by itself. agy 1.5.5 wrote a file in print mode under --mode plan, with
+# and without --disable-slash-commands (two runs, 2026-11-11); it still denies
 # shell commands there. review and delegate on agy go through crew's hooks.
 ASK_WRITES_FROM = {"agy": (1, 5)}
+# What keeps `ask` on agy read-only where the CLI takes --settings (settings
+# for one session, never saved; 1.5.5 has it): with these deny rules agy 1.5.5
+# answered "Permission denied for write_file(...). Matches user-configured
+# deny rule." and wrote nothing (2026-11-11). crew.py passes them when
+# `agy --help` lists the flag; without it the warning above applies.
+AGY_ASK_DENY = {"permissions": {"deny": ["write_file(*)", "command(*)", "mcp(*)"]}}
 
 OPENCODE_MODELS = ("opencode/deepseek-v4.1-flash-free", "opencode/glm-5.3-flash-free",
                    "opencode/beam-free", "opencode/nemotron-3.5-super-vl-free",
@@ -247,6 +253,7 @@ def b_agy(s, prompt, model, effort, session, cwd, opts=None):
             "--disable-slash-commands"]
     argv += ["--json-schema", opts["schema_path"]] if opts.get("schema_path") else []
     argv += ["--print-timeout", f"{opts['timeout']}s"] if opts.get("timeout") else []
+    argv += ["--settings", json.dumps(AGY_ASK_DENY, separators=(",", ":"))] if opts.get("deny_settings") else []
     argv += ["--model", model] if model else []
     argv += ["--conversation", session] if session else []
     return argv, {}, None

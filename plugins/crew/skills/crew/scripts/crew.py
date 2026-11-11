@@ -539,6 +539,17 @@ def opencode_lost_dir(text: str, parent: str):
     return os.path.join(parent, name)
 
 
+def takes_settings(binary: str) -> bool:
+    """Whether this agy lists --settings in its help: the flag that carries
+    crew's deny rules for one session. No model is called."""
+    try:
+        p = subprocess.run([binary, "--help"], capture_output=True, text=True, timeout=30,
+                           stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return "--settings" in p.stdout + p.stderr
+
+
 def parse_duration(text) -> int:
     if isinstance(text, (int, float)):
         return int(text)
@@ -3338,6 +3349,8 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
         # What the builder hands the worker (schema, opencode's web config) must
         # not sit in the repository's own state when the run is kept away from it.
         opts = {"web": web, "timeout": timeout_s, "rundir": os.path.join(web_base, "run") if web_base else rundir}
+        denied = backend == "agy" and takes_settings(spec["bin"])
+        opts["deny_settings"] = denied
         if schema:
             opts["schema"] = schema
             opts["schema_path"] = os.path.join(opts["rundir"], "schema.json")
@@ -3366,7 +3379,7 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
             warnings.append(f"{backend}: argv built from --help; never run end to end by crew")
         elif not (version and live in version):
             warnings.append(f"{backend}: tested on {live}, found {version!r}")
-        loose = backends.ASK_WRITES_FROM.get(backend)
+        loose = None if denied else backends.ASK_WRITES_FROM.get(backend)
         if loose:                              # a version that cannot be read counts as a new one
             found = re.search(r"(\d+)\.(\d+)", version or "")
             loose = not found or (int(found.group(1)), int(found.group(2))) >= loose
@@ -3452,7 +3465,8 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
                 "read_only": ("not enforced on this version, see warnings: " if loose else "") + (
                     spec["read_only"] if not web else "web search and fetch only"
                     if backend in backends.WEB_ONLY else
-                    spec["read_only"] + "; web search and fetch added; run in a new empty directory, not in --cwd"),
+                    spec["read_only"] + "; web search and fetch added; run in a new empty directory, not in --cwd"
+                ) + ("; --settings denies write_file, command and mcp for the session" if denied else ""),
                 "version": version, "failures": failures, "warnings": warnings,
                 "left_processes_stopped": sorted(left), "duration_s": round(time.time() - t0, 1),
                 "rundir": rundir}
