@@ -18,8 +18,9 @@ Company License:
 
 The count is the whole company, not the people who use Remotion. An agency
 that delivers only the mp4 does not add its client's people. The LICENSE says
-employees, the FAQ people and the terms all personnel; whether an unsalaried
-co-founder counts is the user's call, and 5.0 will count contractors. State
+employees and the FAQ people; whether an unsalaried co-founder counts is the
+user's call. The terms that take effect with 5.0 count all personnel,
+contractors included. State
 the rule and leave the decision to whoever signs. Licenses are bought at
 `remotion.dev/pricing`.
 
@@ -30,7 +31,7 @@ the rule and leave the decision to whoever signs. Licenses are bought at
   frames in parallel renders.
 - Charts with their own animation (ECharts, Chart.js): disable it and draw the
   state at `t`, or draw on a canvas from `useCurrentFrame`. GSAP timelines go
-  through `@remotion/gsap`, which seeks them.
+  through `@remotion/gsap` (from 4.0.517), which seeks them.
 - `dangerouslySetInnerHTML` on every frame empties the scene in multi-tab
   renders; set it once on mount, or port to components.
 - Captions: a scene declares `vo: {id, at}`; the film computes the absolute
@@ -44,7 +45,7 @@ the rule and leave the decision to whoever signs. Licenses are bought at
   `[<Transition/>, <Sequence/>]`.
 - A composition with no audio renders an mp4 with no audio stream: check the
   streams before a merge that expects one.
-- `Config.setRspack(true)` speeds bundling. An `@` alias into a sibling UI
+- `Config.setRspack(true)` (from 4.0.502) speeds bundling. An `@` alias into a sibling UI
   package with Tailwind v4 needs its `theme.css` imported at the root and
   `npm ci` in that package, or components render unstyled with no error.
 - A minimal project is about 250 MB of `node_modules`, and the first render
@@ -55,10 +56,11 @@ the rule and leave the decision to whoever signs. Licenses are bought at
 
 ## Studio and the paid editor products
 
-- `npx remotion studio` previews the composition. Its visual edits (move,
-  scale, rotate, keyframes, easing) are written back to the source files:
+- `npx remotion studio` previews the composition. From 4.0.475 its visual
+  edits (move, scale, rotate, keyframes, easing) are written back to the
+  source files:
   after the user edits there, read the files again before changing them.
-- `<Track name="…">` puts clips on one timeline row. Clips on a track must not
+- `<Track name="…">` (from 4.0.534) puts clips on one timeline row. Clips on a track must not
   overlap or it throws; two things on screen at once go on separate tracks.
 - Editor Starter ($600 once) and Timeline are paid templates for building an
   editor product for end users. Neither edits a video: do not suggest them for
@@ -78,9 +80,10 @@ the rule and leave the decision to whoever signs. Licenses are bought at
 A React Three Fiber scene driven by `useCurrentFrame`. Working component with
 spin and dolly: [glb-turntable.tsx](glb-turntable.tsx).
 
-- `--gl=swangle` renders empty frames with no error; use `--gl=angle` or
-  `--gl=vulkan`. The Studio preview hides this (the browser has a GPU). The
-  4.0 default lets Chrome decide; 5.0 will default to `angle`.
+- `--gl=swangle` rendered empty frames with no error in one production on an
+  earlier 4.0 release (not re-run on this one); `--gl=angle` and `--gl=vulkan`
+  drew. The Studio preview hides this (the browser has a GPU). The 4.0 default
+  lets Chrome decide; 5.0 will default to `angle` and fall back to `swangle`.
 - Load the GLB outside `ThreeCanvas` and pass it as a prop; call
   `continueRender` only after R3F's `advance()` with the model in the scene.
 - Keep lights outside the spinning group, and derive camera `near` and `far`

@@ -27,6 +27,7 @@ slides and scales. One run each unless a count is given.
 | Render time | 4.6 s (draft), 4.0 s and 3.3 s (default), as the CLI printed | 15.9 s wall with the download, 4.8 s wall after |
 | Output | H.264 High, yuv420p, 90 frames, 157 KB; `--quality draft` gave Constrained Baseline | H.264 High, yuv420p, 90 frames, 51 KB, no audio stream |
 | Two renders in a row | same sha256 | same sha256 |
+| Box order in the mp4 | `ftyp`, `moov`, `free`, `mdat` | `ftyp`, `moov`, `free`, `mdat` |
 
 **HyperFrames, seen in those runs.**
 
@@ -55,7 +56,11 @@ slides and scales. One run each unless a count is given.
 the project (109 MB), `hyperframes_info`, `hyperframes_validate`,
 `hyperframes_inspect` and `hyperframes_render` returned `success: true`; the
 inspect result carried `_meta.deprecated: true`, and the render wrote an mp4
-in 4.5 s.
+in 4.5 s. Read in the same file and not run: Kinocut sets
+`HYPERFRAMES_NO_TELEMETRY=1` and `DO_NOT_TRACK=1` for the CLI unless
+`KINOCUT_HYPERFRAMES_TELEMETRY=true`; without that it refuses a render with
+`docker` and refuses `preview` on any version but 0.8.104 and 0.8.140;
+`hyperframes_validate` runs `lint --json`.
 
 **Remotion, three claims of the old reference re-run on 4.0.543**, one still
 each.
@@ -83,3 +88,14 @@ formats, and one source in several aspect ratios in HyperFrames.
 tools and all `revideo_*` tools. Neither vendor's skills or plugin were
 installed, and no model was run on the changed skill text. Nothing was rendered
 in any cloud and no account was signed in.
+
+**From the cold review.** A subagent read the diff against both tags and the
+Kinocut source. Confirmed and fixed: the scene root's id is `root` and what
+must match is the composition id; charts are driven from a GSAP `onUpdate`
+and WAAPI and anime.js are seeked by the renderer, not drawn from `hf-seek`;
+Kinocut's preview and Docker refusals; `lambda` and `cloudrun` spend the
+user's cloud account; `telemetry disable` is a lasting config change, so the
+reference now sets the environment variable instead; minimum versions for
+`<Track>`, Studio's edits, `@remotion/gsap` and `setRspack`. Rejected after
+checking: that the current Remotion terms already count contractors. The page
+it quoted is the terms for 5.0; the 4.0 terms have no team-size clause.

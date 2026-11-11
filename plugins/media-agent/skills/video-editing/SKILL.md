@@ -47,8 +47,9 @@ tools, with absolute paths:
   plugin covers transcription, music and upscaling with other skills.
 - `hyperframes_*` build a video from its source, which is the
   `video-composition` skill's work. They need the HyperFrames CLI where
-  Kinocut can find it and return `hyperframes_not_found` without it; that
-  skill's HyperFrames reference says where Kinocut looks.
+  Kinocut can find it and return `hyperframes_not_found` without it. Do not
+  install it to clear the error: that skill's HyperFrames reference says where
+  Kinocut looks, what the install costs and when to ask the user.
 - The server needs `uv`, `ffmpeg` and `ffprobe` on PATH. Without `uv` it does
   not start, and the error shows only in the MCP list.
 
