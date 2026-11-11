@@ -121,17 +121,18 @@ Parameters as their sources give them; not yet tried in this series.
 
 ## Tools
 
-Stars and licences checked with `gh api repos/<owner>/<repo>` on 2026-10-30.
+Stars and licences checked with `gh api repos/<owner>/<repo>` on 2026-10-30;
+the HyperFrames, Remotion skills and Revideo rows again on 2026-11-11.
 
 | Tool | What it does | Licence, stars |
 |---|---|---|
-| [HyperFrames](https://github.com/heygen-com/hyperframes) | HTML, CSS and seekable animation (GSAP, Lottie, Three.js) to deterministic MP4; agent skills included | Apache-2.0, ~75.7k |
-| [Remotion agent skills](https://github.com/remotion-dev/skills) | Remotion best practices as agent skills (`npx skills add remotion-dev/skills`) | no licence file in the repo; Remotion's own licence in [remotion.md](remotion.md), ~5.9k |
+| [HyperFrames](https://github.com/heygen-com/hyperframes) | HTML, CSS and seekable animation (GSAP, Lottie, Three.js) to deterministic MP4; how to run it is in [hyperframes.md](hyperframes.md) | Apache-2.0, ~82.9k |
+| [Remotion agent skills](https://github.com/remotion-dev/skills) | Remotion best practices as agent skills (`npx remotion skills add`) | no licence file in the repo; Remotion's own licence in [remotion.md](remotion.md), ~6.9k |
 | [LottieFiles motion-design-skill](https://github.com/LottieFiles/motion-design-skill) | timing, easing and choreography rules for UI motion, any animation system | MIT, ~2.6k |
 | [Lottie Creator MCP](https://docs.lottiefiles.com/en/creator/13_ai-tools/lottie-creator-mcp) | a local bridge that lets an agent build and edit animations in Creator; needs Node 18+ and a Creator tab open | LottieFiles service |
 | [Rive CLI](https://rive.app/docs/cli/overview) | an agent writes the scene as [RML](https://rive.app/docs/runtimes/advanced-topic/rml) (XML `.rml` files); the CLI compiles to `.riv`, previews and captures frames headless | Rive service |
 | [OpenMontage](https://github.com/calesthio/OpenMontage) | an agentic video production system: pipelines, tools and skill files | AGPL-3.0, ~73.2k |
-| [Revideo](https://github.com/midrender/revideo) | TypeScript scenes rendered to video with a headless API (moved from `redotvideo/revideo`) | MIT, ~4.2k |
+| [Revideo](https://github.com/midrender/revideo) | TypeScript scenes rendered to video with a headless API (moved from `redotvideo/revideo`; last push 2026-07-15) | MIT, ~4.2k |
 
 **AGPL-3.0 (OpenMontage).** Running it to make videos does not put the
 videos under the AGPL: output is covered only where substantial parts of it
