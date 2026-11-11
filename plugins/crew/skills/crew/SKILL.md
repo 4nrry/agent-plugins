@@ -51,7 +51,11 @@ python3 scripts/crew.py ask <backend> --session <session> --prompt-file next.md 
 ```
 
 The worker runs read-only in `--cwd`. The verdict's `read_only` says how each
-backend enforces this, and a changed work tree fails the run. `--web` adds web
+backend enforces this, and a changed work tree fails the run. On agy 1.5 the
+mode crew relies on no longer stops a file write, and the verdict warns: ask
+agy with `--web`, where a write in its directory goes with it. From a
+repository the check catches only a new or changed tracked file, not one
+that is ignored, in `.git` or outside. `--web` adds web
 search and fetch (claude, agy, opencode, grok, codex, hermes), for a question
 that must not see the repository. claude, grok and hermes lose their file
 tools with it. agy, opencode and codex keep theirs, so crew runs each such
@@ -60,8 +64,7 @@ the worker left there is a warning. That hides the repository; it does not
 confine the worker: agy and codex can still open an absolute path, so keep
 paths out of the prompt and put what the worker needs in the prompt itself
 (opencode's profile is set to deny paths outside its directory). A
-`--session` turn with `--web` on these three is untested: if the CLI does not
-find the conversation, start a new one. grok and hermes also search X posts, users and threads, which other
+conversation continues across such turns with `--session`. grok and hermes also search X posts, users and threads, which other
 engines cannot read. `--schema file.json` returns the reply's JSON object in
 `structured`, natively where the CLI supports it.
 
