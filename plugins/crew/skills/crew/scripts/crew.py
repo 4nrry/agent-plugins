@@ -564,7 +564,11 @@ def plan_is_loose(backend: str, version) -> bool:
 
 
 def agy_version() -> str:
-    proc = subprocess.run(["agy", "--version"], capture_output=True, text=True, timeout=60)
+    """What `agy --version` prints last, or "?" when it prints nothing or cannot be run."""
+    try:
+        proc = subprocess.run(["agy", "--version"], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return "?"
     return proc.stdout.strip().splitlines()[-1].strip() if proc.stdout.strip() else "?"
 
 
@@ -3210,6 +3214,7 @@ def cmd_review(a) -> int:
     if a.backend not in REVIEW_GUARDED:
         return review_via_ask(a, repo, question, schema)
     opencode, copilot = a.backend == "opencode", a.backend == "copilot"
+    denied, version = False, "?"                # agy only: set where its command is built
     model = a.model or {"opencode": OPENCODE_DEFAULT_MODEL, "copilot": COPILOT_DEFAULT_MODEL}.get(
         a.backend, DEFAULT_MODEL)
     if copilot:
@@ -3289,7 +3294,7 @@ def cmd_review(a) -> int:
         import backends
         # The hooks are the guard. The deny rules are what is left if they do
         # not load: from agy 1.5 on, --mode plan does not stop a file write.
-        denied = takes_settings("agy")
+        denied, version = takes_settings("agy"), agy_version()    # both read before the run, not after
         cmd = ["agy", "-p", prompt, "--model", model, "--mode", "plan", "--output-format", "json",
                "--json-schema", schema_path, "--print-timeout", f"{timeout_s}s"]
         if denied:
@@ -3322,7 +3327,7 @@ def cmd_review(a) -> int:
             warns.append("hooks did not load (no SessionStart): the review ran with --mode plan and the deny "
                          "rules for write_file, command and mcp passed through --settings; no guard on which "
                          "paths it read")
-        elif plan_is_loose("agy", agy_version()):
+        elif plan_is_loose("agy", version):
             fails.append("the crew hooks did not load (no SessionStart) and this agy takes no --settings: "
                          "--mode plan did not stop a file write when tried on agy 1.5, so the review ran "
                          "with nothing keeping it read-only")

@@ -50,8 +50,9 @@ the free alternative.
 - **No `.agents/hooks.json` in the repo.** The script writes its own for the
   run, removes it afterwards (also on SIGTERM/SIGHUP), and refuses if one
   exists. After a SIGKILL the next run refuses and names the file to remove.
-- **The hooks must load**: without a registered `SessionStart` the verdict
-  fails. Do not edit `~/.gemini` to fix it; tell the user.
+- **The hooks must load**: without a registered `SessionStart` a delegate
+  verdict fails (for `review`, see the table below). Do not edit `~/.gemini`
+  to fix it; tell the user.
 - A version other than the tested one is a warning in the verdict.
 
 ## Guard and gate
@@ -123,11 +124,11 @@ same path guards, and checks that the tree did not change. Where agy takes
 `--settings`, the deny rules of the section above are passed too
 (`agy.deny_settings` in the verdict).
 
-The hooks are the guard. On agy 1.5.5 and 1.5.6 they loaded and denied every
-write a reviewer was asked to make, and a read outside the repository. The
-deny rules are what is left if the hooks do not load: with review's flags and
-no hooks file, agy 1.5.6 created one file and changed two under plan mode
-alone, and wrote nothing once the rules were passed.
+The hooks are the guard. They loaded on agy 1.5.5 and 1.5.6, and on 1.5.6
+denied every write a reviewer was asked to make and a read outside the
+repository. The deny rules are what is left if the hooks do not load: with
+review's flags and no hooks file, agy 1.5.6 created one file and changed two
+under plan mode alone, and wrote nothing once the rules were passed.
 
 | Hooks loaded | agy takes `--settings` | Verdict |
 |---|---|---|
