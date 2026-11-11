@@ -42,10 +42,14 @@ tools, with absolute paths:
 - The server lists about 200 tools and some are shells. `search_tools`
   describes a contract, not what is installed: run a tool once on a real file
   and check `success` and the output before building a flow on it.
-- `video_ai_*`, `hyperframes_*` and several `sound_*` tools need optional
-  extras (Whisper, Demucs, Real-ESRGAN, torch). Do not install them to get
-  "all green": this plugin covers transcription, music and upscaling with
-  other skills.
+- `video_ai_*` and several `sound_*` tools need optional extras (Whisper,
+  Demucs, Real-ESRGAN, torch). Do not install them to get "all green": this
+  plugin covers transcription, music and upscaling with other skills.
+- `hyperframes_*` build a video from its source, which is the
+  `video-composition` skill's work. They need the HyperFrames CLI where
+  Kinocut can find it and return `hyperframes_not_found` without it. Do not
+  install it to clear the error: that skill's HyperFrames reference says where
+  Kinocut looks, what the install costs and when to ask the user.
 - The server needs `uv`, `ffmpeg` and `ffprobe` on PATH. Without `uv` it does
   not start, and the error shows only in the MCP list.
 

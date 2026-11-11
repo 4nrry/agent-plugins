@@ -1,27 +1,40 @@
 ---
 name: video-composition
-description: Builds a marketing video as code from its source project — frame-driven scenes, captions from the voice JSON, b-roll placement, ducked music, real-time 3D, and 16:9, 1:1, 9:16, 4:5 plus a carousel from one source. Use for an institutional video, a short vertical video (Reels, Shorts, TikTok), code-drawn motion graphics, LinkedIn formats, declaring AI at upload, Remotion, Three.js, or HTML rendered to video.
+description: Builds a marketing video as code from its source project — frame-driven scenes, captions from the voice JSON, b-roll placement, ducked music, real-time 3D, and 16:9, 1:1, 9:16, 4:5 plus a carousel from one source. Use for an institutional video, a short vertical video (Reels, Shorts, TikTok), code-drawn motion graphics, LinkedIn formats, declaring AI at upload, Remotion, HyperFrames, Three.js, or HTML rendered to video.
 ---
 
 # Video composition as code
 
 Change a voice-over sentence and re-render; one source, every format. The
-traps do not show in the preview. The rules below hold for any compositor:
-[references/remotion.md](references/remotion.md) covers Remotion, and
-[references/html-capture.md](references/html-capture.md) the license-free
-HTML + headless Chrome + ffmpeg route.
+traps do not show in the preview. The rules below hold for any compositor;
+each one's commands, license and traps are in its reference.
 
 ## Choose the compositor
 
-Check its license before writing a scene: Remotion is paid above a small team
-(the rule is in `references/remotion.md`; whoever signs decides). The HTML
-route has no license cost and loses the interactive preview.
+| | Remotion | HyperFrames | Capture written by hand |
+|---|---|---|---|
+| Source | React components, each a function of the frame | HTML files with a paused timeline the renderer seeks | one `comp.html` with `seek(t)` |
+| License | paid for a company of four or more people | Apache-2.0 | none |
+| Preview | Studio, whose visual edits are written back to the code | a browser editor on the same files | none |
+| Installs | a Node project with a bundler | a CLI in the npx cache; a package in the project only for Kinocut's tools | Playwright |
+| Fits when | the project is already React, or shares components with an app | the source is HTML, a site or a design export, or the license must not depend on headcount | nothing but Playwright may be installed |
+| Reference | [remotion.md](references/remotion.md) | [hyperframes.md](references/hyperframes.md) | [html-capture.md](references/html-capture.md) |
+
+- An existing project keeps its compositor.
+- A new one where the request names none and both Remotion and HyperFrames
+  fit: ask the user which, once, before installing anything. Both download
+  their own headless Chrome on the first render, HyperFrames sends usage
+  telemetry until it is turned off, and Remotion's license is for whoever
+  signs to decide.
+- Read the reference's license section before writing a scene.
 
 ## Rules for any compositor
 
 - **Everything is a function of the frame.** Anything that animates on its own
   (CSS transitions, chart libraries, `<video>` playback) breaks a frame-by-frame
-  render: disable it and draw the state at frame `t`.
+  render: disable it and draw the state at frame `t`. HyperFrames seeks GSAP,
+  CSS keyframes, WAAPI, Lottie and anime.js itself; canvas and Three.js there
+  draw from its seek event.
 - **Captions come from the voice-over JSON** (`voice` skill), not from
   transcription. One table of sentence starts feeds the voice track, the
   caption track and the music ducking. Word-level times, for captions that
