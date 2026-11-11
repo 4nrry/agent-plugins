@@ -15,8 +15,9 @@ beside the listing.
 | media-agent | a clapperboard | `#BE123C` |
 | mobile-agent | a phone with a face | `#0369A1` |
 
-The drawings use no text and no fonts, so any SVG renderer gives the same
-result. After editing an SVG, render its PNG again (libvips 8.18 here):
+The drawings use no text and no fonts. After editing an SVG, render its PNG
+again; the committed PNGs came from libvips 8.18.5, and no other renderer was
+tried:
 
 ```bash
 vips copy "assets/icons/crew.svg[scale=2]" "plugins/crew/.claude-plugin/icon.png[compression=9,strip]"
