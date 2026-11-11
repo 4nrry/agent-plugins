@@ -27,7 +27,8 @@ decision even when it crashes.
 The agy backend also watches the run: agy (1.3.4, still on 1.4.2) moves long
 commands to a background task whatever WaitMsBeforeAsync says and then waits up
 to 30 min for them (15 min logged on 1.4.2), so BackgroundWatcher ends the
-worker's leftovers once it finished green.
+worker's leftovers once it finished green. agy 1.5.6 ends them itself on exit,
+and exits 3 on a print timeout.
 
 Stdlib only. State lives in `$(git rev-parse --git-path crew)` (`agy-worker`
 before 0.4.0), so a run
@@ -109,7 +110,7 @@ DEFAULT_REVIEW_TIMEOUT = "15m"
 DEFAULT_GATE_TIMEOUT = 900
 DEFAULT_MAX_GATE_ATTEMPTS = 5
 DEFAULT_MIN_QUOTA = 0.05
-TESTED_AGY_VERSION = "1.4.7"       # every agy behaviour this script relies on was seen on this one
+TESTED_AGY_VERSION = "1.5.6"       # what was and was not seen on it: references/agy.md, "Seen on agy 1.5.6"
 MAX_PROMPT_BYTES = 100_000          # one argv string is capped at 128 KiB on Linux
 MAX_DIFF_BYTES = 60_000
 TAIL_CHARS = 6000
@@ -1710,7 +1711,8 @@ def evaluate_run(rc, stdout: str, stderr: str, mode: str, schema: dict):
         detail = m.group(1)[:400] if m else tail(stderr.strip(), 400)
         fails.append(f"agy exited with rc={rc}: {detail}")
     if TIMEOUT_MARKER in stderr:
-        fails.append("agy print timeout: the output is partial (agy exits 0 anyway)")
+        # agy 1.3.4 exited 0 here; 1.5.6 exits 3 with status ERROR and ends its own tasks.
+        fails.append("agy print timeout: the output is partial" + (" (agy exits 0 anyway)" if rc == 0 else ""))
     if NO_OUTPUT_MARKER in stderr:
         fails.append("agy ended with no output and no logged error")
     if AUTO_DENY_MARKER in stderr:
@@ -1732,8 +1734,9 @@ def evaluate_run(rc, stdout: str, stderr: str, mode: str, schema: dict):
             (fails if strict_denials else warns).append(f"denied_actions: {json.dumps(denied)[:300]}")
         so = env.get("structured_output")
         if so is None:
-            fails.append("structured_output is null: the report did not satisfy the schema "
-                         "(agy returns status SUCCESS anyway)")
+            fails.append("structured_output is null: " + (
+                "the report did not satisfy the schema (agy returns status SUCCESS anyway)"
+                if env.get("status") == "SUCCESS" else "no report came back"))
         elif isinstance(so, dict):
             missing = [k for k in schema.get("required", []) if k not in so]
             if missing:
