@@ -67,6 +67,17 @@ servers); they are listed in `agy.background_killed`. That is expected.
 | `denied_actions` / auto-denied | a refused action exits 0 |
 | hooks did not load | see above |
 
+## Ask on agy 1.5
+
+`ask` relies on `--mode plan` to keep agy from writing. On agy 1.5.5 that did
+not hold in print mode: asked to create a file, it did, with and without
+`--disable-slash-commands` (with it, agy also prints that plan mode has no
+effect). Shell commands were still denied. The verdict says so in `read_only`
+and in a warning. Until `ask` on agy has a guard of its own, use it with
+`--web`, where a write lands in a directory that is removed, or from a clean
+repository, where the work-tree check fails the run. `review` and `delegate`
+run under crew's hooks and are not affected by this.
+
 ## Review
 
 ```bash
