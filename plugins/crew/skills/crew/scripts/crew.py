@@ -923,8 +923,9 @@ def allow_cmd(ctx: dict) -> dict:
     the foreground: on agy 1.3.4 the overwrite was applied ("A pre-tool hook
     changed the arguments ... Changed: WaitMsBeforeAsync") and a long `nx run
     web:typecheck` still went to a background task after ~4 s (two runs in
-    another repository, 2026-10-13). The leftover background task is what kept agy alive for 11 and
-    16 min after the worker stopped; BackgroundWatcher handles that instead."""
+    another repository, 2026-10-13). The leftover background task is what kept
+    agy alive for 11 and 16 min after the worker stopped; BackgroundWatcher
+    handles that instead."""
     return {"decision": "allow"}
 
 
