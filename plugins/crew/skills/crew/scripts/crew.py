@@ -922,8 +922,8 @@ def allow_cmd(ctx: dict) -> dict:
     """Plain allow. Overwriting WaitMsBeforeAsync does NOT keep run_command in
     the foreground: on agy 1.3.4 the overwrite was applied ("A pre-tool hook
     changed the arguments ... Changed: WaitMsBeforeAsync") and a long `nx run
-    web:typecheck` still went to a background task after ~4 s (two LOTVS runs,
-    2026-10-13). The leftover background task is what kept agy alive for 11 and
+    web:typecheck` still went to a background task after ~4 s (two runs in
+    another repository, 2026-10-13). The leftover background task is what kept agy alive for 11 and
     16 min after the worker stopped; BackgroundWatcher handles that instead."""
     return {"decision": "allow"}
 
@@ -1850,8 +1850,9 @@ class BackgroundWatcher:
     agy 1.3.4 moves a long run_command (an `nx run web:typecheck`) to a
     background task after ~4 s whatever WaitMsBeforeAsync says, and after the
     root agent is done it logs "waiting up to 30m0s for N background task(s)"
-    and sits there: 16 and 11 min in two LOTVS runs (2026-10-13), until the
-    orphans were killed by hand; then agy exited 0 with a valid envelope.
+    and sits there: 16 and 11 min in two runs in another repository
+    (2026-10-13), until the orphans were killed by hand; then agy exited 0
+    with a valid envelope.
 
     Polled once a second while agy runs. Once guard.jsonl shows the worker is
     done after a GREEN gate (Stop answered `stop`, or `finish` allowed), it

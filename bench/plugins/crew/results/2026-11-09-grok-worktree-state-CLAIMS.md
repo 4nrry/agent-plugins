@@ -17,8 +17,8 @@ worktree that is `<main checkout>/.git/worktrees/<name>/crew`, outside the work
 tree, and Grok runs crew's hooks inside `--sandbox workspace`, which writes
 only in the work tree, `~/.grok`, `/tmp` and `/var/tmp` (Grok's sandbox
 guide). The hooks could not open their log, so every Claude Code desktop
-session hit it. First seen in LOTVS sessions the same day, then reproduced
-here.
+session hit it. First seen in another repository's sessions the same day,
+then reproduced here.
 
 | Case | crew | Result |
 |---|---|---|
@@ -50,7 +50,7 @@ state in `/tmp/crew-state-<uid>/<12 hex of the sha256 of the real git
 path>/crew`. `/tmp` is shared, so the top dir is created 0700; a link or
 another user's directory in its place is refused, and one of this user's with
 wider modes is narrowed to 0700. This machine had one at 0775 before the batch,
-most likely from the hand-patched copy used in the LOTVS sessions; the first
+most likely from the hand-patched copy used in those sessions; the first
 0.15.2 run narrowed it. A plain checkout keeps `.git/crew`.
 
 `--self-test` builds a linked worktree inside the main checkout and checks that
