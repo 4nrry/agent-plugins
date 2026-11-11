@@ -465,18 +465,45 @@ def private_tmp_dir() -> str:
     """`/tmp/crew-state-<uid>`, created with mode 0700. A link or another user's
     directory in its place is refused, never written into; one of this user's
     with wider modes (an older crew, a umask) is narrowed to 0700."""
-    top = os.path.join(STATE_TMP_ROOT, f"crew-state-{os.getuid()}")
+    return own_dir(os.path.join(STATE_TMP_ROOT, f"crew-state-{os.getuid()}"),
+                   "keeps the runs of linked worktrees")
+
+
+def own_dir(path: str, use: str) -> str:
     try:
-        os.mkdir(top, 0o700)
+        os.mkdir(path, 0o700)
     except FileExistsError:
         pass
-    st = os.lstat(top)
+    st = os.lstat(path)
     if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
-        raise Refusal(f"{top} is not a directory of this user (a link, a file, or someone else's): crew "
-                      "keeps the runs of linked worktrees there. Check what it is, move it away, and retry")
+        raise Refusal(f"{path} is not a directory of this user (a link, a file, or someone else's): crew "
+                      f"{use} there. Check what it is, move it away, and retry")
     if stat.S_IMODE(st.st_mode) != 0o700:
-        os.chmod(top, 0o700)
-    return top
+        os.chmod(path, 0o700)
+    return path
+
+
+def web_cwd() -> str:
+    """Where a `--web` ask runs on the backends that keep their file tools
+    (agy, opencode, codex): `/tmp/crew-state-<uid>/web-cwd`, mode 0700, with
+    nothing of the user's in it or above it. One path for every run, so the
+    turns of a conversation share a directory; what a worker left there more
+    than a day ago is removed. Not a sandbox: a worker handed an absolute path
+    can still read it where its CLI allows that."""
+    path = own_dir(os.path.join(private_tmp_dir(), "web-cwd"), "runs --web workers")
+    cutoff = time.time() - 86400
+    with os.scandir(path) as entries:
+        for entry in entries:
+            try:
+                if entry.stat(follow_symlinks=False).st_mtime >= cutoff:
+                    continue
+                if entry.is_dir(follow_symlinks=False):
+                    shutil.rmtree(entry.path, ignore_errors=True)
+                else:
+                    os.unlink(entry.path)
+            except OSError:
+                pass
+    return path
 
 
 def parse_duration(text) -> int:
@@ -3245,8 +3272,10 @@ def read_prompt(a) -> str:
 def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None, session=None,
             cwd=None, timeout_s=600, allow_same_vendor=False, env=None, web=False, schema=None) -> dict:
     """One turn with a worker CLI. Returns the verdict; never trusts the exit code alone.
-    `web`: the backend's web profile, search and fetch. Only the backends in
-    WEB_ONLY lose their file tools with it; the verdict's `read_only` says which.
+    `web`: the backend's web profile, search and fetch. The backends in
+    WEB_ONLY lose their file tools with it; the others keep them and run in
+    web_cwd() instead of `cwd`, so the repository is not in front of the
+    worker. The verdict's `read_only` says which.
     `schema`: a JSON object is expected back, natively where the CLI supports it,
     else asked for in the prompt; it lands in the verdict's `structured`."""
     import backends
@@ -3267,6 +3296,8 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
     rundir = new_rundir(repo, "ask") if repo else tempfile.mkdtemp(prefix="crew-ask-")
     run_id = os.path.basename(rundir)
     opts = {"web": web, "timeout": timeout_s, "rundir": rundir}
+    isolated = web and backend not in backends.WEB_ONLY
+    run_cwd = web_cwd() if isolated else cwd
     if schema:
         opts["schema"] = schema
         opts["schema_path"] = os.path.join(rundir, "schema.json")
@@ -3275,7 +3306,7 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
             prompt += ("\n\nEnd your reply with ONE JSON object (no prose after it) matching this JSON "
                        f"schema: {json.dumps(schema, separators=(',', ':'))}")
     try:
-        argv, extra_env, preset = spec["build"](spec, prompt, r["model"], r["effort"], session, cwd, opts)
+        argv, extra_env, preset = spec["build"](spec, prompt, r["model"], r["effort"], session, run_cwd, opts)
     except ValueError as exc:
         raise Refusal(str(exc))
     env.update(extra_env)
@@ -3293,10 +3324,11 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
     elif not (version and live in version):
         warnings.append(f"{backend}: tested on {live}, found {version!r}")
     before = fingerprint(repo, []) if repo else None
-    saved = snapshot_files(cwd, OPENCODE_CONFIG_FILES) if backend == "opencode" else {}
+    saved = snapshot_files(run_cwd, OPENCODE_CONFIG_FILES) if backend == "opencode" else {}
+    there = set(os.listdir(run_cwd)) if isolated else set()
     t0, rc, out, err, failures = time.time(), None, "", "", []
     try:
-        proc = subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True,
+        proc = subprocess.run(argv, cwd=run_cwd, env=env, capture_output=True, text=True,
                               timeout=timeout_s, stdin=subprocess.DEVNULL)
         rc, out, err = proc.returncode, proc.stdout, proc.stderr
     except subprocess.TimeoutExpired as exc:
@@ -3304,7 +3336,11 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
         failures.append(f"timed out after {timeout_s}s")
     finally:
         left = stop_run_procs(run_id)
-        restore_files(cwd, saved)
+        restore_files(run_cwd, saved)
+    if isolated:
+        new = sorted(set(os.listdir(run_cwd)) - there)
+        if new:      # this run's worker or one running beside it: several asks share the directory
+            warnings.append(f"a worker wrote in the empty --web directory {run_cwd}: {new[:5]}")
     for name, text in (("stdout", out), ("stderr", err)):
         with open(os.path.join(rundir, f"{name}.log"), "w", encoding="utf-8") as fh:
             fh.write(text)
@@ -3332,7 +3368,7 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
             "text": parsed.get("text"), "structured": structured, "usage": parsed.get("usage"),
             "read_only": spec["read_only"] if not web else "web search and fetch only"
             if backend in backends.WEB_ONLY else
-            spec["read_only"] + "; web search and fetch added, files under --cwd still readable",
+            spec["read_only"] + "; web search and fetch added; run in an empty directory, not in --cwd",
             "version": version, "failures": failures, "warnings": warnings,
             "left_processes_stopped": sorted(left), "duration_s": round(time.time() - t0, 1),
             "rundir": rundir}
@@ -4481,6 +4517,44 @@ def self_test() -> int:
                 check(main(["ask", "agy", "ping"]) == 2, "ask: refused inside a crew worker")
             finally:
                 del os.environ[RUN_ENV]
+            # --web on a backend that keeps its file tools: crew's own empty directory, not --cwd
+            real_root, STATE_TMP_ROOT = STATE_TMP_ROOT, os.path.join(tmp, "webroot")
+            os.makedirs(STATE_TMP_ROOT)
+            try:
+                with open(fake, "w") as fh:      # this one answers with the directory it runs in
+                    fh.write("#!/bin/sh\n[ \"$1\" = --version ] && { echo 1.4.4; exit 0; }\n"
+                             "printf '{\"conversation_id\":\"w1\",\"status\":\"SUCCESS\",\"response\":\"%s\"}' "
+                             "\"$(pwd -P)\"\n")
+                wdir = os.path.join(STATE_TMP_ROOT, f"crew-state-{os.getuid()}", "web-cwd")
+                v = run_ask("agy", "ping", cwd=repo, env=fenv, web=True)
+                check(v["ok"] and v["text"] == os.path.realpath(wdir) and os.listdir(wdir) == []
+                      and stat.S_IMODE(os.lstat(wdir).st_mode) == 0o700 and "empty directory" in v["read_only"]
+                      and not any("wrote" in w for w in v["warnings"]),
+                      "ask --web: agy runs in crew's empty directory, mode 0700")
+                v = run_ask("agy", "ping", cwd=repo, env=fenv)
+                check(v["ok"] and v["text"] == os.path.realpath(repo) and "empty directory" not in v["read_only"],
+                      "ask: without --web the worker runs in --cwd")
+                old, fresh = os.path.join(wdir, "old.txt"), os.path.join(wdir, "fresh.txt")
+                for p in (old, fresh):
+                    open(p, "w").close()
+                os.utime(old, (time.time() - 2 * 86400,) * 2)
+                with open(fake, "a") as fh:
+                    fh.write("echo x > left.txt\n")
+                v = run_ask("agy", "ping", cwd=repo, env=fenv, web=True)
+                check(v["ok"] and not os.path.exists(old) and os.path.exists(fresh)
+                      and any("left.txt" in w for w in v["warnings"]) and changed_paths(repo) == [],
+                      "ask --web: day-old leftovers are removed, a worker's write is reported, the repo is untouched")
+                shutil.rmtree(wdir)
+                os.symlink(repo, wdir)
+                try:
+                    run_ask("agy", "ping", cwd=repo, env=fenv, web=True)
+                    check(False, "ask --web: a link in place of the empty directory is refused")
+                except Refusal:
+                    check(True, "")
+                check(changed_paths(repo) == [], "ask --web: nothing ran through the link")
+                os.unlink(wdir)
+            finally:
+                STATE_TMP_ROOT = real_root
             # review on an ask backend: no JSON on turn 1, the report on the resumed turn
             fcx = os.path.join(fakebin, "codex")
             with open(fcx, "w") as fh:
@@ -4558,7 +4632,7 @@ def main(argv=None) -> int:
                    help="allow a backend from the host's own vendor")
     k.add_argument("--web", action="store_true",
                    help="add web search and fetch; claude, grok and hermes then have no file tools, "
-                        "agy, opencode and codex can still read --cwd")
+                        "agy, opencode and codex run in an empty directory instead of --cwd")
     k.add_argument("--schema", help="JSON schema file: the reply's object lands in `structured`")
     sub.add_parser("backends", help="list backends, tiers, binaries and test status")
     h = sub.add_parser("hook", help="guard handler a backend's hooks call (installed per run)")
