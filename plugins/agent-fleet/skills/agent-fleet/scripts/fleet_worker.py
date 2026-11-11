@@ -17,7 +17,8 @@ WHAT IT GUARANTEES, AND HOW
   profile, isolation, model allowlist, output parsing and version warnings.
   This script owns the research: prompts, schemas, sanitizing, merge, ranking.
 - Read-only by construction, not by prompt. crew's web profile gives each
-  worker web search and fetch only, in a fresh empty temp directory.
+  worker web search and fetch away from any repository: here in a temporary
+  directory holding only its prompt and schema.
 - Closed schema. crew passes the schema natively where the CLI supports it,
   else asks for it in the prompt; the object is validated here either way,
   and arrays are cut to the schema's maxItems.
@@ -49,8 +50,9 @@ Prompts, schemas, caps and the dedup key follow Claude Code's built-in
 deep-research workflow (2.1.306), so results drop into the same pipeline.
 
 Run `check` and the self-test first. crew's warnings (an untested backend or
-version) are carried into the output. `CREW_PY` points at crew.py when it is
-not found by itself (see find_crew).
+version) are carried into the output. crew.py is taken from where the crew
+plugin is installed; `CREW_PY` names another copy, such as a checkout's (see
+find_crew).
 """
 
 import argparse
@@ -279,18 +281,20 @@ MIN_QUOTE = 30   # characters; shorter "quotes" were placeholders, not evidence,
 
 
 def find_crew():
-    """crew.py: $CREW_PY, the sibling plugin (repo and marketplace layout), the
-    global skill link other tools read, then Claude Code's plugin copies."""
-    here = Path(__file__).resolve().parent
-    # here = <plugins>/agent-fleet/skills/agent-fleet/scripts; crew sits in skills/crew/ of its plugin.
-    cands = [os.environ.get("CREW_PY"), here.parents[3] / "crew" / "skills" / "crew" / "scripts" / "crew.py",
+    """crew.py: $CREW_PY, the global skill link other tools read, then Claude
+    Code's plugin copies. Only installed copies: this script does not reach out
+    of its own plugin folder for a neighbour, so from a repository checkout
+    the installed crew runs unless CREW_PY names the checkout's."""
+    cands = [os.environ.get("CREW_PY"),
              Path.home() / ".agents/skills/crew/scripts/crew.py",
              *sorted(Path.home().glob(".claude/plugins/marketplaces/*/plugins/crew/skills/crew/scripts/crew.py")),
-             *sorted(Path.home().glob(".claude/plugins/cache/*/crew/*/skills/crew/scripts/crew.py"), reverse=True)]
+             *sorted(Path.home().glob(".claude/plugins/cache/*/crew/*/skills/crew/scripts/crew.py"),
+                     key=lambda p: [int(n) if n.isdigit() else -1 for n in p.parts[-5].split(".")], reverse=True)]
     for c in cands:
         if c and Path(c).is_file():
             return str(c)
-    sys.exit("fleet_worker: crew not found; install the crew plugin or set CREW_PY")
+    sys.exit("fleet_worker: crew not found in ~/.agents/skills/crew or Claude Code's plugin directories; "
+             "install the crew plugin there or set CREW_PY to its crew.py")
 
 
 def run_one(crew: str, backend: str, prompt: str, schema: dict, model, timeout: int,
@@ -602,6 +606,29 @@ def self_test() -> int:
         os.environ["CREW_PY"] = str(fake)
         try:
             check(find_crew() == str(fake), "CREW_PY wins")
+            # No CREW_PY and nothing installed under HOME: a crew plugin beside this one is not picked up.
+            old_home = os.environ.get("HOME")
+            os.environ.pop("CREW_PY")
+            os.environ["HOME"] = str(Path(wd, "empty-home"))
+            Path(os.environ["HOME"]).mkdir()
+            try:
+                try:
+                    find_crew()
+                    check(False, "crew is taken only from an installed copy")
+                except SystemExit as e:
+                    check("crew not found" in str(e), "crew is taken only from an installed copy")
+                # Claude Code's cache keeps several versions: the highest number wins, not the last as text.
+                for ver in ("0.9.3", "0.15.9", "0.15.10"):
+                    d = Path(os.environ["HOME"], ".claude/plugins/cache/m/crew", ver, "skills/crew/scripts")
+                    d.mkdir(parents=True)
+                    Path(d, "crew.py").write_text("", encoding="utf-8")
+                check("/0.15.10/" in find_crew(), "the cache copy with the highest version is taken")
+            finally:
+                os.environ["CREW_PY"] = str(fake)
+                if old_home is None:
+                    os.environ.pop("HOME", None)
+                else:
+                    os.environ["HOME"] = old_home
         finally:
             if old_env is None:
                 os.environ.pop("CREW_PY", None)

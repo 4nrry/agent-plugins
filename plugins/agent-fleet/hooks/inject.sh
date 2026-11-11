@@ -29,11 +29,19 @@
 # as it did before.
 set -euo pipefail
 
-# Resolve the plugin root from the script's own location rather than
-# ${CLAUDE_PLUGIN_ROOT}: works identically when run by the hook runner,
-# by hand, or from a copied tree.
-# The skill lives in skills/agent-fleet/ (the Agent Plugins layout).
-SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../skills/agent-fleet" && pwd)"
+# Arguments: `--root DIR`, the plugin folder as hooks.json writes it from
+# ${CLAUDE_PLUGIN_ROOT}, and `--forget`. The argument serves a harness that
+# fills the placeholder into the command without exporting the variable; with
+# no argument the variable itself is used.
+ROOT="${CLAUDE_PLUGIN_ROOT:-}"
+forget=""
+while (( $# )); do
+  case "$1" in
+    --root) ROOT="${2:-}"; shift ;;
+    --forget) forget=1 ;;
+  esac
+  shift || true
+done
 
 command -v jq >/dev/null || { echo "agent-fleet inject hook: jq not found, skill not injected" >&2; exit 0; }
 input=$(cat) || exit 0
@@ -45,7 +53,7 @@ sid=$(jq -r '.session_id // empty' <<<"$input" 2>/dev/null) || sid=""
 marker=""
 if [[ -n "$MARKERS" && -n "$sid" ]]; then marker="$MARKERS/$sid"; fi
 
-if [[ "${1:-}" == "--forget" ]]; then
+if [[ -n "$forget" ]]; then
   [[ -z "$marker" ]] || rm -f -- "$marker" 2>/dev/null || true
   exit 0
 fi
@@ -86,6 +94,16 @@ else
   exit 0
 fi
 
+# The plugin folder is ${CLAUDE_PLUGIN_ROOT}, as an argument or as the
+# variable: Claude Code sets it for a plugin's hooks, and so do the bridges
+# for other harnesses. Run by hand, pass --root. The skill lives in
+# skills/agent-fleet/ (the Agent Plugins layout).
+if [[ -z "$ROOT" ]]; then
+  echo "agent-fleet plugin hook: no plugin folder (--root or CLAUDE_PLUGIN_ROOT) — skill not injected" >&2
+  exit 1
+fi
+SKILL_DIR="${ROOT%/}/skills/agent-fleet"
+[[ "$SKILL_DIR" == /* ]] || SKILL_DIR="$PWD/$SKILL_DIR"
 if [[ ! -f "$SKILL_DIR/SKILL.md" ]]; then
   echo "agent-fleet plugin hook: $SKILL_DIR/SKILL.md not found — skill not injected" >&2
   exit 1

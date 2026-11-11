@@ -40,8 +40,10 @@ root.
   `~/.claude/plugins/data/agent-fleet-routing`).
   Both need `jq`, and the routing hook `sha256sum`; without them they do
   nothing and say so on stderr.
-- `fleet_worker.py` sends the question, the search angles and the page URLs to
-  the provider of each CLI it is told to use, through crew: xAI (grok), Google
+- `fleet_worker.py` runs `crew.py` from where the crew plugin is installed
+  (`$CREW_PY`, `~/.agents/skills/crew`, or Claude Code's plugin directories)
+  and, through it, sends the question, the search angles and the page URLs to
+  the provider of each CLI it is told to use: xAI (grok), Google
   (agy), OpenAI (codex), Anthropic (claude), opencode's Zen, or the provider
   hermes is set to. It runs only when the agent calls it; the skill says to
   ask first.
