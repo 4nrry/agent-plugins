@@ -24,7 +24,7 @@ hooks nor the local MCP server, so only the skills' text applies there.
 | `voice` | one sentence per file, caption vs spoken text, -16 LUFS, the durations JSON | `vo-normalize.sh`, `hermes-tts.sh` (xAI voice); TTS engine notes |
 | `audio` | exact-length music, SFX, fixing real recordings, word times for captions | ElevenLabs (`eleven.py`), ACE-Step, synthesized effects (`sfx-synth.py`), WhisperX notes |
 | `stock-media` | licenses and credits per item, which library has what, the trap in each license | stock search (`media-search.py`: Openverse, Freesound, Pexels, Pixabay) |
-| `video-composition` | video as code: frame-driven scenes, captions from the voice JSON, formats from one source, short vertical video for Reels, Shorts and TikTok, motion for cuts and text | Remotion, HTML + Chrome + ffmpeg |
+| `video-composition` | video as code: frame-driven scenes, captions from the voice JSON, formats from one source, short vertical video for Reels, Shorts and TikTok, motion for cuts and text | notes for Remotion, HyperFrames and a capture written by hand (HTML + Chrome + ffmpeg) |
 | `video-editing` | re-render vs patch the mp4, which Kinocut tool for which edit, checking the output | Kinocut, registered as an MCP server (`.mcp.json`); its CLI as the fallback |
 | `3d-turntable` | a 360° product turn as transparent frames | headless Blender (`turntable.py`) |
 | `3d-scenes` | scripted sets, rigged .glb figures that keep their rotation and pose, preview and final quality, frozen-frame check | `scene_kit.py`, `check_motion.py` (headless Blender) |
@@ -45,10 +45,13 @@ images to Google's Gemini API; `grok-image.sh`, `grok-video.sh`, `agy-image.sh`
 which send the prompt or the narration text to their own providers; `media-search.py` sends search terms to Openverse,
 Freesound, Pexels and Pixabay and keeps Pixabay's answers for 24 h under the
 user cache directory. The Kinocut MCP server and the ComfyUI scripts run
-locally. The hooks read the tool call and the session transcript, need `jq`,
+locally. Remotion and HyperFrames are not bundled: when the `video-composition`
+skill has the agent run them, npm serves the packages, each downloads its own
+headless Chrome on the first render, and the HyperFrames CLI sends usage
+telemetry to HeyGen until it is turned off, which the skill does first. The hooks read the tool call and the session transcript, need `jq`,
 and write one marker file per session under the temp directory.
 
-The plugin does not decide licenses for you (Remotion's employee limit,
+The plugin does not decide licenses for you (Remotion's headcount limit,
 ElevenLabs' free tier): the skills state the rule and the user decides. Paths
 and keys come from environment variables (`COMFY_HOME`, `*_API_KEY`).
 
@@ -59,3 +62,5 @@ The cut-out route's timings and file sizes from one landing-page prototype are i
 [`2026-11-10-cutout-animation-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-10-cutout-animation-CLAIMS.md).
 What `page-check.mjs` found on planted defects and on that prototype is in
 [`2026-11-10-page-check-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-10-page-check-CLAIMS.md).
+One small render each on HyperFrames and Remotion, with what they downloaded, is in
+[`2026-11-11-hyperframes-remotion-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-11-hyperframes-remotion-CLAIMS.md).
