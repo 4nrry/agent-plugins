@@ -6,7 +6,7 @@
 Each set is a JSON array of {"query", "should_trigger"}. A prompt counts as
 fired when the hook prints the agent-fleet header. Stdlib only.
 """
-import json, subprocess, sys
+import json, os, subprocess, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -18,7 +18,8 @@ SETS = ["dev.json", "blind-1.json", "blind-2.json", "aug-2026-08-06.json", "suba
 
 def fires(prompt: str) -> bool:
     p = subprocess.run(["bash", str(HOOK)], input=json.dumps({"prompt": prompt}),
-                       capture_output=True, text=True, timeout=30)
+                       capture_output=True, text=True, timeout=30,
+                       env={**os.environ, "CLAUDE_PLUGIN_ROOT": str(HOOK.resolve().parents[1])})
     return "agent-fleet skill applies" in p.stdout
 
 for name in SETS:
