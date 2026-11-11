@@ -48,7 +48,8 @@ user cache directory. The Kinocut MCP server and the ComfyUI scripts run
 locally. Remotion and HyperFrames are not bundled: when the `video-composition`
 skill has the agent run them, npm serves the packages, each downloads its own
 headless Chrome on the first render, and the HyperFrames CLI sends usage
-telemetry to HeyGen until it is turned off, which the skill does first. The hooks read the tool call and the session transcript, need `jq`,
+telemetry to HeyGen unless `HYPERFRAMES_NO_TELEMETRY=1` is set, which the
+skill sets on every command. The hooks read the tool call and the session transcript, need `jq`,
 and write one marker file per session under the temp directory.
 
 The plugin does not decide licenses for you (Remotion's headcount limit,

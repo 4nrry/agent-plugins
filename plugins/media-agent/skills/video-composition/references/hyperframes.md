@@ -7,7 +7,8 @@ in the
 HTML, CSS and a paused animation timeline rendered to video: the renderer
 seeks every frame in headless Chrome and ffmpeg encodes and mixes the audio.
 HeyGen maintains it and releases several times a day (eight versions in the two
-days before this check), so pin one version in every command.
+days before this check), so pin one version in every command: 0.9.35, the one
+these notes were checked on, unless the project already pins another.
 
 ## Contents
 - License and what leaves the machine
@@ -23,11 +24,15 @@ days before this check), so pin one version in every command.
 - Apache-2.0: no headcount limit and no fee per render. Fonts, music and
   footage keep their own licenses.
 - The CLI sends usage telemetry (command names, render performance), anonymous
-  until `auth login` and tied to the HeyGen account after it. Turn it off
-  before the first command: `telemetry disable`, or `HYPERFRAMES_NO_TELEMETRY=1`.
-- A local preview and render keep the project on the machine. `cloud render`,
-  `share`, `publish` and the hosted MCP connector upload it to HeyGen and can
-  bill that account: run them only when the user asks.
+  until `auth login` and tied to the HeyGen account after it. Set
+  `HYPERFRAMES_NO_TELEMETRY=1` on every command. `telemetry disable` writes
+  the same choice to `~/.hyperframes/config.json` and also takes the install
+  out of canary rollouts: that one is the user's call.
+- A local preview and render keep the project on the machine. Run these only
+  when the user asks: `cloud render`, `share`, `publish` and the hosted MCP
+  connector upload the project to HeyGen and can bill that account, and a
+  cloud render's asset URLs are public to anyone who has them; `lambda` and
+  `cloudrun` spend the user's own AWS or Google Cloud account.
 - The scaffold loads GSAP from a CDN, and the bundled font families are fetched
   from Google Fonts (`sans-serif` became Inter that way). For an offline
   render, put the script and the font files in the project.
@@ -35,12 +40,14 @@ days before this check), so pin one version in every command.
 ## Setup
 
 ```bash
+export HYPERFRAMES_NO_TELEMETRY=1
 hf="npx --yes hyperframes@<version>"     # the same version in every call
-$hf telemetry disable
 $hf doctor --json                        # always exits 0
 $hf init my-video --skip-skills --non-interactive
 ```
 
+- The first `npx` call downloads the CLI, 110 MB in the npx cache, with no
+  prompt. Tell the user before it.
 - Node 22 or newer, `ffmpeg` and `ffprobe`. In `doctor --json` read the
   FFmpeg, FFprobe and Chrome checks: the top-level `ok` is false while optional
   voice and music tools are missing.
@@ -70,11 +77,15 @@ What renders wrong with no error. `check --json` reports most of it with a
 - Never `play()` or seek media. A `<video>` is `muted` or carries
   `data-has-audio="true"`; an `<audio>` without an `id` is left out of the mix.
 - A scene file in `compositions/` puts its styles, markup and script inside
-  `<template>`. The host's id, the scene root's id and the timeline key are the
-  same string; when they differ, each render waits 45 s per scene and shows
-  static frames.
-- Charts, Three.js and canvas draw from the `hf-seek` event (`e.detail.time`),
-  never from `requestAnimationFrame`.
+  `<template>`, and its root element has `id="root"`. The host's `id` and
+  `data-composition-id`, the scene root's `data-composition-id` and the
+  timeline key are the same string; when they differ, each render waits 45 s
+  per scene and shows static frames.
+- GSAP, CSS keyframes, WAAPI, Lottie and anime.js are seeked by the renderer.
+  Three.js, WebGPU, p5 and canvas draw from the `hf-seek` event
+  (`e.detail.time`), never from `requestAnimationFrame`. A chart or a map
+  overlay is driven from a GSAP tween's `onUpdate`, not by the library's own
+  transitions.
 
 ## Loop
 
@@ -87,7 +98,9 @@ What renders wrong with no error. `check --json` reports most of it with a
    `--format webm` or `mov` keeps alpha, `png-sequence` gives frames, and
    `--docker` pins Chrome and fonts when frames must match across machines.
 4. `ffprobe`: the duration equals the root's `data-duration`. Then this
-   skill's delivery checks, loudness included.
+   skill's delivery checks, loudness included. A silent render came out with
+   the index at the front (`+faststart`); the audio codec and sample rate of a
+   render with sound were not checked.
 
 ## This plugin's rules in HyperFrames
 
@@ -114,7 +127,16 @@ beacon that follows the telemetry setting, and two of them (`reverse-any-video`,
 They run this CLI and never call `npx`. Kinocut looks for
 `MCP_VIDEO_HYPERFRAMES_COMMAND`, then `node_modules/.bin/hyperframes` from the
 project upward, then `hyperframes` on PATH; with none it returns
-`hyperframes_not_found`. After `npm install --save-dev hyperframes@<version>`
-in the project, `hyperframes_info`, `hyperframes_validate`,
-`hyperframes_inspect` and `hyperframes_render` worked. `hyperframes_inspect`
-runs a deprecated alias: gate on `check --json` from the CLI.
+`hyperframes_not_found`.
+
+- `npm install --save-dev hyperframes@<version>` in the project makes them
+  work (`hyperframes_info`, `hyperframes_validate`, `hyperframes_inspect` and
+  `hyperframes_render` did). It adds 109 MB and edits `package.json`: ask the
+  user first. Without it, use the CLI through `npx` as above.
+- Kinocut runs the CLI with telemetry off. For that reason it refuses
+  `hyperframes_preview` on this version and any render with `docker: true`,
+  with code `hyperframes_telemetry_consent_required`. Do not set
+  `KINOCUT_HYPERFRAMES_TELEMETRY=true` to get past it, which turns telemetry
+  on: run `preview` or `render --docker` from the CLI instead.
+- `hyperframes_validate` runs `lint` only and `hyperframes_inspect` a
+  deprecated alias: gate on `check --json` from the CLI.
