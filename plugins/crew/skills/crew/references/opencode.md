@@ -89,3 +89,7 @@ none saved it asks, and a headless run cancels the question ("Web search
 cancelled", exit 1). crew's web profile loads a plugin, from the run dir, that
 picks Exa for that run only; the user's saved choice is not touched. The
 queries go to Exa (`mcp.exa.ai`, no key).
+
+A `--web` run starts in a new empty directory, not in `--cwd`, and the profile
+keeps `external_directory: deny`: the worker should find no file to open, so
+what it needs goes in the prompt. That denial was not exercised in a run.

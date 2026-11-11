@@ -462,18 +462,59 @@ def private_tmp_dir() -> str:
     """`/tmp/crew-state-<uid>`, created with mode 0700. A link or another user's
     directory in its place is refused, never written into; one of this user's
     with wider modes (an older crew, a umask) is narrowed to 0700."""
-    top = os.path.join(STATE_TMP_ROOT, f"crew-state-{os.getuid()}")
+    return own_dir(os.path.join(STATE_TMP_ROOT, f"crew-state-{os.getuid()}"),
+                   "keeps the runs of linked worktrees")
+
+
+def own_dir(path: str, use: str) -> str:
     try:
-        os.mkdir(top, 0o700)
+        os.mkdir(path, 0o700)
     except FileExistsError:
         pass
-    st = os.lstat(top)
+    st = os.lstat(path)
     if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.getuid():
-        raise Refusal(f"{top} is not a directory of this user (a link, a file, or someone else's): crew "
-                      "keeps the runs of linked worktrees there. Check what it is, move it away, and retry")
+        raise Refusal(f"{path} is not a directory of this user (a link, a file, or someone else's): crew "
+                      f"{use} there. Check what it is, move it away, and retry")
     if stat.S_IMODE(st.st_mode) != 0o700:
-        os.chmod(top, 0o700)
-    return top
+        os.chmod(path, 0o700)
+    return path
+
+
+def web_dir() -> str:
+    """A new directory for one `--web` ask on a backend that keeps its file
+    tools (backends.WEB_EMPTY_DIR): `/tmp/crew-web-<uid>/<random>/`, with
+    `cwd/`, empty, where the worker runs, `run/` for what crew hands it (the
+    schema, opencode's web config) and `owner`, this process's pid. The caller
+    removes it. The parent, mode 0700, holds only such directories; one older
+    than a day whose owner is gone is a killed run's and is removed here. It
+    hides the repository and is not a sandbox: a worker handed an absolute
+    path can still read it where its CLI allows that."""
+    parent = own_dir(os.path.join(STATE_TMP_ROOT, f"crew-web-{os.getuid()}"), "runs --web workers")
+    cutoff = time.time() - 86400
+    with os.scandir(parent) as entries:
+        for entry in entries:
+            try:
+                if entry.stat(follow_symlinks=False).st_mtime >= cutoff:
+                    continue
+                if not entry.is_dir(follow_symlinks=False):
+                    os.unlink(entry.path)
+                    continue
+                try:                                  # a run with a long --timeout is still there
+                    with open(os.path.join(entry.path, "owner"), encoding="ascii") as fh:
+                        os.kill(int(fh.read()), 0)
+                    continue
+                except PermissionError:
+                    continue
+                except (OSError, ValueError):
+                    shutil.rmtree(entry.path, ignore_errors=True)
+            except OSError:
+                pass
+    base = tempfile.mkdtemp(dir=parent)
+    for sub in ("cwd", "run"):
+        os.mkdir(os.path.join(base, sub), 0o700)
+    with open(os.path.join(base, "owner"), "w", encoding="ascii") as fh:
+        fh.write(str(os.getpid()))
+    return base
 
 
 def parse_duration(text) -> int:
@@ -3242,97 +3283,125 @@ def read_prompt(a) -> str:
 def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None, session=None,
             cwd=None, timeout_s=600, allow_same_vendor=False, env=None, web=False, schema=None) -> dict:
     """One turn with a worker CLI. Returns the verdict; never trusts the exit code alone.
-    `web`: the backend's web profile, search and fetch. Only the backends in
-    WEB_ONLY lose their file tools with it; the verdict's `read_only` says which.
+    `web`: the backend's web profile, search and fetch. The backends in
+    WEB_ONLY lose their file tools with it; those in WEB_EMPTY_DIR keep them
+    and run in a new empty directory (web_dir) instead of `cwd`, so the
+    repository is not in front of the worker. The verdict's `read_only` says
+    which.
     `schema`: a JSON object is expected back, natively where the CLI supports it,
     else asked for in the prompt; it lands in the verdict's `structured`."""
     import backends
     env = dict(os.environ if env is None else env)
     cwd = os.path.realpath(cwd or os.getcwd())
     if len(prompt.encode()) > MAX_PROMPT_BYTES:
-        raise Refusal(f"prompt over {MAX_PROMPT_BYTES} bytes; put long material in a file the worker reads")
+        raise Refusal(f"prompt over {MAX_PROMPT_BYTES} bytes; " + (
+            "shorten it: a --web worker is given no files" if web else
+            "put long material in a file the worker reads"))
     try:
         r = backends.resolve(backend, tier, model, effort,
                              env={} if allow_same_vendor else env, web=web)
     except ValueError as exc:
         raise Refusal(str(exc))
     spec, warnings = r["spec"], list(r["warnings"])
+    web_base = web_dir() if web and backend in backends.WEB_EMPTY_DIR else None
+    run_cwd = os.path.join(web_base, "cwd") if web_base else cwd
     try:
-        repo = repo_root(cwd)
-    except Exception:
-        repo = None
-    rundir = new_rundir(repo, "ask") if repo else tempfile.mkdtemp(prefix="crew-ask-")
-    run_id = os.path.basename(rundir)
-    opts = {"web": web, "timeout": timeout_s, "rundir": rundir}
-    if schema:
-        opts["schema"] = schema
-        opts["schema_path"] = os.path.join(rundir, "schema.json")
-        write_json(opts["schema_path"], schema)
-        if not spec["native_schema"]:
-            prompt += ("\n\nEnd your reply with ONE JSON object (no prose after it) matching this JSON "
-                       f"schema: {json.dumps(schema, separators=(',', ':'))}")
-    try:
-        argv, extra_env, preset = spec["build"](spec, prompt, r["model"], r["effort"], session, cwd, opts)
-    except ValueError as exc:
-        raise Refusal(str(exc))
-    env.update(extra_env)
-    env.update(WORKER_ENV)
-    env[RUN_ENV] = run_id
-    version = None
-    try:
-        version = subprocess.run([spec["bin"], "--version"], capture_output=True, text=True,
-                                 timeout=30, stdin=subprocess.DEVNULL).stdout.strip().splitlines()[0]
-    except (OSError, subprocess.TimeoutExpired, IndexError):
-        pass
-    live = backends.LIVE.get(backend)
-    if not live:
-        warnings.append(f"{backend}: argv built from --help; never run end to end by crew")
-    elif not (version and live in version):
-        warnings.append(f"{backend}: tested on {live}, found {version!r}")
-    before = fingerprint(repo, []) if repo else None
-    saved = snapshot_files(cwd, OPENCODE_CONFIG_FILES) if backend == "opencode" else {}
-    t0, rc, out, err, failures = time.time(), None, "", "", []
-    try:
-        proc = subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True,
-                              timeout=timeout_s, stdin=subprocess.DEVNULL)
-        rc, out, err = proc.returncode, proc.stdout, proc.stderr
-    except subprocess.TimeoutExpired as exc:
-        out = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-        failures.append(f"timed out after {timeout_s}s")
+        try:
+            repo = repo_root(cwd)
+        except Exception:
+            repo = None
+        rundir = new_rundir(repo, "ask") if repo else tempfile.mkdtemp(prefix="crew-ask-")
+        run_id = os.path.basename(rundir)
+        # What the builder hands the worker (schema, opencode's web config) must
+        # not sit in the repository's own state when the run is kept away from it.
+        opts = {"web": web, "timeout": timeout_s, "rundir": os.path.join(web_base, "run") if web_base else rundir}
+        if schema:
+            opts["schema"] = schema
+            opts["schema_path"] = os.path.join(opts["rundir"], "schema.json")
+            write_json(opts["schema_path"], schema)
+            if not spec["native_schema"]:
+                prompt += ("\n\nEnd your reply with ONE JSON object (no prose after it) matching this JSON "
+                           f"schema: {json.dumps(schema, separators=(',', ':'))}")
+        try:
+            argv, extra_env, preset = spec["build"](spec, prompt, r["model"], r["effort"], session, run_cwd, opts)
+        except ValueError as exc:
+            raise Refusal(str(exc))
+        env.update(extra_env)
+        env.update(WORKER_ENV)
+        env[RUN_ENV] = run_id
+        if web_base:                      # the caller's directory is not the worker's
+            env["PWD"] = run_cwd
+            env.pop("OLDPWD", None)
+        version = None
+        try:
+            version = subprocess.run([spec["bin"], "--version"], capture_output=True, text=True,
+                                     timeout=30, stdin=subprocess.DEVNULL).stdout.strip().splitlines()[0]
+        except (OSError, subprocess.TimeoutExpired, IndexError):
+            pass
+        live = backends.LIVE.get(backend)
+        if not live:
+            warnings.append(f"{backend}: argv built from --help; never run end to end by crew")
+        elif not (version and live in version):
+            warnings.append(f"{backend}: tested on {live}, found {version!r}")
+        before = fingerprint(repo, []) if repo else None
+        saved = snapshot_files(run_cwd, OPENCODE_CONFIG_FILES) if backend == "opencode" else {}
+        t0, rc, out, err, failures = time.time(), None, "", "", []
+        try:
+            proc = subprocess.run(argv, cwd=run_cwd, env=env, capture_output=True, text=True,
+                                  timeout=timeout_s, stdin=subprocess.DEVNULL)
+            rc, out, err = proc.returncode, proc.stdout, proc.stderr
+        except subprocess.TimeoutExpired as exc:
+            out = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+            failures.append(f"timed out after {timeout_s}s")
+        finally:
+            left = stop_run_procs(run_id)
+            restore_files(run_cwd, saved)
+        if web_base:
+            # A warning, not a failure: no run here has shown what each CLI leaves
+            # in its working directory on a normal turn, and the directory goes anyway.
+            try:
+                wrote = sorted(os.listdir(run_cwd)) + sorted(set(os.listdir(web_base)) - {"cwd", "run", "owner"})
+            except OSError:
+                wrote = ["(the directory itself was removed)"]
+            if wrote:
+                warnings.append(f"the worker left files in its empty directory, removed with it: {wrote[:5]}")
+            shutil.rmtree(web_base, ignore_errors=True)
+            if os.path.lexists(web_base):
+                warnings.append(f"could not remove the run's web directory {web_base}")
+        for name, text in (("stdout", out), ("stderr", err)):
+            with open(os.path.join(rundir, f"{name}.log"), "w", encoding="utf-8") as fh:
+                fh.write(text)
+        parsed = spec["parse"](out)
+        if backend == "grok" and web:      # a plain ask keeps Grok's tools, in plan mode
+            warnings += grok_tool_warnings(err, out, backends.GROK_WEB_TOOLS)
+        if rc not in (0, None):
+            failures.append(f"exit {rc}: {tail(err, 400).strip()}")
+        if parsed.get("error"):
+            failures.append(str(parsed["error"]))
+        if not parsed.get("text") and not parsed.get("structured"):
+            failures.append("no reply in the output")
+        structured = None
+        if schema:
+            structured = parsed.get("structured") or extract_report(parsed.get("text") or "")
+            if not isinstance(structured, dict):
+                failures.append("no JSON object in the reply")
+        if repo and fingerprint(repo, []) != before:
+            failures.append("the work tree changed during a read-only ask")
+        if not repo and not failures:
+            shutil.rmtree(rundir, ignore_errors=True)        # outside a repo nothing is kept for a clean run
+            rundir = None
+        return {"ok": not failures, "backend": backend, "tier": tier, "model": r["model"],
+                "effort": r["effort"], "session": parsed.get("session") or preset or session,
+                "text": parsed.get("text"), "structured": structured, "usage": parsed.get("usage"),
+                "read_only": spec["read_only"] if not web else "web search and fetch only"
+                if backend in backends.WEB_ONLY else
+                spec["read_only"] + "; web search and fetch added; run in a new empty directory, not in --cwd",
+                "version": version, "failures": failures, "warnings": warnings,
+                "left_processes_stopped": sorted(left), "duration_s": round(time.time() - t0, 1),
+                "rundir": rundir}
     finally:
-        left = stop_run_procs(run_id)
-        restore_files(cwd, saved)
-    for name, text in (("stdout", out), ("stderr", err)):
-        with open(os.path.join(rundir, f"{name}.log"), "w", encoding="utf-8") as fh:
-            fh.write(text)
-    parsed = spec["parse"](out)
-    if backend == "grok" and web:      # a plain ask keeps Grok's tools, in plan mode
-        warnings += grok_tool_warnings(err, out, backends.GROK_WEB_TOOLS)
-    if rc not in (0, None):
-        failures.append(f"exit {rc}: {tail(err, 400).strip()}")
-    if parsed.get("error"):
-        failures.append(str(parsed["error"]))
-    if not parsed.get("text") and not parsed.get("structured"):
-        failures.append("no reply in the output")
-    structured = None
-    if schema:
-        structured = parsed.get("structured") or extract_report(parsed.get("text") or "")
-        if not isinstance(structured, dict):
-            failures.append("no JSON object in the reply")
-    if repo and fingerprint(repo, []) != before:
-        failures.append("the work tree changed during a read-only ask")
-    if not repo and not failures:
-        shutil.rmtree(rundir, ignore_errors=True)        # outside a repo nothing is kept for a clean run
-        rundir = None
-    return {"ok": not failures, "backend": backend, "tier": tier, "model": r["model"],
-            "effort": r["effort"], "session": parsed.get("session") or preset or session,
-            "text": parsed.get("text"), "structured": structured, "usage": parsed.get("usage"),
-            "read_only": spec["read_only"] if not web else "web search and fetch only"
-            if backend in backends.WEB_ONLY else
-            spec["read_only"] + "; web search and fetch added, files under --cwd still readable",
-            "version": version, "failures": failures, "warnings": warnings,
-            "left_processes_stopped": sorted(left), "duration_s": round(time.time() - t0, 1),
-            "rundir": rundir}
+        if web_base:
+            shutil.rmtree(web_base, ignore_errors=True)
 
 
 def cmd_ask(a) -> int:
@@ -3341,6 +3410,7 @@ def cmd_ask(a) -> int:
         schema = read_json(a.schema)
         if not (isinstance(schema, dict) and schema.get("type") == "object"):
             raise Refusal(f"{a.schema}: schema needs a root of type=object")
+    trap_signals()                # so a SIGTERM still stops the worker and removes a --web directory
     verdict = run_ask(a.backend, read_prompt(a), tier=a.tier, model=a.model, effort=a.effort,
                       session=a.session, cwd=a.cwd, timeout_s=parse_duration(a.timeout),
                       allow_same_vendor=a.allow_same_vendor, web=a.web, schema=schema)
@@ -3433,7 +3503,7 @@ def main(argv=None) -> int:
                    help="allow a backend from the host's own vendor")
     k.add_argument("--web", action="store_true",
                    help="add web search and fetch; claude, grok and hermes then have no file tools, "
-                        "agy, opencode and codex can still read --cwd")
+                        "agy, opencode and codex run in a new empty directory instead of --cwd")
     k.add_argument("--schema", help="JSON schema file: the reply's object lands in `structured`")
     sub.add_parser("backends", help="list backends, tiers, binaries and test status")
     h = sub.add_parser("hook", help="guard handler a backend's hooks call (installed per run)")
