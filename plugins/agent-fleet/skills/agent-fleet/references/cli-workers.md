@@ -7,8 +7,10 @@ Every worker turn goes through the **crew** plugin: `crew.py ask <backend> --web
 --schema`. crew owns each CLI's flags, its read-only web profile, isolation, the
 opencode model allowlist, output parsing and version warnings. This script owns
 the research: prompts, schemas, sanitizing, merging and ranking. crew must be
-installed; it is found as a sibling plugin, through `~/.agents/skills/crew`, or
-in Claude Code's plugin copies, and `CREW_PY` overrides all of them.
+installed; it is found through `~/.agents/skills/crew` or in Claude Code's
+plugin copies, and `CREW_PY` overrides both. From a repository checkout, set
+`CREW_PY` to the checkout's `crew.py`, or the installed copy runs; `check`
+prints the one in use.
 
 ```bash
 python3 scripts/fleet_worker.py check                       # crew's path and the web-capable backends
