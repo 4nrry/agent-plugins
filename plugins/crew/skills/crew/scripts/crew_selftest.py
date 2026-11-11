@@ -1091,6 +1091,7 @@ def self_test() -> int:
         fake = os.path.join(fakebin, "agy")
         with open(fake, "w") as fh:
             fh.write("#!/bin/sh\n[ \"$1\" = --version ] && { echo 1.4.4; exit 0; }\n"
+                     "[ \"$1\" = --help ] && exit 0\n"
                      "case \"$*\" in *--conversation*) id=c1;; *) id=new;; esac\n"
                      "printf '{\"conversation_id\":\"%s\",\"status\":\"SUCCESS\",\"response\":\"pong\"}' $id\n")
         os.chmod(fake, 0o755)
@@ -1128,11 +1129,13 @@ def self_test() -> int:
             runs = os.path.join(crew.state_base(repo), "runs")
             rrepo = os.path.realpath(repo)
 
-            def standin(name, version, reply):
+            def standin(name, version, reply, helptext=""):
                 """A CLI that answers with its directory, what is in it, and PWD, OLDPWD and
-                OPENCODE_CONFIG_DIR as it was started with them (a shell rewrites its own $PWD)."""
+                OPENCODE_CONFIG_DIR as it was started with them (a shell rewrites its own $PWD).
+                Asked for its help it prints `helptext` and does nothing else."""
                 with open(os.path.join(fakebin, name), "w") as fh:
                     fh.write("#!/bin/sh\n" + f'[ "$1" = --version ] && {{ echo {version}; exit 0; }}\n'
+                             + f'[ "$1" = --help ] && {{ echo "{helptext}"; exit 0; }}\n'
                              + r"""e() { tr '\0' '\n' < /proc/$$/environ | sed -n "s/^$1=//p"; }""" + "\n"
                              + r"""seen="$(pwd -P)|$(ls -A | tr '\n' ,)|$(e PWD)|$(e OLDPWD)|$(e OPENCODE_CONFIG_DIR)" """
                              + "\n" + reply + "\n")
@@ -1254,6 +1257,27 @@ def self_test() -> int:
                     check(v["read_only"].startswith("not enforced") == loose
                           and any("not read-only" in w for w in v["warnings"]) == loose,
                           f"ask: agy reporting {shown!r} is {'not ' if loose else ''}taken as read-only")
+                # an agy that takes --settings gets crew's deny rules, and is read-only again whatever its version
+                seen_argv = os.path.join(tmp, "agy-argv.txt")
+                with_settings = (f"""printf '%s\\n' "$@" > "{seen_argv}"\n"""
+                                 r"""printf '{"conversation_id":"w1","status":"SUCCESS","response":"%s"}' "$seen" """)
+                for shown in ("1.5.5", "no number here"):
+                    standin("agy", shown, with_settings, "  --settings   Settings for this session only")
+                    for web in (True, False):
+                        v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=web)
+                        with open(seen_argv) as fh:
+                            argv = fh.read().split("\n")
+                        rules = json.loads(argv[argv.index("--settings") + 1]) if "--settings" in argv else {}
+                        check(v["ok"] and rules == {"permissions": {"deny": ["write_file(*)", "command(*)", "mcp(*)"]}}
+                              and "--settings denies write_file" in v["read_only"]
+                              and not v["read_only"].startswith("not enforced")
+                              and not any("not read-only" in w for w in v["warnings"]),
+                              f"ask: agy {shown!r} with --settings gets the deny rules (web={web})")
+                standin("agy", "1.5.5", f"""printf '%s\\n' "$@" > "{seen_argv}"\n""" + agy_reply.replace(' "$*" ', ' "" '))
+                v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
+                with open(seen_argv) as fh:
+                    check("--settings" not in fh.read().split("\n") and v["read_only"].startswith("not enforced"),
+                          "ask: an agy without --settings is not given the flag and keeps the warning")
                 standin("agy", "1.4.4", agy_reply)
                 real_fp = crew.fingerprint
 

@@ -69,16 +69,24 @@ servers); they are listed in `agy.background_killed`. That is expected.
 
 ## Ask on agy 1.5
 
-`ask` relies on `--mode plan` to keep agy from writing. On agy 1.5.5 that did
-not hold in print mode: asked to create a file, it did, with and without
-`--disable-slash-commands` (with it, agy also prints that plan mode has no
-effect). Shell commands were still denied. The verdict says so in `read_only`
-and in a warning, also when agy's version cannot be read. Until `ask` on agy
-has a guard of its own, use it with `--web`: a write in its working directory
-goes with that directory, though one to an absolute path stays. From a
-repository, the work-tree check fails the run for a new or changed tracked
-file only; an ignored file, `.git` and anything outside go unseen. `review`
-and `delegate` run under crew's hooks and are not affected by this.
+`ask` used to rely on `--mode plan` to keep agy from writing. On agy 1.5.5
+that did not hold in print mode: asked to create a file, it did, with and
+without `--disable-slash-commands` (with it, agy also prints that plan mode
+has no effect). Shell commands were still denied.
+
+Where `agy --help` lists `--settings` (settings for one session, never
+saved), crew passes `{"permissions":{"deny":["write_file(*)","command(*)","mcp(*)"]}}`.
+With it agy 1.5.5 answered "Permission denied for write_file(...). Matches
+user-configured deny rule" and wrote nothing, in the `--web` directory and in
+a repository; web search still ran. The verdict's `read_only` names the
+rules.
+
+An agy at 1.5 or later without that flag, or one whose version cannot be
+read, is not read-only: the verdict says so in `read_only` and in a warning.
+Use `--web` there, where a write in the working directory goes with it; from
+a repository the work-tree check fails the run for a new or changed tracked
+file only. `review` and `delegate` run under crew's hooks and are not
+affected by any of this.
 
 ## Review
 
