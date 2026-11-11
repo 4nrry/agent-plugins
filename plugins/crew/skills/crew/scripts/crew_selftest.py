@@ -1182,12 +1182,46 @@ def self_test() -> int:
                 v = crew.run_ask("opencode", "first", cwd=repo, env=wenv, web=True)
                 check(not v["ok"] and os.listdir(wparent) == [],
                       "ask --web: without --session a lost directory is a plain failure")
-                outside = os.path.join(tmp, "outside")
-                for claimed in (outside, wreal + "../outside", wreal + "a/b"):
-                    standin("opencode", "2.1.0", f'{oc_lost} "{claimed}/cwd"; exit 1')
-                    v = crew.run_ask("opencode", "again", session="s1", cwd=repo, env=wenv, web=True)
-                    check(not v["ok"] and not os.path.exists(outside) and os.listdir(wparent) == [],
-                          f"ask --web: a directory named by the worker outside crew's own is never made ({claimed})")
+                # the directory to make again comes from the worker's text: only crew's own, by its last name
+                os.makedirs(os.path.join(wparent, "taken"))
+                os.symlink(wparent, os.path.join(tmp, "alias"))
+                lost = crew.opencode_lost_dir
+                msg = "Location not found: %s/cwd"
+                for claimed, want in [
+                        (wreal + "abc_1", "abc_1"), (wreal.rstrip(os.sep) + "//abc_1", "abc_1"),
+                        (os.path.join(tmp, "alias", "abc_1"), "abc_1"),       # another spelling: crew's own is used
+                        (wreal + "taken/cwd/../../abc_1", "abc_1"),
+                        (os.path.join(tmp, "outside"), None), (wreal + "../outside", None), (wreal + "a/b", None),
+                        (wreal + "has-dash", None), (wreal + "x" * 300, None), (wreal + "..", None),
+                        ("/etc/cron.d", None), (wreal + "missing/../../outside", None)]:
+                    got = lost(msg % claimed, wparent)
+                    check(got == (os.path.join(wparent, want) if want else None),
+                          f"ask --web: opencode's lost directory {claimed[-40:]!r} gives {want!r} (got {got!r})")
+                check(lost("Location not found: /a\x00b/cwd", wparent) is None and lost("nothing lost", wparent) is None,
+                      "ask --web: a path with a control character, or no message, names nothing")
+                # an existing directory is someone else's turn: not made, not retried, not removed
+                standin("opencode", "2.1.0", f'{oc_lost} "{wreal}taken/cwd"; exit 1')
+                v = crew.run_ask("opencode", "again", session="s1", cwd=repo, env=wenv, web=True)
+                check(not v["ok"] and not any("made it again" in w for w in v["warnings"])
+                      and os.listdir(wparent) == ["taken"],
+                      "ask --web: a directory that already exists is left alone and the turn is not run again")
+                os.rmdir(os.path.join(wparent, "taken"))
+                # no retry when the turn succeeded, and none for another backend
+                standin("opencode", "2.1.0", f'{oc_lost} "{wreal}gone1/cwd"; {oc_ok}')
+                v = crew.run_ask("opencode", "again", session="s1", cwd=repo, env=wenv, web=True)
+                check(v["ok"] and not any("made it again" in w for w in v["warnings"]),
+                      "ask --web: the message in a turn that succeeded changes nothing")
+                standin("codex", "codex-cli 0.163.0", f'{oc_lost} "{wreal}gone1/cwd"; exit 1')
+                v = crew.run_ask("codex", "again", session="t1", cwd=repo, env=wenv, web=True)
+                check(not v["ok"] and not any("made it again" in w for w in v["warnings"]) and os.listdir(wparent) == [],
+                      "ask --web: only opencode's turns are run again")
+                # what the second attempt leaves in the directory made again is reported too
+                standin("opencode", "2.1.0", f'if [ -d "{wreal}gone1/cwd" ]; then echo x > "{wreal}gone1/cwd/stray.txt"; '
+                                             f'{oc_ok}; else {oc_lost} "{wreal}gone1/cwd"; exit 1; fi')
+                v = crew.run_ask("opencode", "again", session="s1", cwd=repo, env=wenv, web=True)
+                check(v["ok"] and any("stray.txt" in w for w in v["warnings"]) and os.listdir(wparent) == []
+                      and os.path.isfile(os.path.join(v["rundir"], "stdout.first.log")),
+                      "ask --web: a file left in the directory made again is reported; the first attempt's log is kept")
                 os.remove(os.path.join(fakebin, "opencode"))
                 # leftovers of killed runs go; a neighbour still running, or a recent one, stays
                 stale, held, fresh = (os.path.join(wparent, n) for n in ("stale", "held", "fresh"))
@@ -1213,10 +1247,14 @@ def self_test() -> int:
                 check(v["ok"] and v["read_only"].startswith("not enforced on this version")
                       and any("not read-only" in w for w in v["warnings"]),
                       "ask: on agy 1.5 the verdict says plan mode does not stop a write")
+                for shown, loose in [("1.4.4", False), ("agy 1.4.7", False), ("agy1 1.5.5", True), ("v1.10.0", True),
+                                     ("2.0", True), ("no number here", True)]:
+                    standin("agy", shown, agy_reply)
+                    v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
+                    check(v["read_only"].startswith("not enforced") == loose
+                          and any("not read-only" in w for w in v["warnings"]) == loose,
+                          f"ask: agy reporting {shown!r} is {'not ' if loose else ''}taken as read-only")
                 standin("agy", "1.4.4", agy_reply)
-                v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
-                check(v["read_only"].startswith("--mode plan") and not any("not read-only" in w for w in v["warnings"]),
-                      "ask: on the agy version crew was tested on it does not")
                 real_fp = crew.fingerprint
 
                 def boom(*_a, **_k):
