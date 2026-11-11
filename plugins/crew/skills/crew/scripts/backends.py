@@ -24,10 +24,16 @@ LIVE = {"claude": "2.1.310", "agy": "1.4.7", "opencode": "2.1.4", "grok": "1.0.7
         "codex": "0.164.0", "hermes": "0.22.5", "copilot": "1.0.103", "cursor": "2026.10.22-27dcf5f"}
 
 # From these versions on, the backend's read-only mode for `ask` is known not to
-# hold. agy 1.5.5 wrote a file in print mode under --mode plan, with and
-# without --disable-slash-commands (two runs, 2026-11-11); it still denies
+# hold by itself. agy 1.5.5 wrote a file in print mode under --mode plan, with
+# and without --disable-slash-commands (two runs, 2026-11-11); it still denies
 # shell commands there. review and delegate on agy go through crew's hooks.
 ASK_WRITES_FROM = {"agy": (1, 5)}
+# What keeps `ask` on agy read-only where the CLI takes --settings (settings
+# for one session, never saved; 1.5.5 has it): with these deny rules agy 1.5.5
+# answered "Permission denied for write_file(...). Matches user-configured
+# deny rule." and wrote nothing (2026-11-11). crew.py passes them when
+# `agy --help` lists the flag; without it the warning above applies.
+AGY_ASK_DENY = {"permissions": {"deny": ["write_file(*)", "command(*)", "mcp(*)"]}}
 
 OPENCODE_MODELS = ("opencode/deepseek-v4.1-flash-free", "opencode/glm-5.3-flash-free",
                    "opencode/beam-free", "opencode/nemotron-3.5-super-vl-free",
@@ -116,9 +122,12 @@ def p_claude(out):
 def p_agy(out):
     j = _json(out)
     ok = j.get("status") == "SUCCESS"
+    denied = [str(d.get("display_name") or d.get("action") or d) if isinstance(d, dict) else str(d)
+              for d in (j.get("denied_actions") or [])]
     return {"text": (j.get("response") or "").strip() or None, "session": j.get("conversation_id"),
             "structured": j.get("structured_output") if isinstance(j.get("structured_output"), dict) else None,
-            "usage": j.get("usage"), "error": None if ok else f"status {j.get('status')!r}"}
+            "usage": j.get("usage"), "error": None if ok else f"status {j.get('status')!r}",
+            "denied": denied}
 
 
 def p_opencode(out):
@@ -247,6 +256,7 @@ def b_agy(s, prompt, model, effort, session, cwd, opts=None):
             "--disable-slash-commands"]
     argv += ["--json-schema", opts["schema_path"]] if opts.get("schema_path") else []
     argv += ["--print-timeout", f"{opts['timeout']}s"] if opts.get("timeout") else []
+    argv += ["--settings", json.dumps(AGY_ASK_DENY, separators=(",", ":"))] if opts.get("deny_settings") else []
     argv += ["--model", model] if model else []
     argv += ["--conversation", session] if session else []
     return argv, {}, None
@@ -374,7 +384,9 @@ SPECS = {
                        "top": ("gemini-4-argon", "high")},
                 efforts=("low", "medium", "high"),
                 pools={"google": ("gemini-",), "claude": ("claude-",)},
-                read_only="--mode plan"),
+                read_only="--mode plan",
+                read_only_note="agy 1.5 no longer holds to it; ask adds deny rules through --settings "
+                               "where agy has that flag"),
     "opencode": dict(web=True, native_schema=False, vendor="opencode", bins=("opencode", "~/.opencode/bin/opencode"),
                      build=b_opencode, parse=p_opencode,
                      # top is the 1M-context

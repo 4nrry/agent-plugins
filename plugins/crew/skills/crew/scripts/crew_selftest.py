@@ -1091,6 +1091,7 @@ def self_test() -> int:
         fake = os.path.join(fakebin, "agy")
         with open(fake, "w") as fh:
             fh.write("#!/bin/sh\n[ \"$1\" = --version ] && { echo 1.4.4; exit 0; }\n"
+                     "[ \"$1\" = --help ] && exit 0\n"
                      "case \"$*\" in *--conversation*) id=c1;; *) id=new;; esac\n"
                      "printf '{\"conversation_id\":\"%s\",\"status\":\"SUCCESS\",\"response\":\"pong\"}' $id\n")
         os.chmod(fake, 0o755)
@@ -1128,11 +1129,13 @@ def self_test() -> int:
             runs = os.path.join(crew.state_base(repo), "runs")
             rrepo = os.path.realpath(repo)
 
-            def standin(name, version, reply):
+            def standin(name, version, reply, helptext=""):
                 """A CLI that answers with its directory, what is in it, and PWD, OLDPWD and
-                OPENCODE_CONFIG_DIR as it was started with them (a shell rewrites its own $PWD)."""
+                OPENCODE_CONFIG_DIR as it was started with them (a shell rewrites its own $PWD).
+                Asked for its help it prints `helptext` and does nothing else."""
                 with open(os.path.join(fakebin, name), "w") as fh:
                     fh.write("#!/bin/sh\n" + f'[ "$1" = --version ] && {{ echo {version}; exit 0; }}\n'
+                             + f'[ "$1" = --help ] && {{ echo "{helptext}" >&2; exit 0; }}\n'
                              + r"""e() { tr '\0' '\n' < /proc/$$/environ | sed -n "s/^$1=//p"; }""" + "\n"
                              + r"""seen="$(pwd -P)|$(ls -A | tr '\n' ,)|$(e PWD)|$(e OLDPWD)|$(e OPENCODE_CONFIG_DIR)" """
                              + "\n" + reply + "\n")
@@ -1254,6 +1257,50 @@ def self_test() -> int:
                     check(v["read_only"].startswith("not enforced") == loose
                           and any("not read-only" in w for w in v["warnings"]) == loose,
                           f"ask: agy reporting {shown!r} is {'not ' if loose else ''}taken as read-only")
+                # an agy that takes --settings gets crew's deny rules, whatever its version, on every kind of turn
+                seen_argv = os.path.join(tmp, "agy-argv.txt")
+                with_settings = (f"""printf '%s\\n' "$@" > "{seen_argv}"\n"""
+                                 r"""printf '{"conversation_id":"w1","status":"SUCCESS","response":"%s","denied_actions":"""
+                                 r"""[{"action":"file","display_name":"WriteFile"}]}' "$seen" """)
+                helps = "  --settings      Settings for this session only"      # the real agy prints its help on stderr
+
+                def passed():
+                    with open(seen_argv) as fh:
+                        argv = fh.read().split("\n")
+                    return json.loads(argv[argv.index("--settings") + 1]) if "--settings" in argv else None
+                rules = {"permissions": {"deny": ["write_file(*)", "command(*)", "mcp(*)"]}}
+                for shown in ("1.5.5", "no number here"):
+                    standin("agy", shown, with_settings, helps)
+                    for kw in ({"web": True}, {}, {"web": True, "session": "w1"}, {"schema": {"type": "object"}}):
+                        v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, **kw)
+                        check(passed() == rules and "deny rules for write_file" in v["read_only"]
+                              and not v["read_only"].startswith("not enforced")
+                              and not any("not read-only" in w for w in v["warnings"]),
+                              f"ask: agy {shown!r} with --settings gets the deny rules ({kw})")
+                check(any("refused 1 tool call(s): WriteFile" in w for w in v["warnings"]),
+                      "ask: what agy says it refused is in the warnings")
+                for label, helptext in [("no such flag", "  --mode   Set the agent execution mode"),
+                                        ("a longer flag of that name", "  --settings-file   Path to settings"),
+                                        ("the word in prose only", "  --mode   see also --settings in the manual")]:
+                    standin("agy", "1.5.5", f"""printf '%s\\n' "$@" > "{seen_argv}"\n"""
+                            + agy_reply.replace(' "$*" ', ' "" '), helptext)
+                    v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
+                    check(passed() is None and v["read_only"].startswith("not enforced")
+                          and "deny rules" not in v["read_only"],
+                          f"ask: an agy whose help has {label} is not given the flag and keeps the warning")
+                check(crew.takes_settings(os.path.join(tmp, "no-such-agy")) is False,
+                      "ask: an agy whose help cannot be run counts as having no --settings")
+                standin("codex", "codex-cli 0.163.0", """echo '{"type":"thread.started","thread_id":"t1"}'\n"""
+                        r"""printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n' "$seen" """, helps)
+                v = crew.run_ask("codex", "ping", cwd=repo, env=wenv, web=True)
+                check(v["ok"] and "deny rules" not in v["read_only"], "ask: the deny rules are agy's alone")
+                buf = io.StringIO()
+                with contextlib.redirect_stdout(buf):
+                    rc = crew.main(["backends"])
+                rows = {r["backend"]: r for r in json.loads(buf.getvalue())}
+                check(rc == 0 and len(rows) == len(backends.SPECS) and "--settings" in rows["agy"]["read_only"]
+                      and rows["codex"]["read_only"] == backends.SPECS["codex"]["read_only"],
+                      "backends: every backend is listed, agy with the note on its read-only mode")
                 standin("agy", "1.4.4", agy_reply)
                 real_fp = crew.fingerprint
 

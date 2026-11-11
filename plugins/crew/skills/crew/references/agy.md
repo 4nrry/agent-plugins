@@ -3,6 +3,18 @@
 Read [delegate.md](delegate.md) first. `scripts/crew.py` is in the crew skill's
 directory; run it from the task's repository, or pass `--repo`.
 
+## Contents
+
+- The run
+- Model and escalation
+- Quota
+- Before the first run
+- Guard and gate
+- Background commands
+- Failures only agy has
+- Ask on agy 1.5
+- Review
+
 ## The run
 
 ```bash
@@ -69,16 +81,36 @@ servers); they are listed in `agy.background_killed`. That is expected.
 
 ## Ask on agy 1.5
 
-`ask` relies on `--mode plan` to keep agy from writing. On agy 1.5.5 that did
-not hold in print mode: asked to create a file, it did, with and without
-`--disable-slash-commands` (with it, agy also prints that plan mode has no
-effect). Shell commands were still denied. The verdict says so in `read_only`
-and in a warning, also when agy's version cannot be read. Until `ask` on agy
-has a guard of its own, use it with `--web`: a write in its working directory
-goes with that directory, though one to an absolute path stays. From a
-repository, the work-tree check fails the run for a new or changed tracked
-file only; an ignored file, `.git` and anything outside go unseen. `review`
-and `delegate` run under crew's hooks and are not affected by this.
+`ask` used to rely on `--mode plan` to keep agy from writing. On agy 1.5.5
+that did not hold in print mode: asked to create a file, it did, with and
+without `--disable-slash-commands` (with it, agy also prints that plan mode
+has no effect). Shell commands were still denied.
+
+Where `agy --help` lists a `--settings` flag (settings for one session, never
+saved), crew passes `{"permissions":{"deny":["write_file(*)","command(*)","mcp(*)"]}}`.
+With it agy 1.5.5 answered "Permission denied for write_file(...). Matches
+user-configured deny rule" and wrote nothing: creating a file, on a first and
+on a resumed turn, and editing, deleting and renaming existing ones. Web
+search and `--schema` still worked. The verdict's `read_only` says the rules
+were passed, and a warning lists any tool call agy refused.
+
+What the rules leave open: agy can still read any file it is given a path to
+and can still fetch a URL (`read_file` and `execute_url` are not denied), and
+its MCP servers are refused, so an answer that needed one comes back poorer.
+Whether the session's rules add to the user's own or replace them was not
+checked.
+
+An agy whose help does not list the flag, or cannot be read, gets no rules.
+At 1.5 or later, or with a version that cannot be read, such an agy is not
+read-only: the verdict says so in `read_only` and in a warning. Use `--web`
+there, where a write in the working directory goes with it; from a
+repository the work-tree check fails the run for a new or changed tracked
+file only.
+
+`review` and `delegate` do not use these rules. They run under crew's hooks,
+which do not depend on plan mode, and were not run again on agy 1.5.5. If
+the hooks do not load, `review` falls back to plan mode alone and warns; on
+1.5 that does not stop a write.
 
 ## Review
 
