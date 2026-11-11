@@ -29,12 +29,6 @@
 # as it did before.
 set -euo pipefail
 
-# Resolve the plugin root from the script's own location rather than
-# ${CLAUDE_PLUGIN_ROOT}: works identically when run by the hook runner,
-# by hand, or from a copied tree.
-# The skill lives in skills/agent-fleet/ (the Agent Plugins layout).
-SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../skills/agent-fleet" && pwd)"
-
 command -v jq >/dev/null || { echo "agent-fleet inject hook: jq not found, skill not injected" >&2; exit 0; }
 input=$(cat) || exit 0
 
@@ -86,6 +80,15 @@ else
   exit 0
 fi
 
+# The plugin root is ${CLAUDE_PLUGIN_ROOT}: Claude Code sets it for a plugin's
+# hooks, and so do the bridges for other harnesses. Run by hand, set it to the
+# plugin folder. The skill lives in skills/agent-fleet/ (the Agent Plugins
+# layout).
+if [[ -z "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
+  echo "agent-fleet plugin hook: CLAUDE_PLUGIN_ROOT is not set — skill not injected" >&2
+  exit 1
+fi
+SKILL_DIR="${CLAUDE_PLUGIN_ROOT%/}/skills/agent-fleet"
 if [[ ! -f "$SKILL_DIR/SKILL.md" ]]; then
   echo "agent-fleet plugin hook: $SKILL_DIR/SKILL.md not found — skill not injected" >&2
   exit 1

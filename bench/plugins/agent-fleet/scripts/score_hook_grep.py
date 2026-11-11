@@ -52,7 +52,7 @@ SELF_TEST = [("ultracode: do the thing", True), ("what time is it in Lisbon", Fa
 
 def run_hook(prompt: str) -> tuple[bool, str]:
     """Return (fired, stderr). Fired means non-empty stdout."""
-    env = dict(os.environ, LC_ALL="C")
+    env = dict(os.environ, LC_ALL="C", CLAUDE_PLUGIN_ROOT=os.path.dirname(os.path.dirname(HOOK)))
     proc = subprocess.run(
         ["bash", HOOK],
         input=json.dumps({"prompt": prompt}),
