@@ -551,6 +551,27 @@ def takes_settings(binary: str) -> bool:
     return bool(re.search(r"(?m)^\s*--settings(?![\w-])", p.stdout + "\n" + p.stderr))
 
 
+def plan_is_loose(backend: str, version) -> bool:
+    """Whether `version` of this backend is one where its read-only flag did
+    not stop a file write (backends.ASK_WRITES_FROM). A version that cannot be
+    read counts as a new one."""
+    import backends
+    since = backends.ASK_WRITES_FROM.get(backend)
+    if not since:
+        return False
+    found = re.search(r"(\d+)\.(\d+)", version or "")
+    return not found or (int(found.group(1)), int(found.group(2))) >= since
+
+
+def agy_version() -> str:
+    """What `agy --version` prints last, or "?" when it prints nothing or cannot be run."""
+    try:
+        proc = subprocess.run(["agy", "--version"], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.TimeoutExpired):
+        return "?"
+    return proc.stdout.strip().splitlines()[-1].strip() if proc.stdout.strip() else "?"
+
+
 def parse_duration(text) -> int:
     if isinstance(text, (int, float)):
         return int(text)
@@ -1990,8 +2011,7 @@ def preflight_agy(model: str, min_quota: float, probe_quota: bool, rundir: str) 
     if not shutil.which("agy"):
         raise Refusal("agy is not on PATH")
     warns = []
-    proc = subprocess.run(["agy", "--version"], capture_output=True, text=True, timeout=60)
-    version = proc.stdout.strip().splitlines()[-1].strip() if proc.stdout.strip() else "?"
+    version = agy_version()
     if version != TESTED_AGY_VERSION:
         warns.append(f"agy {version}; this script was only exercised on {TESTED_AGY_VERSION}. Hook "
                      "decision, finish tool, Stop reasons and /usage format may have changed")
@@ -3194,6 +3214,7 @@ def cmd_review(a) -> int:
     if a.backend not in REVIEW_GUARDED:
         return review_via_ask(a, repo, question, schema)
     opencode, copilot = a.backend == "opencode", a.backend == "copilot"
+    denied, version = False, "?"                # agy only: set where its command is built
     model = a.model or {"opencode": OPENCODE_DEFAULT_MODEL, "copilot": COPILOT_DEFAULT_MODEL}.get(
         a.backend, DEFAULT_MODEL)
     if copilot:
@@ -3270,19 +3291,26 @@ def cmd_review(a) -> int:
         warns = pre_warns + ([] if usage else ["copilot usage.json missing: credits spent unknown"])
         run_info = {"rc": rc, **info, "usage": usage}
     else:
+        import backends
+        # The hooks are the guard. The deny rules are what is left if they do
+        # not load: from agy 1.5 on, --mode plan does not stop a file write.
+        denied, version = takes_settings("agy"), agy_version()    # both read before the run, not after
         cmd = ["agy", "-p", prompt, "--model", model, "--mode", "plan", "--output-format", "json",
                "--json-schema", schema_path, "--print-timeout", f"{timeout_s}s"]
+        if denied:
+            cmd += ["--settings", json.dumps(backends.AGY_ASK_DENY, separators=(",", ":"))]
         created = install_hooks(repo, rundir, ctx)
         try:
-            eprint(f"crew: review running ({model}, --mode plan)…")
+            eprint(f"crew: review running ({model}, --mode plan" + (", deny rules" if denied else "") + ")…")
             rc, stdout, stderr = run_agy(cmd, repo, rundir, timeout_s)
         finally:
             remove_hooks(repo, created)
         fails, warns, env = evaluate_run(rc, stdout, stderr, "review", schema)
         warns = pre_warns + warns
         report = env.get("structured_output") if isinstance(env, dict) else None
-        run_info = {"rc": rc, **({k: env.get(k) for k in ("status", "duration_seconds", "num_turns",
-                                                          "usage")} if isinstance(env, dict) else {})}
+        run_info = {"rc": rc, "deny_settings": denied,
+                    **({k: env.get(k) for k in ("status", "duration_seconds", "num_turns",
+                                                "usage")} if isinstance(env, dict) else {})}
     if (fingerprint(repo, []) != fp_before or ignored_state(repo) != ignored_before
             or integrity_state(repo, rundir) != integ_before):
         fails.append("the tree, an ignored file or .git changed during a review that should have been "
@@ -3294,6 +3322,14 @@ def cmd_review(a) -> int:
     elif not any(e.get("event") == "session_start" for e in guard_events(rundir)):
         if opencode:
             fails.append("the opencode guard plugin did not load (no SessionStart): the review ran "
+                         "with nothing keeping it read-only")
+        elif denied:
+            warns.append("hooks did not load (no SessionStart): the review ran with --mode plan and the deny "
+                         "rules for write_file, command and mcp passed through --settings; no guard on which "
+                         "paths it read")
+        elif plan_is_loose("agy", version):
+            fails.append("the crew hooks did not load (no SessionStart) and this agy takes no --settings: "
+                         "--mode plan did not stop a file write when tried on agy 1.5, so the review ran "
                          "with nothing keeping it read-only")
         else:
             warns.append("hooks did not load (no SessionStart): the review ran with --mode plan only")
@@ -3380,10 +3416,7 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
             warnings.append(f"{backend}: argv built from --help; never run end to end by crew")
         elif not (version and live in version):
             warnings.append(f"{backend}: tested on {live}, found {version!r}")
-        loose = None if denied else backends.ASK_WRITES_FROM.get(backend)
-        if loose:                              # a version that cannot be read counts as a new one
-            found = re.search(r"(\d+)\.(\d+)", version or "")
-            loose = not found or (int(found.group(1)), int(found.group(2))) >= loose
+        loose = not denied and plan_is_loose(backend, version)
         if loose:
             warnings.append(f"{backend} {version or '(version unknown)'}: `{spec['read_only']}` did not stop a file "
                             "write when tried on this line of versions, so this ask is not read-only. A new or "

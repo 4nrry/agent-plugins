@@ -635,7 +635,9 @@ def self_test() -> int:
         os.makedirs(grd)
         cfg = crew.write_oc_guard(grd)
         js = open(os.path.join(cfg, "plugins", "crew-guard.js"), encoding="utf-8").read()
-        check(json.dumps(os.path.abspath(crew.__file__)) in js and '"oc-pre"' in js and "__" not in js
+        # no placeholder left; the temporary directory's own name may hold "__"
+        check(json.dumps(os.path.abspath(crew.__file__)) in js and '"oc-pre"' in js
+              and "__" not in js.replace(grd, "")
               and "export default" in js and '"execute.before"' in js,
               "generated guard: v2 shape, points at this script")
         env_oc = crew.opencode_env(cfg, False)
@@ -1290,10 +1292,12 @@ def self_test() -> int:
                           f"ask: an agy whose help has {label} is not given the flag and keeps the warning")
                 check(crew.takes_settings(os.path.join(tmp, "no-such-agy")) is False,
                       "ask: an agy whose help cannot be run counts as having no --settings")
-                standin("codex", "codex-cli 0.163.0", """echo '{"type":"thread.started","thread_id":"t1"}'\n"""
+                standin("codex", "codex-cli 2.0.0", """echo '{"type":"thread.started","thread_id":"t1"}'\n"""
                         r"""printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n' "$seen" """, helps)
                 v = crew.run_ask("codex", "ping", cwd=repo, env=wenv, web=True)
-                check(v["ok"] and "deny rules" not in v["read_only"], "ask: the deny rules are agy's alone")
+                check(v["ok"] and "deny rules" not in v["read_only"] and not v["read_only"].startswith("not enforced")
+                      and not any("not read-only" in w for w in v["warnings"]),
+                      "ask: the deny rules and the agy 1.5 warning are agy's alone, whatever the other CLI's version")
                 buf = io.StringIO()
                 with contextlib.redirect_stdout(buf):
                     rc = crew.main(["backends"])
@@ -1301,6 +1305,72 @@ def self_test() -> int:
                 check(rc == 0 and len(rows) == len(backends.SPECS) and "--settings" in rows["agy"]["read_only"]
                       and rows["codex"]["read_only"] == backends.SPECS["codex"]["read_only"],
                       "backends: every backend is listed, agy with the note on its read-only mode")
+                # review on agy: the hooks are the guard, and the deny rules are what is left when they do not load
+                fire = ("""python3 -c 'import json,subprocess;subprocess.run(json.load(open(".agents/hooks.json"))"""
+                        """["crew"]["SessionStart"][0]["command"],shell=True,input="{}",text=True)' >/dev/null\n""")
+                rv_head = (r"""[ "$1" = models ] && { printf 'gemini-3.8-flash-high\tFlash\n'; exit 0; }""" + "\n"
+                           + f"""printf '%s\\n' "$@" > "{seen_argv}"\n""")
+                rv_tail = (r"""printf '{"status":"SUCCESS","structured_output":"""
+                           r"""{"verdict":"approve","findings":[],"summary":"ok"}}'""")
+                no_flag = "  --mode   Set the agent execution mode"
+
+                real_rundir, reviews = crew.new_rundir, []
+
+                def agy_review(version, helptext, hooks):
+                    """One review per run directory: two in the same second of one process would share it."""
+                    standin("agy", version, rv_head + (fire if hooks else "") + rv_tail, helptext)
+                    reviews.append(1)
+                    crew.new_rundir = lambda r, kind: real_rundir(r, f"{kind}{len(reviews)}")
+                    out = io.StringIO()
+                    try:
+                        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                            code = crew.main(["review", "is add() right?", "--repo", repo, "--no-quota-probe"])
+                    finally:
+                        crew.new_rundir = real_rundir
+                    return code, json.loads(out.getvalue())
+                rc, rv = agy_review("1.5.5", helps, True)
+                check(rc == 0 and passed() == rules and rv["agy"]["deny_settings"] is True
+                      and not any("hooks did not load" in w for w in rv["warnings"]),
+                      "review: an agy that takes --settings gets the deny rules next to the hooks")
+                rc, rv = agy_review("1.5.5", helps, False)
+                check(rc == 0 and passed() == rules and not rv["failures"]
+                      and any("hooks did not load" in w and "deny rules" in w for w in rv["warnings"]),
+                      "review: hooks that do not load leave the deny rules, and the warning says so")
+                for shown in ("1.5.5", "no number here", ""):
+                    rc, rv = agy_review(shown, no_flag, False)
+                    check(rc == 1 and passed() is None and rv["agy"]["deny_settings"] is False
+                          and any("nothing keeping it read-only" in f for f in rv["failures"]),
+                          f"review: agy {shown!r} with no hooks and no --settings fails, plan mode alone being no guard")
+                rc, rv = agy_review("1.4.7", helps, False)
+                check(rc == 0 and passed() == rules and not rv["failures"]
+                      and any("hooks did not load" in w and "deny rules" in w for w in rv["warnings"]),
+                      "review: the deny rules go to an agy that takes --settings whatever its version")
+                check(crew.plan_is_loose("agy", None) and crew.plan_is_loose("agy", "?")
+                      and not crew.plan_is_loose("agy", "1.4.7") and not crew.plan_is_loose("codex", "9.9.9"),
+                      "plan_is_loose: no version counts as a new one, and only agy has such a line of versions")
+                rc, rv = agy_review("1.4.7", no_flag, False)
+                check(rc == 0 and passed() is None and not rv["failures"]
+                      and any(w.endswith("--mode plan only") for w in rv["warnings"]),
+                      "review: before agy 1.5, hooks that do not load stay a warning")
+                rc, rv = agy_review("1.5.5", no_flag, True)
+                check(rc == 0 and passed() is None and not rv["failures"]
+                      and not any("hooks did not load" in w for w in rv["warnings"]),
+                      "review: with the hooks loaded, an agy without --settings passes")
+                check(not os.path.lexists(os.path.join(repo, ".agents")),
+                      "review: the hooks file is gone after each run")
+                # agy updates itself while it runs (seen live): the verdict goes by the version read before
+                swap = ("""printf '#!/bin/sh\\necho 1.4.7\\n' > "$0.new"; chmod +x "$0.new"; mv "$0.new" "$0"\n""")
+                rv_head, kept = rv_head + swap, rv_head
+                rc, rv = agy_review("1.5.5", no_flag, False)
+                rv_head = kept
+                check(rc == 1 and any("nothing keeping it read-only" in f for f in rv["failures"])
+                      and crew.agy_version() == "1.4.7",
+                      "review: an agy replaced during the run is judged by the version read before it")
+                held, os.environ["PATH"] = os.environ["PATH"], os.path.join(tmp, "no-such-dir")
+                try:
+                    check(crew.agy_version() == "?", "agy_version: an agy that cannot be run reads as unknown")
+                finally:
+                    os.environ["PATH"] = held
                 standin("agy", "1.4.4", agy_reply)
                 real_fp = crew.fingerprint
 
