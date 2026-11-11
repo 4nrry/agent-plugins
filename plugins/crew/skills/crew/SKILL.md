@@ -51,11 +51,11 @@ python3 scripts/crew.py ask <backend> --session <session> --prompt-file next.md 
 ```
 
 The worker runs read-only in `--cwd`. The verdict's `read_only` says how each
-backend enforces this, and a changed work tree fails the run. On agy 1.5 the
-mode crew relies on no longer stops a file write, and the verdict warns: ask
-agy with `--web`, where a write in its directory goes with it. From a
-repository the check catches only a new or changed tracked file, not one
-that is ignored, in `.git` or outside. `--web` adds web
+backend enforces this, and a changed work tree fails the run. On agy 1.5 plan
+mode no longer stops a file write, so crew also passes agy deny rules for the
+session (`--settings`). An agy with neither is not read-only and the verdict
+warns: use `--web` there, since the work-tree check sees only a new or
+changed tracked file. `--web` adds web
 search and fetch (claude, agy, opencode, grok, codex, hermes), for a question
 that must not see the repository. claude, grok and hermes lose their file
 tools with it. agy, opencode and codex keep theirs, so crew runs each such
