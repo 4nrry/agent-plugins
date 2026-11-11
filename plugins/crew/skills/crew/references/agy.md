@@ -3,6 +3,18 @@
 Read [delegate.md](delegate.md) first. `scripts/crew.py` is in the crew skill's
 directory; run it from the task's repository, or pass `--repo`.
 
+## Contents
+
+- The run
+- Model and escalation
+- Quota
+- Before the first run
+- Guard and gate
+- Background commands
+- Failures only agy has
+- Ask on agy 1.5
+- Review
+
 ## The run
 
 ```bash
