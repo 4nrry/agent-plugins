@@ -36,7 +36,7 @@ lets Copilot, Codex and Cursor install the plugin.
 | Component | Path |
 |---|---|
 | Skill | `SKILL.md`: picking a backend and tier, `ask`, `review`, `delegate` |
-| Scripts | `scripts/crew.py`, and `scripts/backends.py` with each CLI's argv, parser and tiers |
+| Scripts | `scripts/crew.py`, `scripts/backends.py` with each CLI's argv, parser and tiers, and `scripts/crew_selftest.py` with crew.py's self-test |
 | References | `references/delegate.md`; per backend `agy.md`, `opencode.md`, `copilot.md`, `codex.md`, `grok.md`, `cursor.md`, `claude.md`; `clis.md` for every agent CLI's flags and folders |
 | Hook | `hooks/inject.sh`: `UserPromptSubmit`, one line pointing at the skill when the prompt names agy, opencode, copilot, codex, grok, hermes, kimi or muse as a whole word (not claude or cursor, which more often name the host or an editor) |
 
