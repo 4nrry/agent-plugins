@@ -17,8 +17,8 @@ worktree that is `<main checkout>/.git/worktrees/<name>/crew`, outside the work
 tree, and Grok runs crew's hooks inside `--sandbox workspace`, which writes
 only in the work tree, `~/.grok`, `/tmp` and `/var/tmp` (Grok's sandbox
 guide). The hooks could not open their log, so every Claude Code desktop
-session hit it. First seen in other sessions the same day, then reproduced
-here.
+session hit it. First seen in another repository's sessions the same day,
+then reproduced here.
 
 | Case | crew | Result |
 |---|---|---|
