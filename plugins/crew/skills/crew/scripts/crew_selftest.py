@@ -1170,8 +1170,25 @@ def self_test() -> int:
                           and os.path.realpath(f[2]) == f[0] and rrepo not in (v["text"] or "")
                           and (name != "opencode" or os.path.realpath(f[4]).startswith(wreal)),
                           f"ask --web: {name} runs in a new empty directory too ({v['failures']})")
-                os.remove(os.path.join(fakebin, "opencode"))
                 check(os.listdir(wparent) == [], "ask --web: those directories are removed as well")
+                # opencode keeps a conversation in its first turn's directory: a later turn needs it back
+                oc_ok = r"""printf '{"type":"text","sessionID":"s1","part":{"text":"%s"}}\n' "$seen" """
+                oc_lost = r"""printf '{"type":"unknown","message":"Location not found: %s"}\n' """
+                standin("opencode", "2.1.0", f'if [ -d "{wreal}gone1/cwd" ]; then {oc_ok}; '
+                                             f'else {oc_lost} "{wreal}gone1/cwd"; exit 1; fi')
+                v = crew.run_ask("opencode", "again", session="s1", cwd=repo, env=wenv, web=True)
+                check(v["ok"] and any("made it again" in w for w in v["warnings"]) and os.listdir(wparent) == [],
+                      f"ask --web: opencode's lost conversation directory is made again for the turn, then removed ({v['failures']})")
+                v = crew.run_ask("opencode", "first", cwd=repo, env=wenv, web=True)
+                check(not v["ok"] and os.listdir(wparent) == [],
+                      "ask --web: without --session a lost directory is a plain failure")
+                outside = os.path.join(tmp, "outside")
+                for claimed in (outside, wreal + "../outside", wreal + "a/b"):
+                    standin("opencode", "2.1.0", f'{oc_lost} "{claimed}/cwd"; exit 1')
+                    v = crew.run_ask("opencode", "again", session="s1", cwd=repo, env=wenv, web=True)
+                    check(not v["ok"] and not os.path.exists(outside) and os.listdir(wparent) == [],
+                          f"ask --web: a directory named by the worker outside crew's own is never made ({claimed})")
+                os.remove(os.path.join(fakebin, "opencode"))
                 # leftovers of killed runs go; a neighbour still running, or a recent one, stays
                 stale, held, fresh = (os.path.join(wparent, n) for n in ("stale", "held", "fresh"))
                 for p in (stale, held, fresh):
@@ -1191,7 +1208,15 @@ def self_test() -> int:
                 v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
                 check(v["ok"] and any("was removed" in w for w in v["warnings"]),
                       "ask --web: a worker that removes its directory still gets a verdict")
+                standin("agy", "1.5.5", agy_reply)
+                v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
+                check(v["ok"] and v["read_only"].startswith("not enforced on this version")
+                      and any("not read-only" in w for w in v["warnings"]),
+                      "ask: on agy 1.5 the verdict says plan mode does not stop a write")
                 standin("agy", "1.4.4", agy_reply)
+                v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
+                check(v["read_only"].startswith("--mode plan") and not any("not read-only" in w for w in v["warnings"]),
+                      "ask: on the agy version crew was tested on it does not")
                 real_fp = crew.fingerprint
 
                 def boom(*_a, **_k):

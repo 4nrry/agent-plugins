@@ -23,6 +23,12 @@ EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra")
 LIVE = {"claude": "2.1.310", "agy": "1.4.7", "opencode": "2.1.4", "grok": "1.0.77",
         "codex": "0.164.0", "hermes": "0.22.5", "copilot": "1.0.103", "cursor": "2026.10.22-27dcf5f"}
 
+# From these versions on, the backend's read-only mode for `ask` is known not to
+# hold. agy 1.5.5 wrote a file in print mode under --mode plan, with and
+# without --disable-slash-commands (two runs, 2026-11-11); it still denies
+# shell commands there. review and delegate on agy go through crew's hooks.
+ASK_WRITES_FROM = {"agy": (1, 5)}
+
 OPENCODE_MODELS = ("opencode/deepseek-v4.1-flash-free", "opencode/glm-5.3-flash-free",
                    "opencode/beam-free", "opencode/nemotron-3.5-super-vl-free",
                    "opencode/nemotron-3.5-lightning-free", "opencode/mimo-v2.6-flash-free",
