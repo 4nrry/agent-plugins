@@ -21,7 +21,7 @@ session.
 | CLI | Headless | Resume | Model | Read-only | Schema output |
 |---|---|---|---|---|---|
 | [Claude Code](https://code.claude.com/docs/en/cli-reference) | `claude -p` | `--resume <id>` | `--model` | `--permission-mode plan` | `--json-schema` |
-| [Antigravity `agy`](https://antigravity.google/docs) | `agy -p` | `--conversation <id>` | `--model` | `--mode plan` | `--json-schema` |
+| [Antigravity `agy`](https://antigravity.google/docs) | `agy -p` | `--conversation <id>` | `--model` | `--mode plan` up to 1.4; from 1.5 deny rules through `--settings` | `--json-schema` |
 | [opencode 2.x](https://opencode.ai/v2/docs) | `opencode run --standalone` | `-s <id>` | `-m provider/model` | `permission` deny rules | none: parse the last JSON object |
 | [Copilot CLI](https://docs.github.com/en/copilot/reference/copilot-cli-reference) | `copilot -p` | `--resume <id>` | `--model` (Free plan: `auto` only) | `--excluded-tools` | none |
 | [Grok Build](https://github.com/xai-org/grok-build) (`~/.grok/docs/`) | `grok -p` | `--resume` | `-m` | `--permission-mode plan` | `--json-schema` |

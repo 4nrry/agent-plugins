@@ -74,19 +74,31 @@ that did not hold in print mode: asked to create a file, it did, with and
 without `--disable-slash-commands` (with it, agy also prints that plan mode
 has no effect). Shell commands were still denied.
 
-Where `agy --help` lists `--settings` (settings for one session, never
+Where `agy --help` lists a `--settings` flag (settings for one session, never
 saved), crew passes `{"permissions":{"deny":["write_file(*)","command(*)","mcp(*)"]}}`.
 With it agy 1.5.5 answered "Permission denied for write_file(...). Matches
-user-configured deny rule" and wrote nothing, in the `--web` directory and in
-a repository; web search still ran. The verdict's `read_only` names the
-rules.
+user-configured deny rule" and wrote nothing: creating a file, on a first and
+on a resumed turn, and editing, deleting and renaming existing ones. Web
+search and `--schema` still worked. The verdict's `read_only` says the rules
+were passed, and a warning lists any tool call agy refused.
 
-An agy at 1.5 or later without that flag, or one whose version cannot be
-read, is not read-only: the verdict says so in `read_only` and in a warning.
-Use `--web` there, where a write in the working directory goes with it; from
-a repository the work-tree check fails the run for a new or changed tracked
-file only. `review` and `delegate` run under crew's hooks and are not
-affected by any of this.
+What the rules leave open: agy can still read any file it is given a path to
+and can still fetch a URL (`read_file` and `execute_url` are not denied), and
+its MCP servers are refused, so an answer that needed one comes back poorer.
+Whether the session's rules add to the user's own or replace them was not
+checked.
+
+An agy whose help does not list the flag, or cannot be read, gets no rules.
+At 1.5 or later, or with a version that cannot be read, such an agy is not
+read-only: the verdict says so in `read_only` and in a warning. Use `--web`
+there, where a write in the working directory goes with it; from a
+repository the work-tree check fails the run for a new or changed tracked
+file only.
+
+`review` and `delegate` do not use these rules. They run under crew's hooks,
+which do not depend on plan mode, and were not run again on agy 1.5.5. If
+the hooks do not load, `review` falls back to plan mode alone and warns; on
+1.5 that does not stop a write.
 
 ## Review
 
