@@ -122,9 +122,12 @@ def p_claude(out):
 def p_agy(out):
     j = _json(out)
     ok = j.get("status") == "SUCCESS"
+    denied = [str(d.get("display_name") or d.get("action") or d) if isinstance(d, dict) else str(d)
+              for d in (j.get("denied_actions") or [])]
     return {"text": (j.get("response") or "").strip() or None, "session": j.get("conversation_id"),
             "structured": j.get("structured_output") if isinstance(j.get("structured_output"), dict) else None,
-            "usage": j.get("usage"), "error": None if ok else f"status {j.get('status')!r}"}
+            "usage": j.get("usage"), "error": None if ok else f"status {j.get('status')!r}",
+            "denied": denied}
 
 
 def p_opencode(out):
@@ -381,7 +384,9 @@ SPECS = {
                        "top": ("gemini-4-argon", "high")},
                 efforts=("low", "medium", "high"),
                 pools={"google": ("gemini-",), "claude": ("claude-",)},
-                read_only="--mode plan"),
+                read_only="--mode plan",
+                read_only_note="agy 1.5 no longer holds to it; ask adds deny rules through --settings "
+                               "where agy has that flag"),
     "opencode": dict(web=True, native_schema=False, vendor="opencode", bins=("opencode", "~/.opencode/bin/opencode"),
                      build=b_opencode, parse=p_opencode,
                      # top is the 1M-context

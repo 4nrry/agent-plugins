@@ -540,14 +540,15 @@ def opencode_lost_dir(text: str, parent: str):
 
 
 def takes_settings(binary: str) -> bool:
-    """Whether this agy lists --settings in its help: the flag that carries
-    crew's deny rules for one session. No model is called."""
+    """Whether this agy lists a --settings flag in its help (agy prints it on
+    stderr): the flag that carries crew's deny rules for one session. A help
+    that cannot be read counts as no. No model is called."""
     try:
         p = subprocess.run([binary, "--help"], capture_output=True, text=True, timeout=30,
                            stdin=subprocess.DEVNULL)
     except (OSError, subprocess.TimeoutExpired):
         return False
-    return "--settings" in p.stdout + p.stderr
+    return bool(re.search(r"(?m)^\s*--settings(?![\w-])", p.stdout + "\n" + p.stderr))
 
 
 def parse_duration(text) -> int:
@@ -3441,6 +3442,9 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
             with open(os.path.join(rundir, f"{name}.log"), "w", encoding="utf-8") as fh:
                 fh.write(text)
         parsed = spec["parse"](out)
+        if parsed.get("denied"):          # agy lists what it refused; the answer may be the poorer for it
+            warnings.append(f"{backend} refused {len(parsed['denied'])} tool call(s): "
+                            + ", ".join(sorted(set(parsed["denied"]))[:5]))
         if backend == "grok" and web:      # a plain ask keeps Grok's tools, in plan mode
             warnings += grok_tool_warnings(err, out, backends.GROK_WEB_TOOLS)
         if rc not in (0, None):
@@ -3466,7 +3470,8 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
                     spec["read_only"] if not web else "web search and fetch only"
                     if backend in backends.WEB_ONLY else
                     spec["read_only"] + "; web search and fetch added; run in a new empty directory, not in --cwd"
-                ) + ("; --settings denies write_file, command and mcp for the session" if denied else ""),
+                ) + ("; deny rules for write_file, command and mcp passed through --settings "
+                     "(agy 1.5.5 held to them)" if denied else ""),
                 "version": version, "failures": failures, "warnings": warnings,
                 "left_processes_stopped": sorted(left), "duration_s": round(time.time() - t0, 1),
                 "rundir": rundir}
@@ -3497,7 +3502,9 @@ def cmd_backends(a) -> int:
     for name, s in backends.SPECS.items():
         rows.append({"backend": name, "bin": backends._bin(*s["bins"]), "vendor": s["vendor"],
                      "tiers": {t: {"model": m, "effort": e} for t, (m, e) in s["tiers"].items()},
-                     "efforts": list(s["efforts"]), "read_only": s["read_only"],
+                     "efforts": list(s["efforts"]),
+                     "read_only": f"{s['read_only']} ({s['read_only_note']})" if s.get("read_only_note")
+                     else s["read_only"],
                      "live_tested_on": backends.LIVE.get(name),
                      "same_vendor_as_host": s["vendor"] in backends.host_vendors()})
     print(json.dumps(rows, ensure_ascii=False, indent=2))
