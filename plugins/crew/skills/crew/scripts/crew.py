@@ -483,12 +483,12 @@ def own_dir(path: str, use: str) -> str:
 def web_dir() -> str:
     """A new directory for one `--web` ask on a backend that keeps its file
     tools (backends.WEB_EMPTY_DIR): `/tmp/crew-web-<uid>/<random>/`, with
-    `cwd/`, empty, where the worker runs, and `run/` for what crew hands it
-    (the schema, opencode's web config). The caller removes it. The parent,
-    mode 0700, holds nothing else; a directory there older than a day is a
-    killed run's and is removed here. It hides the repository and is not a
-    sandbox: a worker handed an absolute path can still read it where its CLI
-    allows that."""
+    `cwd/`, empty, where the worker runs, `run/` for what crew hands it (the
+    schema, opencode's web config) and `owner`, this process's pid. The caller
+    removes it. The parent, mode 0700, holds only such directories; one older
+    than a day whose owner is gone is a killed run's and is removed here. It
+    hides the repository and is not a sandbox: a worker handed an absolute
+    path can still read it where its CLI allows that."""
     parent = own_dir(os.path.join(STATE_TMP_ROOT, f"crew-web-{os.getuid()}"), "runs --web workers")
     cutoff = time.time() - 86400
     with os.scandir(parent) as entries:
@@ -496,15 +496,24 @@ def web_dir() -> str:
             try:
                 if entry.stat(follow_symlinks=False).st_mtime >= cutoff:
                     continue
-                if entry.is_dir(follow_symlinks=False):
-                    shutil.rmtree(entry.path, ignore_errors=True)
-                else:
+                if not entry.is_dir(follow_symlinks=False):
                     os.unlink(entry.path)
+                    continue
+                try:                                  # a run with a long --timeout is still there
+                    with open(os.path.join(entry.path, "owner"), encoding="ascii") as fh:
+                        os.kill(int(fh.read()), 0)
+                    continue
+                except PermissionError:
+                    continue
+                except (OSError, ValueError):
+                    shutil.rmtree(entry.path, ignore_errors=True)
             except OSError:
                 pass
     base = tempfile.mkdtemp(dir=parent)
     for sub in ("cwd", "run"):
         os.mkdir(os.path.join(base, sub), 0o700)
+    with open(os.path.join(base, "owner"), "w", encoding="ascii") as fh:
+        fh.write(str(os.getpid()))
     return base
 
 
@@ -3348,9 +3357,14 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
             left = stop_run_procs(run_id)
             restore_files(run_cwd, saved)
         if web_base:
-            wrote = sorted(os.listdir(run_cwd))
+            # A warning, not a failure: no run here has shown what each CLI leaves
+            # in its working directory on a normal turn, and the directory goes anyway.
+            try:
+                wrote = sorted(os.listdir(run_cwd)) + sorted(set(os.listdir(web_base)) - {"cwd", "run", "owner"})
+            except OSError:
+                wrote = ["(the directory itself was removed)"]
             if wrote:
-                failures.append(f"the worker wrote in its directory during a read-only ask: {wrote[:5]}")
+                warnings.append(f"the worker left files in its empty directory, removed with it: {wrote[:5]}")
             shutil.rmtree(web_base, ignore_errors=True)
             if os.path.lexists(web_base):
                 warnings.append(f"could not remove the run's web directory {web_base}")
@@ -3396,6 +3410,7 @@ def cmd_ask(a) -> int:
         schema = read_json(a.schema)
         if not (isinstance(schema, dict) and schema.get("type") == "object"):
             raise Refusal(f"{a.schema}: schema needs a root of type=object")
+    trap_signals()                # so a SIGTERM still stops the worker and removes a --web directory
     verdict = run_ask(a.backend, read_prompt(a), tier=a.tier, model=a.model, effort=a.effort,
                       session=a.session, cwd=a.cwd, timeout_s=parse_duration(a.timeout),
                       allow_same_vendor=a.allow_same_vendor, web=a.web, schema=schema)

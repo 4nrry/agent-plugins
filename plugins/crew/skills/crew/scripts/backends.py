@@ -31,7 +31,7 @@ OPENCODE_DENY = {"permission": {"edit": "deny", "bash": "deny", "execute": "deny
                                 "task": "deny", "external_directory": "deny"}}
 # --web: the same denials, web fetch and search allowed (fleet_worker's research runs).
 # The read tools stay; crew.py runs a --web ask on opencode in a new empty directory,
-# and external_directory stays denied.
+# with external_directory still set to deny.
 OPENCODE_WEB = {"permission": dict(OPENCODE_DENY["permission"], webfetch="allow", websearch="allow")}
 # opencode 2.1 searches only through a provider the user picked once in the
 # TUI; with none saved it asks, and `run` cancels the question ("Web search

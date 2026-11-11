@@ -1124,40 +1124,87 @@ def self_test() -> int:
             real_root, crew.STATE_TMP_ROOT = crew.STATE_TMP_ROOT, os.path.join(tmp, "webroot")
             os.makedirs(crew.STATE_TMP_ROOT)
             wparent = os.path.join(crew.STATE_TMP_ROOT, f"crew-web-{os.getuid()}")
+            wreal = os.path.realpath(wparent) + os.sep
             runs = os.path.join(crew.state_base(repo), "runs")
             rrepo = os.path.realpath(repo)
+
+            def standin(name, version, reply):
+                """A CLI that answers with its directory, what is in it, and PWD, OLDPWD and
+                OPENCODE_CONFIG_DIR as it was started with them (a shell rewrites its own $PWD)."""
+                with open(os.path.join(fakebin, name), "w") as fh:
+                    fh.write("#!/bin/sh\n" + f'[ "$1" = --version ] && {{ echo {version}; exit 0; }}\n'
+                             + r"""e() { tr '\0' '\n' < /proc/$$/environ | sed -n "s/^$1=//p"; }""" + "\n"
+                             + r"""seen="$(pwd -P)|$(ls -A | tr '\n' ,)|$(e PWD)|$(e OLDPWD)|$(e OPENCODE_CONFIG_DIR)" """
+                             + "\n" + reply + "\n")
+                os.chmod(os.path.join(fakebin, name), 0o755)
+
+            agy_reply = r"""printf '{"conversation_id":"w1","status":"SUCCESS","response":"%s|%s"}' "$seen" "$*" """
             try:
-                with open(fake, "w") as fh:      # answers with its directory, what is in it, PWD, OLDPWD, its arguments
-                    fh.write("#!/bin/sh\n[ \"$1\" = --version ] && { echo 1.4.4; exit 0; }\n"
-                             "printf '{\"conversation_id\":\"w1\",\"status\":\"SUCCESS\",\"response\":\"%s|%s|%s|%s|%s\"}' "
-                             "\"$(pwd -P)\" \"$(ls -A | tr '\\n' ,)\" \"$PWD\" \"${OLDPWD:-none}\" \"$*\"\n")
+                standin("agy", "1.4.4", agy_reply)
                 wenv = dict(fenv, PWD=rrepo, OLDPWD=rrepo)
                 v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
-                d, listing, pwd, oldpwd, args = (v["text"] or "||||").split("|", 4)
-                check(v["ok"] and d.startswith(os.path.realpath(wparent) + os.sep) and d.endswith(os.sep + "cwd")
-                      and listing == "" and "new empty directory" in v["read_only"],
+                d, listing, pwd, oldpwd, _, args = (v["text"] or "|||||").split("|", 5)
+                check(v["ok"] and d.startswith(wreal) and d.endswith(os.sep + "cwd") and listing == ""
+                      and "new empty directory" in v["read_only"] and not any("left files" in w for w in v["warnings"]),
                       "ask --web: agy runs in a new empty directory under crew-web-<uid>")
-                check(os.path.realpath(pwd) == d and oldpwd == "none" and rrepo not in args,
-                      "ask --web: PWD, OLDPWD and the arguments do not name the repository")
+                check(os.path.realpath(pwd) == d and oldpwd == "" and rrepo not in args,
+                      "ask --web: the worker starts with PWD on its directory, no OLDPWD, no repository in its arguments")
                 check(os.listdir(wparent) == [] and stat.S_IMODE(os.lstat(wparent).st_mode) == 0o700,
                       "ask --web: the run's directory is removed afterwards")
                 v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True, schema={"type": "object"})
                 check("--json-schema" in (v["text"] or "") and rrepo not in (v["text"] or ""),
                       "ask --web: the schema file handed to the worker is not in the repository's state")
                 v = crew.run_ask("agy", "ping", cwd=repo, env=wenv)
-                check(v["ok"] and v["text"].split("|")[0] == rrepo and v["text"].split("|")[3] == rrepo
+                f = (v["text"] or "|||||").split("|")
+                check(v["ok"] and f[0] == rrepo and f[2] == rrepo and f[3] == rrepo
                       and "empty directory" not in v["read_only"], "ask: without --web the worker runs in --cwd")
-                stale, fresh = os.path.join(wparent, "stale"), os.path.join(wparent, "fresh")
-                for p in (stale, fresh):
+                for name, version, reply in [
+                        ("codex", "codex-cli 0.163.0", """echo '{"type":"thread.started","thread_id":"t1"}'\n"""
+                         r"""printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n' "$seen" """),
+                        ("opencode", "2.1.0",
+                         r"""printf '{"type":"text","sessionID":"s1","part":{"text":"%s"}}\n' "$seen" """)]:
+                    standin(name, version, reply)
+                    v = crew.run_ask(name, "ping", cwd=repo, env=wenv, web=True)
+                    f = (v["text"] or "||||").split("|")
+                    check(f[0].startswith(wreal) and f[0].endswith(os.sep + "cwd") and f[1] == ""
+                          and os.path.realpath(f[2]) == f[0] and rrepo not in (v["text"] or "")
+                          and (name != "opencode" or os.path.realpath(f[4]).startswith(wreal)),
+                          f"ask --web: {name} runs in a new empty directory too ({v['failures']})")
+                os.remove(os.path.join(fakebin, "opencode"))
+                check(os.listdir(wparent) == [], "ask --web: those directories are removed as well")
+                # leftovers of killed runs go; a neighbour still running, or a recent one, stays
+                stale, held, fresh = (os.path.join(wparent, n) for n in ("stale", "held", "fresh"))
+                for p in (stale, held, fresh):
                     os.makedirs(os.path.join(p, "cwd"))
-                os.utime(stale, (time.time() - 2 * 86400,) * 2)
-                with open(fake, "a") as fh:
-                    fh.write("echo x > left.txt\n")
+                with open(os.path.join(held, "owner"), "w") as fh:
+                    fh.write(str(os.getpid()))
+                for p in (stale, held):
+                    os.utime(p, (time.time() - 2 * 86400,) * 2)
+                standin("agy", "1.4.4", "echo x > left.txt; echo y > ../beside.txt\n" + agy_reply)
                 v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
-                check(not v["ok"] and any("left.txt" in f for f in v["failures"]) and crew.changed_paths(repo) == [],
-                      "ask --web: a write in the empty directory fails the run and leaves the repo alone")
-                check(os.listdir(wparent) == ["fresh"],
-                      "ask --web: a day-old leftover is removed, a fresh neighbour is kept")
+                check(v["ok"] and any("left.txt" in w and "beside.txt" in w for w in v["warnings"])
+                      and crew.changed_paths(repo) == [],
+                      "ask --web: files left in or beside the empty directory are reported and the repo is untouched")
+                check(sorted(os.listdir(wparent)) == ["fresh", "held"],
+                      "ask --web: a day-old leftover goes; one whose owner still runs and a fresh one stay")
+                standin("agy", "1.4.4", 'rmdir "$(pwd -P)"\n' + agy_reply)
+                v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
+                check(v["ok"] and any("was removed" in w for w in v["warnings"]),
+                      "ask --web: a worker that removes its directory still gets a verdict")
+                standin("agy", "1.4.4", agy_reply)
+                real_fp = crew.fingerprint
+
+                def boom(*_a, **_k):
+                    raise RuntimeError("boom")
+                crew.fingerprint = boom
+                try:
+                    crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
+                    check(False, "ask --web: an error on the way still removes the run's directory")
+                except RuntimeError:
+                    check(sorted(os.listdir(wparent)) == ["fresh", "held"],
+                          "ask --web: an error on the way still removes the run's directory")
+                finally:
+                    crew.fingerprint = real_fp
                 shutil.rmtree(wparent)
                 os.symlink(repo, wparent)
                 before = sorted(os.listdir(runs))
