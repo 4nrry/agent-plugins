@@ -1120,6 +1120,57 @@ def self_test() -> int:
                 check(crew.main(["ask", "agy", "ping"]) == 2, "ask: refused inside a crew worker")
             finally:
                 del os.environ[crew.RUN_ENV]
+            # --web on a backend that keeps its file tools: a new empty directory, not --cwd
+            real_root, crew.STATE_TMP_ROOT = crew.STATE_TMP_ROOT, os.path.join(tmp, "webroot")
+            os.makedirs(crew.STATE_TMP_ROOT)
+            wparent = os.path.join(crew.STATE_TMP_ROOT, f"crew-web-{os.getuid()}")
+            runs = os.path.join(crew.state_base(repo), "runs")
+            rrepo = os.path.realpath(repo)
+            try:
+                with open(fake, "w") as fh:      # answers with its directory, what is in it, PWD, OLDPWD, its arguments
+                    fh.write("#!/bin/sh\n[ \"$1\" = --version ] && { echo 1.4.4; exit 0; }\n"
+                             "printf '{\"conversation_id\":\"w1\",\"status\":\"SUCCESS\",\"response\":\"%s|%s|%s|%s|%s\"}' "
+                             "\"$(pwd -P)\" \"$(ls -A | tr '\\n' ,)\" \"$PWD\" \"${OLDPWD:-none}\" \"$*\"\n")
+                wenv = dict(fenv, PWD=rrepo, OLDPWD=rrepo)
+                v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
+                d, listing, pwd, oldpwd, args = (v["text"] or "||||").split("|", 4)
+                check(v["ok"] and d.startswith(os.path.realpath(wparent) + os.sep) and d.endswith(os.sep + "cwd")
+                      and listing == "" and "new empty directory" in v["read_only"],
+                      "ask --web: agy runs in a new empty directory under crew-web-<uid>")
+                check(os.path.realpath(pwd) == d and oldpwd == "none" and rrepo not in args,
+                      "ask --web: PWD, OLDPWD and the arguments do not name the repository")
+                check(os.listdir(wparent) == [] and stat.S_IMODE(os.lstat(wparent).st_mode) == 0o700,
+                      "ask --web: the run's directory is removed afterwards")
+                v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True, schema={"type": "object"})
+                check("--json-schema" in (v["text"] or "") and rrepo not in (v["text"] or ""),
+                      "ask --web: the schema file handed to the worker is not in the repository's state")
+                v = crew.run_ask("agy", "ping", cwd=repo, env=wenv)
+                check(v["ok"] and v["text"].split("|")[0] == rrepo and v["text"].split("|")[3] == rrepo
+                      and "empty directory" not in v["read_only"], "ask: without --web the worker runs in --cwd")
+                stale, fresh = os.path.join(wparent, "stale"), os.path.join(wparent, "fresh")
+                for p in (stale, fresh):
+                    os.makedirs(os.path.join(p, "cwd"))
+                os.utime(stale, (time.time() - 2 * 86400,) * 2)
+                with open(fake, "a") as fh:
+                    fh.write("echo x > left.txt\n")
+                v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
+                check(not v["ok"] and any("left.txt" in f for f in v["failures"]) and crew.changed_paths(repo) == [],
+                      "ask --web: a write in the empty directory fails the run and leaves the repo alone")
+                check(os.listdir(wparent) == ["fresh"],
+                      "ask --web: a day-old leftover is removed, a fresh neighbour is kept")
+                shutil.rmtree(wparent)
+                os.symlink(repo, wparent)
+                before = sorted(os.listdir(runs))
+                try:
+                    crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
+                    check(False, "ask --web: a link in place of crew-web-<uid> is refused")
+                except crew.Refusal as exc:
+                    check("crew-web-" in str(exc), "ask --web: a link in place of crew-web-<uid> is refused")
+                check(crew.changed_paths(repo) == [] and sorted(os.listdir(runs)) == before,
+                      "ask --web: the refusal ran nothing and left no run directory")
+                os.unlink(wparent)
+            finally:
+                crew.STATE_TMP_ROOT = real_root
             # review on an ask backend: no JSON on turn 1, the report on the resumed turn
             fcx = os.path.join(fakebin, "codex")
             with open(fcx, "w") as fh:
