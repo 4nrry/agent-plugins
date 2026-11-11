@@ -93,3 +93,6 @@ queries go to Exa (`mcp.exa.ai`, no key).
 A `--web` run starts in a new empty directory, not in `--cwd`, and the profile
 keeps `external_directory: deny`: the worker should find no file to open, so
 what it needs goes in the prompt. That denial was not exercised in a run.
+opencode keeps a conversation in the directory of its first turn and fails a
+later one with "Location not found" once that directory is gone; crew then
+makes it again, empty, runs the turn once more and removes it.
