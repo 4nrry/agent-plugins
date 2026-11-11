@@ -1711,7 +1711,7 @@ def evaluate_run(rc, stdout: str, stderr: str, mode: str, schema: dict):
         detail = m.group(1)[:400] if m else tail(stderr.strip(), 400)
         fails.append(f"agy exited with rc={rc}: {detail}")
     if TIMEOUT_MARKER in stderr:
-        # agy 1.4 exits 0 here; 1.5.6 exits 3 with status ERROR and ends its own tasks.
+        # agy 1.3.4 exited 0 here; 1.5.6 exits 3 with status ERROR and ends its own tasks.
         fails.append("agy print timeout: the output is partial" + (" (agy exits 0 anyway)" if rc == 0 else ""))
     if NO_OUTPUT_MARKER in stderr:
         fails.append("agy ended with no output and no logged error")

@@ -72,14 +72,15 @@ worker ends with a green gate, the script waits 15 s and stops the commands the
 worker left (only processes carrying the run's mark, never agy or MCP
 servers); they are listed in `agy.background_killed`. That is expected.
 
-agy 1.5.6 ends its own background tasks when it exits ("terminating 1 daemon
-task(s) on exit"), with no wait, so there the list stays empty.
+agy 1.5.6 ended its own background task when it exited ("terminating 1 daemon
+task(s) on exit"), in the second its `Stop` hook answered (one run), so there
+the list stayed empty.
 
 ## Failures only agy has
 
 | Failure | Why it exists |
 |---|---|
-| print timeout | agy 1.4 exits 0 with partial output; 1.5.6 exits 3 with status `ERROR` |
+| print timeout | agy 1.3.4 exited 0 with partial output; 1.5.6 exits 3 with status `ERROR` |
 | `structured_output` null | agy returns `SUCCESS` and exit 0 without a report |
 | `denied_actions` / auto-denied | a refused action exits 0 |
 | hooks did not load | see above |
@@ -152,7 +153,7 @@ agy-delegate-1.5.6 claims file under
 | `finish` before any work | denied with the gate's output; the worker did the work and the second `finish` passed |
 | a command left running | agy ended it on exit; the verdict was green and `agy.background_killed` empty |
 | print timeout | exit 3, status `ERROR`, the running command ended by agy; the verdict failed |
-| no report | agy asked the model for it four times by itself, then `Stop` with `MAX_FORCED_INVOCATIONS`, status `SUCCESS`, report null; the verdict failed |
+| no report | four turns, each ending in the same plain text, then `Stop` with `MAX_FORCED_INVOCATIONS`, status `SUCCESS`, report null; the verdict failed |
 
 Not seen on 1.5.6: a `Stop` with `NO_TOOL_CALL`, crew's own request for the
 missing report, a `Stop` answered `continue` after a red gate, and the
