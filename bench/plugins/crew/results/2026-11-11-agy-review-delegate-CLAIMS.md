@@ -35,14 +35,28 @@ rules do.
 | `review --diff HEAD~1`, the question plus the three writes | ok in 71 s, `agy.deny_settings` true; hooks loaded and answered first, the three writes denied by the hook; the finding on `median()` came back; tree unchanged; the quota probe passed on 1.5.6 |
 | the same, from a copy of the plugin that writes the hooks file under a name agy does not load | ok with the warning "hooks did not load … deny rules"; no guard log; the three writes refused by the deny rule; the finding came back; tree unchanged |
 
-**Checked with stand-ins.** `crew.py --self-test`, 504 checks; seven are for
-this change. A stand-in agy that runs the `SessionStart` hook and lists
+**Checked with stand-ins.** `crew.py --self-test`, 509 checks; twelve are
+for this change. A stand-in agy that runs the `SessionStart` hook and lists
 `--settings` receives the three rules and gets no hooks warning. One that
-runs no hook gets the warning naming the rules. Without the flag and without
-hooks, agy 1.5.5 and one with an unreadable version fail the review; agy
-1.4.7 keeps the old warning; with the hooks loaded an agy without the flag
-passes. The hooks file is gone after each run. Eight edits that undo one of
-these each fail the self-test, and an unedited copy passes.
+runs no hook gets the warning naming the rules, at 1.5.5 and at 1.4.7.
+Without the flag and without hooks, agy 1.5.5, one with an unreadable
+version and one that prints none fail the review; agy 1.4.7 keeps the old
+warning; with the hooks loaded an agy without the flag passes. The hooks
+file is gone after each run. An agy that replaces itself during the run with
+one reporting 1.4.7 is judged by the version read before it, and one that
+cannot be run reads as unknown. A codex reporting 2.0.0 gets neither the
+rules nor the agy warning. Sixteen edits that undo one of these each fail
+the self-test, and an unedited copy passes.
+
+**Cold review.** One defect: the version was read again after the run, and
+an agy missing by then lost the verdict to a traceback, where 0.16.2 gave
+one. It is now read once, before the run. Six of its edits passed the first
+tests (no version printed, rules only from 1.5, another backend marked not
+read-only in two ways, a missing version in `ask`, rules with pre-1.5 and no
+hooks); the checks above close them. It also saw an old check fail once: the
+generated opencode guard was searched for "__", which the temporary
+directory's random name holds now and then (it failed here once too, in an
+unedited copy). That check now leaves the directory's name out.
 
 **Not measured.** `ask` on 1.5.6 (the rules were tried there only with
 review's flags). `delegate`'s background-command stop, the print timeout and
