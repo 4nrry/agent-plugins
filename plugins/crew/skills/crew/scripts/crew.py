@@ -517,6 +517,28 @@ def web_dir() -> str:
     return base
 
 
+def opencode_lost_dir(text: str, parent: str):
+    """opencode ties a conversation to the directory of its first turn, and a
+    `--web` turn's directory is removed after it. When a later turn fails with
+    "Location not found: <dir>/cwd", return the directory to make again. The
+    message is the worker's text, so only its last name is used: the result is
+    always `<parent>/<plain name>`, however the path was spelled, and None
+    unless the path named a child of crew's own web parent."""
+    m = re.search(r'Location not found: (/[^\s"\\\x00-\x1f]+)/cwd(?![\w/.-])', text)
+    if not m:
+        return None
+    path = m.group(1)
+    name = os.path.basename(path)
+    if not re.fullmatch(r"[A-Za-z0-9_]{1,64}", name):
+        return None
+    try:
+        if os.path.realpath(os.path.dirname(path)) != os.path.realpath(parent):
+            return None
+    except (OSError, ValueError):
+        return None
+    return os.path.join(parent, name)
+
+
 def parse_duration(text) -> int:
     if isinstance(text, (int, float)):
         return int(text)
@@ -3305,6 +3327,7 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
     spec, warnings = r["spec"], list(r["warnings"])
     web_base = web_dir() if web and backend in backends.WEB_EMPTY_DIR else None
     run_cwd = os.path.join(web_base, "cwd") if web_base else cwd
+    lost = None
     try:
         try:
             repo = repo_root(cwd)
@@ -3343,19 +3366,51 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
             warnings.append(f"{backend}: argv built from --help; never run end to end by crew")
         elif not (version and live in version):
             warnings.append(f"{backend}: tested on {live}, found {version!r}")
+        loose = backends.ASK_WRITES_FROM.get(backend)
+        if loose:                              # a version that cannot be read counts as a new one
+            found = re.search(r"(\d+)\.(\d+)", version or "")
+            loose = not found or (int(found.group(1)), int(found.group(2))) >= loose
+        if loose:
+            warnings.append(f"{backend} {version or '(version unknown)'}: `{spec['read_only']}` did not stop a file "
+                            "write when tried on this line of versions, so this ask is not read-only. A new or "
+                            "changed tracked file in the repository fails the run; a write to an ignored file, "
+                            "to .git or anywhere outside the repository goes unseen")
         before = fingerprint(repo, []) if repo else None
         saved = snapshot_files(run_cwd, OPENCODE_CONFIG_FILES) if backend == "opencode" else {}
-        t0, rc, out, err, failures = time.time(), None, "", "", []
-        try:
-            proc = subprocess.run(argv, cwd=run_cwd, env=env, capture_output=True, text=True,
-                                  timeout=timeout_s, stdin=subprocess.DEVNULL)
-            rc, out, err = proc.returncode, proc.stdout, proc.stderr
-        except subprocess.TimeoutExpired as exc:
-            out = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
-            failures.append(f"timed out after {timeout_s}s")
-        finally:
-            left = stop_run_procs(run_id)
-            restore_files(run_cwd, saved)
+        t0, left = time.time(), {}
+        for again in (False, True):
+            rc, out, err, failures = None, "", "", []
+            try:
+                proc = subprocess.run(argv, cwd=run_cwd, env=env, capture_output=True, text=True,
+                                      timeout=timeout_s, stdin=subprocess.DEVNULL)
+                rc, out, err = proc.returncode, proc.stdout, proc.stderr
+            except subprocess.TimeoutExpired as exc:
+                out = exc.stdout.decode() if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+                failures.append(f"timed out after {timeout_s}s")
+            finally:
+                left.update(stop_run_procs(run_id))
+                restore_files(run_cwd, saved)
+            if again or not (backend == "opencode" and web_base and session and rc not in (0, None)):
+                break
+            again_dir = opencode_lost_dir(out + err, os.path.dirname(web_base))
+            try:                              # the conversation's first directory, empty again
+                os.mkdir(again_dir or "", 0o700)
+            except OSError:                   # none named, or it exists: another turn's, not ours to touch
+                break
+            lost = again_dir                  # ours from here on, and ours to remove
+            os.mkdir(os.path.join(lost, "cwd"), 0o700)
+            for name, text in (("stdout", out), ("stderr", err)):
+                with open(os.path.join(rundir, f"{name}.first.log"), "w", encoding="utf-8") as fh:
+                    fh.write(text)
+            warnings.append("opencode keeps a conversation in its first turn's directory, which was removed: "
+                            "made it again, empty, and ran the turn once more")
+        stray = []
+        if lost:
+            try:
+                stray = sorted(os.listdir(os.path.join(lost, "cwd"))) + sorted(set(os.listdir(lost)) - {"cwd"})
+            except OSError:
+                pass
+            shutil.rmtree(lost, ignore_errors=True)
         if web_base:
             # A warning, not a failure: no run here has shown what each CLI leaves
             # in its working directory on a normal turn, and the directory goes anyway.
@@ -3363,6 +3418,7 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
                 wrote = sorted(os.listdir(run_cwd)) + sorted(set(os.listdir(web_base)) - {"cwd", "run", "owner"})
             except OSError:
                 wrote = ["(the directory itself was removed)"]
+            wrote += stray
             if wrote:
                 warnings.append(f"the worker left files in its empty directory, removed with it: {wrote[:5]}")
             shutil.rmtree(web_base, ignore_errors=True)
@@ -3393,15 +3449,17 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
         return {"ok": not failures, "backend": backend, "tier": tier, "model": r["model"],
                 "effort": r["effort"], "session": parsed.get("session") or preset or session,
                 "text": parsed.get("text"), "structured": structured, "usage": parsed.get("usage"),
-                "read_only": spec["read_only"] if not web else "web search and fetch only"
-                if backend in backends.WEB_ONLY else
-                spec["read_only"] + "; web search and fetch added; run in a new empty directory, not in --cwd",
+                "read_only": ("not enforced on this version, see warnings: " if loose else "") + (
+                    spec["read_only"] if not web else "web search and fetch only"
+                    if backend in backends.WEB_ONLY else
+                    spec["read_only"] + "; web search and fetch added; run in a new empty directory, not in --cwd"),
                 "version": version, "failures": failures, "warnings": warnings,
                 "left_processes_stopped": sorted(left), "duration_s": round(time.time() - t0, 1),
                 "rundir": rundir}
     finally:
-        if web_base:
-            shutil.rmtree(web_base, ignore_errors=True)
+        for d in (web_base, lost):
+            if d:
+                shutil.rmtree(d, ignore_errors=True)
 
 
 def cmd_ask(a) -> int:
