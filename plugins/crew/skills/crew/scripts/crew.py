@@ -539,6 +539,18 @@ def opencode_lost_dir(text: str, parent: str):
     return os.path.join(parent, name)
 
 
+def takes_settings(binary: str) -> bool:
+    """Whether this agy lists a --settings flag in its help (agy prints it on
+    stderr): the flag that carries crew's deny rules for one session. A help
+    that cannot be read counts as no. No model is called."""
+    try:
+        p = subprocess.run([binary, "--help"], capture_output=True, text=True, timeout=30,
+                           stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return bool(re.search(r"(?m)^\s*--settings(?![\w-])", p.stdout + "\n" + p.stderr))
+
+
 def parse_duration(text) -> int:
     if isinstance(text, (int, float)):
         return int(text)
@@ -3338,6 +3350,8 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
         # What the builder hands the worker (schema, opencode's web config) must
         # not sit in the repository's own state when the run is kept away from it.
         opts = {"web": web, "timeout": timeout_s, "rundir": os.path.join(web_base, "run") if web_base else rundir}
+        denied = backend == "agy" and takes_settings(spec["bin"])
+        opts["deny_settings"] = denied
         if schema:
             opts["schema"] = schema
             opts["schema_path"] = os.path.join(opts["rundir"], "schema.json")
@@ -3366,7 +3380,7 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
             warnings.append(f"{backend}: argv built from --help; never run end to end by crew")
         elif not (version and live in version):
             warnings.append(f"{backend}: tested on {live}, found {version!r}")
-        loose = backends.ASK_WRITES_FROM.get(backend)
+        loose = None if denied else backends.ASK_WRITES_FROM.get(backend)
         if loose:                              # a version that cannot be read counts as a new one
             found = re.search(r"(\d+)\.(\d+)", version or "")
             loose = not found or (int(found.group(1)), int(found.group(2))) >= loose
@@ -3428,6 +3442,9 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
             with open(os.path.join(rundir, f"{name}.log"), "w", encoding="utf-8") as fh:
                 fh.write(text)
         parsed = spec["parse"](out)
+        if parsed.get("denied"):          # agy lists what it refused; the answer may be the poorer for it
+            warnings.append(f"{backend} refused {len(parsed['denied'])} tool call(s): "
+                            + ", ".join(sorted(set(parsed["denied"]))[:5]))
         if backend == "grok" and web:      # a plain ask keeps Grok's tools, in plan mode
             warnings += grok_tool_warnings(err, out, backends.GROK_WEB_TOOLS)
         if rc not in (0, None):
@@ -3452,7 +3469,9 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
                 "read_only": ("not enforced on this version, see warnings: " if loose else "") + (
                     spec["read_only"] if not web else "web search and fetch only"
                     if backend in backends.WEB_ONLY else
-                    spec["read_only"] + "; web search and fetch added; run in a new empty directory, not in --cwd"),
+                    spec["read_only"] + "; web search and fetch added; run in a new empty directory, not in --cwd"
+                ) + ("; deny rules for write_file, command and mcp passed through --settings "
+                     "(agy 1.5.5 held to them)" if denied else ""),
                 "version": version, "failures": failures, "warnings": warnings,
                 "left_processes_stopped": sorted(left), "duration_s": round(time.time() - t0, 1),
                 "rundir": rundir}
@@ -3483,7 +3502,9 @@ def cmd_backends(a) -> int:
     for name, s in backends.SPECS.items():
         rows.append({"backend": name, "bin": backends._bin(*s["bins"]), "vendor": s["vendor"],
                      "tiers": {t: {"model": m, "effort": e} for t, (m, e) in s["tiers"].items()},
-                     "efforts": list(s["efforts"]), "read_only": s["read_only"],
+                     "efforts": list(s["efforts"]),
+                     "read_only": f"{s['read_only']} ({s['read_only_note']})" if s.get("read_only_note")
+                     else s["read_only"],
                      "live_tested_on": backends.LIVE.get(name),
                      "same_vendor_as_host": s["vendor"] in backends.host_vendors()})
     print(json.dumps(rows, ensure_ascii=False, indent=2))
