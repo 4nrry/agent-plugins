@@ -107,10 +107,10 @@ there, where a write in the working directory goes with it; from a
 repository the work-tree check fails the run for a new or changed tracked
 file only.
 
-`review` and `delegate` do not use these rules. They run under crew's hooks,
-which do not depend on plan mode, and were not run again on agy 1.5.5. If
-the hooks do not load, `review` falls back to plan mode alone and warns; on
-1.5 that does not stop a write.
+`delegate` does not use these rules: it has to write, and crew's hooks are
+its guard. On agy 1.5.6 they held: a write outside the scope and a shell
+command reaching into `.agents` were denied, the gate ran on `finish` and on
+`Stop`, and the verdict was green.
 
 ## Review
 
@@ -119,4 +119,19 @@ python3 scripts/crew.py review --diff HEAD~1 --prompt-file /path/question.md
 ```
 
 Runs in `--mode plan` without skip-permissions, with an empty scope and the
-same path guards, and checks that the tree did not change.
+same path guards, and checks that the tree did not change. Where agy takes
+`--settings`, the deny rules of the section above are passed too
+(`agy.deny_settings` in the verdict).
+
+The hooks are the guard. On agy 1.5.5 and 1.5.6 they loaded and denied every
+write a reviewer was asked to make, and a read outside the repository. The
+deny rules are what is left if the hooks do not load: with review's flags and
+no hooks file, agy 1.5.6 created one file and changed two under plan mode
+alone, and wrote nothing once the rules were passed.
+
+| Hooks loaded | agy takes `--settings` | Verdict |
+|---|---|---|
+| yes | either | as usual |
+| no | yes | warning: plan mode and the deny rules, no path guard on reads |
+| no | no, agy 1.5 or later, or a version that cannot be read | failure: nothing kept the review read-only |
+| no | no, before 1.5 | warning: plan mode only |
