@@ -14,6 +14,7 @@ directory; run it from the task's repository, or pass `--repo`.
 - Failures only agy has
 - Ask on agy 1.5
 - Review
+- Seen on agy 1.5.6
 
 ## The run
 
@@ -71,11 +72,14 @@ worker ends with a green gate, the script waits 15 s and stops the commands the
 worker left (only processes carrying the run's mark, never agy or MCP
 servers); they are listed in `agy.background_killed`. That is expected.
 
+agy 1.5.6 ends its own background tasks when it exits ("terminating 1 daemon
+task(s) on exit"), with no wait, so there the list stays empty.
+
 ## Failures only agy has
 
 | Failure | Why it exists |
 |---|---|
-| print timeout | agy exits 0 with partial output |
+| print timeout | agy 1.4 exits 0 with partial output; 1.5.6 exits 3 with status `ERROR` |
 | `structured_output` null | agy returns `SUCCESS` and exit 0 without a report |
 | `denied_actions` / auto-denied | a refused action exits 0 |
 | hooks did not load | see above |
@@ -136,3 +140,21 @@ under plan mode alone, and wrote nothing once the rules were passed.
 | no | yes | warning: plan mode and the deny rules, no path guard on reads |
 | no | no, agy 1.5 or later, or a version that cannot be read | failure: nothing kept the review read-only |
 | no | no, before 1.5 | warning: plan mode only |
+
+## Seen on agy 1.5.6
+
+One delegate run each, Flash, 2026-11-11; the record is the
+agy-delegate-1.5.6 claims file under
+[bench/plugins/crew/results](https://github.com/4nrry/agent-plugins/tree/main/bench/plugins/crew/results).
+
+| Case | What happened |
+|---|---|
+| `finish` before any work | denied with the gate's output; the worker did the work and the second `finish` passed |
+| a command left running | agy ended it on exit; the verdict was green and `agy.background_killed` empty |
+| print timeout | exit 3, status `ERROR`, the running command ended by agy; the verdict failed |
+| no report | agy asked the model for it four times by itself, then `Stop` with `MAX_FORCED_INVOCATIONS`, status `SUCCESS`, report null; the verdict failed |
+
+Not seen on 1.5.6: a `Stop` with `NO_TOOL_CALL`, crew's own request for the
+missing report, a `Stop` answered `continue` after a red gate, and the
+watcher stopping a command (agy got there first). The gate that runs after
+agy decides the verdict in every one of them.
