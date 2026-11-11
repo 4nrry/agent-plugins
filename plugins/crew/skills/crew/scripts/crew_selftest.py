@@ -941,9 +941,19 @@ def self_test() -> int:
         f, _, _ = crew.evaluate_run(0, "", "", "delegate", sch)
         check(any("empty stdout" in x for x in f), "empty stdout")
         f, _, _ = crew.evaluate_run(0, json.dumps(dict(good, structured_output=None)), "", "delegate", sch)
-        check(any("structured_output is null" in x for x in f), "schema not satisfied")
+        check(any("structured_output is null" in x and "SUCCESS anyway" in x for x in f), "schema not satisfied")
         f, _, _ = crew.evaluate_run(0, json.dumps(good), "[agy] print timeout after 5s with turn", "delegate", sch)
-        check(any("timeout" in x for x in f), "timeout marker")
+        check(any("timeout" in x and "exits 0 anyway" in x for x in f), "timeout marker")
+        # agy 1.5.6 on a print timeout: exit 3, status ERROR, no report
+        late = {"status": "ERROR", "response": "", "error": "print timeout after 25s with the turn still in progress"}
+        f, _, _ = crew.evaluate_run(3, json.dumps(late), "[agy] print timeout after 25s with turn in progress\n"
+                                    'AGY_ERROR: {"status":"DEADLINE_EXCEEDED","reason":"print_timeout"}',
+                                    "delegate", sch)
+        check(any("rc=3" in x and "print_timeout" in x for x in f)
+              and any("print timeout" in x for x in f) and not any("exits 0" in x for x in f)
+              and any("status='ERROR'" in x for x in f)
+              and any("structured_output is null: no report came back" in x for x in f)
+              and not any("SUCCESS anyway" in x for x in f), f"timeout that exits 3: {f}")
         den = dict(good, denied_actions=[{"action": "command"}])
         f, _, _ = crew.evaluate_run(0, json.dumps(den), "", "delegate", sch)
         check(any("denied_actions" in x for x in f), "denied_actions fails delegate")
