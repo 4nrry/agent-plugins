@@ -8,9 +8,9 @@ Every worker turn goes through the **crew** plugin: `crew.py ask <backend> --web
 opencode model allowlist, output parsing and version warnings. This script owns
 the research: prompts, schemas, sanitizing, merging and ranking. crew must be
 installed; it is found through `~/.agents/skills/crew` or in Claude Code's
-plugin copies, and `CREW_PY` overrides both. From a repository checkout, set
-`CREW_PY` to the checkout's `crew.py`, or the installed copy runs; `check`
-prints the one in use.
+plugin copies, and `CREW_PY` overrides both. Where crew is installed
+elsewhere, or to use a repository checkout's copy, set `CREW_PY` to that
+`crew.py`; `check` prints the one in use.
 
 ```bash
 python3 scripts/fleet_worker.py check                       # crew's path and the web-capable backends

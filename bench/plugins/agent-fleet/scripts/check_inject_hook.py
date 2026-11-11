@@ -11,8 +11,8 @@ no CLAUDE_PLUGIN_DATA (the bridges for other harnesses, which send no
 SessionStart). A prompt that does not match prints nothing and leaves no
 marker. Which prompts match is scored elsewhere
 (results/2026-10-26-pesquisa-trigger/).
-The hook takes the plugin folder from CLAUDE_PLUGIN_ROOT; without it a
-matching prompt gets an error line and no text. Needs bash and jq; without jq
+The hook takes the plugin folder from `--root` or CLAUDE_PLUGIN_ROOT; with
+neither a matching prompt gets an error line and no text. Needs bash and jq; without jq
 it reports a skip, since the hook then does nothing.
 """
 import json
@@ -114,15 +114,26 @@ def self_test():
 
         # The plugin folder comes from CLAUDE_PLUGIN_ROOT and from nowhere else.
         bare = {k: v for k, v in os.environ.items() if k != "CLAUDE_PLUGIN_ROOT"}
-        for label, text, env, want in [
-                ("no CLAUDE_PLUGIN_ROOT, a matching prompt", MATCH, bare, (1, "", True)),
-                ("no CLAUDE_PLUGIN_ROOT, a prompt that does not match", MISS, bare, (0, "", False)),
-                ("a CLAUDE_PLUGIN_ROOT with no skill in it", MATCH, {**bare, "CLAUDE_PLUGIN_ROOT": tmp}, (1, "", True)),
-                ("a CLAUDE_PLUGIN_ROOT with a trailing slash", MATCH,
-                 {**bare, "CLAUDE_PLUGIN_ROOT": str(ROOT) + "/"}, (0, "full", False))]:
-            p = subprocess.run(["bash", str(HOOK)], input=json.dumps({"prompt": text}), capture_output=True,
-                               text=True, timeout=30, env=env)
+        rel = os.path.relpath(ROOT, tmp)
+        for label, text, env, args, want in [
+                ("no plugin folder, a matching prompt", MATCH, bare, [], (1, "", True)),
+                ("no plugin folder, a prompt that does not match", MISS, bare, [], (0, "", False)),
+                ("no plugin folder, --forget", MATCH, bare, ["--forget"], (0, "", False)),
+                ("an empty --root and no variable", MATCH, bare, ["--root", ""], (1, "", True)),
+                ("--root alone, as a harness that only fills the command gives it", MATCH, bare,
+                 ["--root", str(ROOT)], (0, "full", False)),
+                ("--root wins over the variable", MATCH, {**bare, "CLAUDE_PLUGIN_ROOT": tmp},
+                 ["--root", str(ROOT)], (0, "full", False)),
+                ("a plugin folder with no skill in it", MATCH, {**bare, "CLAUDE_PLUGIN_ROOT": tmp}, [], (1, "", True)),
+                ("a plugin folder with a trailing slash", MATCH,
+                 {**bare, "CLAUDE_PLUGIN_ROOT": str(ROOT) + "/"}, [], (0, "full", False)),
+                ("a relative plugin folder is printed as an absolute path", MATCH, bare, ["--root", rel],
+                 (0, "full", False))]:
+            p = subprocess.run(["bash", str(HOOK), *args], input=json.dumps({"prompt": text}), capture_output=True,
+                               text=True, timeout=30, env=env, cwd=tmp)
             out = "full" if BODY in p.stdout else p.stdout
+            if out == "full" and "Skill directory: /" not in p.stdout:
+                out = "relative skill directory"
             expect(label, (p.returncode, out, bool(p.stderr.strip())), want)
 
         # 60,000 filler lines after the trigger: a pipe into grep -q under
