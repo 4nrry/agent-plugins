@@ -10,10 +10,11 @@ The bundled script imports the glb, centers it on its bounding box, places a
 directory:
 
 ```bash
-blender -b -P scripts/turntable.py -- --glb model.glb --out /path/frames --frames 120 --samples 128 --res 1080
+blender -b --python-exit-code 1 -P scripts/turntable.py -- --glb model.glb --out /path/frames --frames 120 --samples 128 --res 1080
 ```
 
 `--preview` renders 3 frames at 16 samples to check framing and light first.
+Without `--python-exit-code 1` a Python error still exits 0.
 120 frames at 30 fps is a 4 s turn; use only the stretch the scene needs.
 
 For a moving camera instead of a spinning model, or the same move in several

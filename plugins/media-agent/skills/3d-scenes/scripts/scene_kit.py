@@ -49,7 +49,8 @@ def reset(quality="final", frames=120, fps=30, fog=0.035, res=None):
     sc.render.image_settings.file_format = "PNG"
     world = bpy.data.worlds.new("world")
     sc.world = world
-    world.use_nodes = True
+    if world.node_tree is None:  # Blender 5.2+ already made it; use_nodes is deprecated (gone in 6.0)
+        world.use_nodes = True
     nt = world.node_tree
     nt.nodes["Background"].inputs["Color"].default_value = (0, 0, 0, 1)
     if fog:
@@ -150,7 +151,8 @@ def sweep(target, frames, axis=0, amp=1.5, cycles=1.0):
 def flat(name, color, emit=0.0):
     """Diffuse plus emission of the same colour: a flat low-poly look."""
     m = bpy.data.materials.new(name)
-    m.use_nodes = True
+    if m.node_tree is None:  # Blender 5.2+ already made it; use_nodes is deprecated (gone in 6.0)
+        m.use_nodes = True
     bsdf = m.node_tree.nodes["Principled BSDF"]
     bsdf.inputs["Base Color"].default_value = (*color, 1)
     bsdf.inputs["Roughness"].default_value = 1.0
