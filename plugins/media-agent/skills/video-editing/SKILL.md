@@ -27,37 +27,59 @@ find fonts by name.
 
 Kinocut wraps ffmpeg in typed operations: it validates the input first and
 returns JSON with `success` and `output_path`, or `success: false` with an
-`error.code` and a `suggested_action`, instead of pages of stderr. The plugin
-registers it as the `kinocut` MCP server (pinned in `.mcp.json`). Call its
-tools, with absolute paths:
+`error.code` and a message that says how to retry, instead of pages of stderr.
+The plugin registers it as the `kinocut` MCP server (pinned in `.mcp.json`).
+By default the server lists 18 tools: eight called by name, eight families
+that run any other operation by name, and `list_operations` and
+`describe_operation` to find one. Always pass absolute paths.
 
-| Task | Tool | Note |
+| Task | Call | Note |
 |---|---|---|
-| Duration, size, fps, codecs | `video_info` | before any edit |
+| Duration, size, fps, codecs | `video_info` | before any edit; the numbers are under `info` |
 | Cut a segment | `video_trim` | `start` plus `duration` or `end`; add `accurate: true` when the cut must be frame-exact |
 | Join clips | `video_merge` | `clips` in order; the output takes the first clip's size |
-| Change size or ratio | `video_resize` | `aspect_ratio` pads with black bars, it does not crop: to fill the frame, `video_crop` first |
-| Crop | `video_crop` | `width` and `height`, centered unless `x` and `y` are given |
-| Burn in subtitles | `video_subtitles` | `.srt`, `.vtt` or `.ass` |
-| Loudness of a finished file | `video_normalize_audio` | `target_lufs: -16` |
+| Burn in a title | `video_add_text` | finds its own font; a wording change on a video built from source goes back to the source |
 | One frame | `video_extract_frame` | `timestamp` in seconds |
-| Anything else | `search_tools` | finds a tool by keyword and lists its required parameters |
+| Change size or ratio | `video_edit_ops`, operation `video_resize` | `aspect_ratio` pads with black bars, it does not crop: to fill the frame, `video_crop` first |
+| Crop | `video_edit_ops`, operation `video_crop` | `width` and `height`, centered unless `x` and `y` are given |
+| Burn in subtitles | `video_edit_ops`, operation `video_subtitles` | `subtitle_path` to an `.srt`, `.vtt` or `.ass` |
+| Loudness of a finished file | `video_edit_ops`, operation `video_normalize_audio` | `target_lufs: -16` |
+| Anything else | `list_operations`, then `describe_operation` | `list_operations` takes a `query` or a `family` and gives each operation's required parameters; `describe_operation` gives one operation's full schema and its family |
+
+A family call names the operation in full and nests its arguments:
+
+```json
+{"operation": "video_resize", "params": {"input_path": "/abs/in.mp4", "aspect_ratio": "9:16"}}
+```
+
+Nothing runs on a wrong call, and the error says little. A short name
+(`resize`) or a misspelt one returns `invalid_parameter` without naming the
+operation: look the name up with `list_operations` and its `query`. An
+argument the operation does not take returns `invalid_parameter` naming the
+operation: read its schema with `describe_operation` and call again.
+
+`KINOCUT_TOOLS`, set where the server starts, changes the list: `all` lists
+every operation as a tool of its own and drops the families and the two
+lookup tools (`search_tools` takes their place); `profile:<name>` adds one
+job's tools to the default 18. Leave it unset: this table assumes the default.
 
 - Without `output_path` the result goes beside the input (`clip_trimmed.mp4`).
-  An existing output is refused with `output_exists` unless `overwrite: true`.
-- The server lists about 200 tools and some are shells. `search_tools`
-  describes a contract, not what is installed: run a tool once on a real file
-  and check `success` and the output before building a flow on it.
-- `video_ai_*` and several `sound_*` tools need optional extras (Whisper,
-  Demucs, Real-ESRGAN, torch). Do not install them to get "all green": this
-  plugin covers transcription, music and upscaling with other skills.
-- `hyperframes_*` build a video from its source, which is the
-  `video-composition` skill's work. They need the HyperFrames CLI where
-  Kinocut can find it and return `hyperframes_not_found` without it. In a
-  HyperFrames project that lacks it, add it as that skill's HyperFrames
-  reference says (exact version, size told to the user first). Outside such a
-  project there is nothing for these tools to render: do not install it to
-  clear the error.
+  An existing output is refused with `output_exists` unless `overwrite: true`,
+  which a family call takes beside `operation` or inside `params`.
+- Some of the 200-odd operations are shells. `describe_operation` describes a
+  contract, not what is installed: run an operation once on a real file and
+  check `success` and the output before building a flow on it.
+- `video_ai_ops` and several `audio_ops` operations need optional extras
+  (Whisper, Demucs, Real-ESRGAN, torch) and return a code such as
+  `missing_whisper` without them. Do not install them to get "all green":
+  this plugin covers transcription, music and upscaling with other skills.
+- The `hyperframes_*` operations, in `platform_ops`, build a video from its
+  source, which is the `video-composition` skill's work. They need the
+  HyperFrames CLI where Kinocut can find it and return `hyperframes_not_found`
+  without it. In a HyperFrames project that lacks it, add it as that skill's
+  HyperFrames reference says (exact version, size told to the user first).
+  Outside such a project there is nothing for them to render: do not install
+  it to clear the error.
 - The server needs `uv`, `ffmpeg` and `ffprobe` on PATH. Without `uv` it does
   not start, and the error shows only in the MCP list.
 
