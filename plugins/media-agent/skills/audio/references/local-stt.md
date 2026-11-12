@@ -52,15 +52,16 @@ words = [w for seg in res["segments"] for w in seg["words"]]
 
 Intel Core Ultra processors carry an NPU. OpenVINO GenAI runs Whisper on it,
 with word times, and leaves the NVIDIA GPU and its memory free: WhisperX
-holds about 3.5 GB of an 8 GB card while it runs. Use it when the GPU is busy
+holds about 3.5 GiB of an 8 GiB card while it runs. Use it when the GPU is busy
 (ComfyUI, Blender, a render) or there is no NVIDIA GPU.
 
 - The kernel driver alone is not enough. `/dev/accel/accel0` must exist, and
   the user-space driver must be installed: the `intel-level-zero-npu` and
   `intel-driver-compiler-npu` packages from Intel's `linux-npu-driver`
   releases on GitHub (not in Ubuntu's archive; installing them needs root,
-  so ask the user). Check with
-  `python -c "import openvino as ov; print(ov.Core().available_devices)"`:
+  so ask the user). Check with the environment below, where `openvino` is
+  installed:
+  `.venv/bin/python -c "import openvino as ov; print(ov.Core().available_devices)"`.
   `NPU` must be in the list.
 - Install in its own environment: `uv venv -p 3.13` and
   `uv pip install openvino-genai soundfile` (about 280 MB). Take a model

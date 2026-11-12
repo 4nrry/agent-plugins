@@ -12,8 +12,8 @@ how to run each one is in `references/`:
 [elevenlabs.md](references/elevenlabs.md) (SFX, music, cleanup,
 transcription, dubbing, untested), [xai.md](references/xai.md) (transcription),
 [local-stt.md](references/local-stt.md) (transcription and word alignment on
-your own GPU, or on an Intel NPU) and [local-music.md](references/local-music.md) (music on
-your own GPU).
+your own GPU; transcription alone on an Intel NPU) and
+[local-music.md](references/local-music.md) (music on your own GPU).
 
 ## Music
 

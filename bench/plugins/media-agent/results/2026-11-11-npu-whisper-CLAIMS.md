@@ -9,8 +9,8 @@ Measured on 2026-11-11 on an Intel Core Ultra 9 185H (Meteor Lake, NPU
 loaded; OpenVINO listed only `CPU` and `GPU` (the GPU device it found was the
 RTX 4070, not the integrated Arc). After installing `intel-level-zero-npu`
 and `intel-driver-compiler-npu` 1.38.0 (Intel's `linux-npu-driver` release
-for Ubuntu 26.04; 140 MB on disk; the firmware package was left out) it
-listed `NPU` as "Intel(R) AI Boost". OpenVINO 2026.4.1 and OpenVINO GenAI
+for Ubuntu 26.04; 140 MB on disk by apt's count; the firmware package was
+left out) it listed `NPU` as "Intel(R) AI Boost". OpenVINO 2026.4.1 and OpenVINO GenAI
 2026.4.1.0 from PyPI in a Python 3.13 environment (283 MB),
 `OpenVINO/whisper-large-v3-turbo-int8-ov` (790 MB). WhisperX 3.8.6 with
 `large-v3-turbo`, float16, as in `local-stt.md`.
@@ -24,7 +24,7 @@ one reported; one WhisperX call per row.
 
 | Path | Time for 152 s | Load | Errors against the script | GPU memory |
 |---|---|---|---|---|
-| WhisperX on the RTX 4070, with word alignment | 34.3 s (whole call) | in the call | 6.6 % (29 of 440 words) | peak 3.5 GB above idle |
+| WhisperX on the RTX 4070, with word alignment | 34.3 s (whole call) | in the call | 6.6 % (29 of 440 words) | 3,538 MiB above the 191 MiB before the call |
 | WhisperX, `--no_align` | 16.1 s (whole call) | in the call | — | — |
 | OpenVINO on the CPU, word times on | 43.0 s | 1.3 s | 6.4 % (28 of 440) | none |
 | OpenVINO on the NPU, word times on | 38.7 s | 200 s (compiling) | 6.4 % (28 of 440) | none |
@@ -49,8 +49,11 @@ cache took 2.0 GB.
   WhisperX's aligned words by edit-distance alignment on equal words. Start
   difference over 426 words: median 75 ms, 90th percentile 207 ms (NPU) and
   208 ms (CPU).
-- WhisperX's times include about 10 s of torch start-up per call; OpenVINO's
-  run times do not include its load.
+- WhisperX's times are the shell's wall clock around each call and were not
+  saved to a file; they include torch start-up (about 10 s, from
+  `local-stt.md`, not measured here). OpenVINO's run times exclude its load.
+- GPU memory: `nvidia-smi` sampled every 0.5 s during one WhisperX call with
+  alignment; peak 3,729 MiB against 191 MiB before it.
 
 **Not measured.** Real recordings; other model sizes or fp16; WhisperX's
 alignment model on the CPU or NPU next to OpenVINO's transcription; the
