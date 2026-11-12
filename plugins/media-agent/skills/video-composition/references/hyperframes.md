@@ -9,9 +9,9 @@ and the
 HTML, CSS and a paused animation timeline rendered to video: the renderer
 seeks every frame in headless Chrome and ffmpeg encodes and mixes the audio.
 HeyGen maintains it and releases several times a day (eight versions in the two
-days before this check), so pin one version everywhere: 0.9.35, the one these
-notes were checked on, unless the project or the installed HeyGen plugin
-already pins another.
+days before this check), so pin one exact version everywhere. A project that
+already pins one keeps it; otherwise use the installed HeyGen plugin's
+version, and without the plugin 0.9.35, the one these notes were checked on.
 
 ## Contents
 - License and what leaves the machine
@@ -29,15 +29,16 @@ already pins another.
 - Telemetry stays off. The CLI otherwise sends usage data (command names,
   render performance), anonymous until `auth login` and tied to the HeyGen
   account after it. Set `HYPERFRAMES_NO_TELEMETRY=1` on every command, and run
-  `telemetry disable` once per machine: it writes the choice to
-  `~/.hyperframes/config.json` and takes the install out of canary rollouts.
+  `telemetry disable` once per machine, which writes the same choice to
+  `~/.hyperframes/config.json` for commands started without the variable.
+  Either one also takes the install out of canary rollouts.
 - Never run `auth login` for the user or ask for it as a default step.
-- A local preview and render keep the project on the machine. Run these only
-  when the user asks, and say what they cost first: `cloud render`, `share`,
-  `publish` and the hosted MCP connector upload the project to HeyGen and can
-  bill that account, and a cloud render's asset URLs are public to anyone who
-  has them; `lambda` and `cloudrun` spend the user's own AWS or Google Cloud
-  account.
+- `preview` and `render` are local and keep the project on the machine. The
+  commands that upload or spend run only when the user asks, with the cost
+  said first: `cloud render`, `share`, `publish` and the hosted MCP connector
+  upload the project to HeyGen and can bill that account, and a cloud render's
+  asset URLs are public to anyone who has them; `lambda` and `cloudrun` spend
+  the user's own AWS or Google Cloud account.
 - The scaffold loads GSAP from a CDN, and the bundled font families are fetched
   from Google Fonts (`sans-serif` became Inter that way). For an offline
   render, put the script and the font files in the project.
@@ -48,16 +49,21 @@ already pins another.
 export HYPERFRAMES_NO_TELEMETRY=1
 npx --yes hyperframes@<version> init my-video --skip-skills --non-interactive
 cd my-video
-npm install --save-dev hyperframes@<version>   # the project's own copy
+npm install --save-dev --save-exact hyperframes@<version>   # the project's own copy
 npx hyperframes telemetry disable               # once per machine
 npx hyperframes doctor --json                   # always exits 0
 ```
 
-- The project carries the CLI as a dependency: 109 MB in `node_modules`, and
-  the version is in `package.json`. `npx hyperframes` inside the project and
-  Kinocut's tools both use that copy. Tell the user the size before the first
-  install on a machine; the `npx --yes` call for `init` adds 110 MB to the npx
-  cache.
+- The project carries the CLI as a dependency: 109 MB in `node_modules` and
+  the exact version in `package.json` (without `--save-exact` npm writes a
+  `^` range, which drifts). `npx hyperframes` inside the project and Kinocut's
+  tools both use that copy. `init` alone does not add it.
+- An existing project without the dependency gets the same `npm install`
+  line, at the version its `package.json` scripts already pin. Tell the user
+  the size before installing in a project; the `npx --yes` call for `init`
+  adds 110 MB to the npx cache.
+- With HeyGen's plugin installed, run these commands through its launcher
+  instead of `npx` (see that section); the `npm install` line stays.
 - Node 22 or newer, `ffmpeg` and `ffprobe`. In `doctor --json` read the
   FFmpeg, FFprobe and Chrome checks: the top-level `ok` is false while optional
   voice and music tools are missing.
@@ -130,8 +136,12 @@ Its `hyperframes`, `hyperframes-cli` and `hyperframes-registry` skills hold
 the whole format, CLI and catalog reference: load them to write scenes. Where
 they and this plugin disagree, this plugin wins:
 
-- Skip the usage beacon each skill opens with (`events --skill=<name>`) and
-  the `feedback` call after a render.
+- Skip the usage beacon each skill opens with (`events --skill=<name>`), the
+  `feedback` call after a render, and `usage --json`, which reads the agent's
+  own login to report how much of its plan is left.
+- The delivered render is the local `render`. HeyGen's CLI skill makes
+  `cloud render` the final render on a paid plan; here it runs only when the
+  user asks.
 - Its `media-use` skill asks for a HeyGen sign-in whenever a request needs
   HeyGen's catalog or models, plans with no cheaper or free substitute, and
   says not to volunteer prices. Here the order is the reverse: voice, music,
@@ -140,20 +150,23 @@ they and this plugin disagree, this plugin wins:
   sign-in or credit is used only when the user asks for it, with the price
   said first.
 - `reverse-any-video` and `style-sampling` need a paid plan.
-- It runs the CLI through its own launcher
-  (`skills/hyperframes/scripts/plugin-cli.mjs` under the plugin root), at the
-  plugin's version and not the project's copy. Keep the project's
-  `hyperframes` dependency at that version, so the launcher and Kinocut run
-  the same CLI.
-- The plugin does not update itself: updating it is the user's step, and the
-  project's dependency moves with it.
+- Its skills run the CLI through the plugin's launcher,
+  `node <plugin root>/skills/hyperframes/scripts/plugin-cli.mjs <command>`, at
+  the plugin's version and not the project's copy. Follow that for every CLI
+  command while the plugin is installed; the project's dependency is then
+  only what Kinocut's tools run.
+- A new project takes its dependency at the plugin's version. When an existing
+  project pins another, say so and change nothing in `package.json` or the
+  lockfile without the user's yes: the two CLIs can disagree about the same
+  project.
+- The plugin does not update itself, and updating it is the user's step.
 
 ## Kinocut's `hyperframes_*` tools
 
-They run the project's copy of the CLI and never call `npx`. Kinocut looks
-for `MCP_VIDEO_HYPERFRAMES_COMMAND`, then `node_modules/.bin/hyperframes` from
-the project upward, then `hyperframes` on PATH; with none it returns
-`hyperframes_not_found`.
+They run the first CLI this lookup finds: `MCP_VIDEO_HYPERFRAMES_COMMAND`,
+then `node_modules/.bin/hyperframes` from the project upward, then
+`hyperframes` on PATH. With none they return `hyperframes_not_found`. The
+project's dependency from Setup is the second step.
 
 - With the dependency from Setup, `hyperframes_info`, `hyperframes_validate`,
   `hyperframes_inspect` and `hyperframes_render` worked.

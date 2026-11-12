@@ -11,7 +11,7 @@ numbers below are what was measured while carrying them out.
 
 | | `hyperframes@hyperframes` 0.9.35 | `remotion@remotion` 4.0.543 |
 |---|---|---|
-| Marketplace clone | 408 MB, 6.2 s (the whole repository; 84 Git LFS files stay pointers) | 3.3 MB, 2.0 s |
+| Marketplace clone | 408 MB, 6.2 s (the whole repository; its Git LFS files stay pointers, "at least 84" by the installer's message) | 3.3 MB, 2.0 s |
 | Plugin cache | 338 MB | 2.9 MB |
 | Skills, agents, hooks, MCP servers | 9, 0, 0, 0 | 13, 0, 0, 0 |
 | Always-on context, as `claude plugin details` projects it | about 996 tokens | about 345 tokens |
@@ -41,9 +41,11 @@ printed "disabled", and `info --json` read the project.
 **Read in the installed Remotion plugin, not run.** `remotion-render/SKILL.md`:
 "If the user qualifies for the free license, pass `free-license` instead" of a
 company key. Remotion's telemetry page (tag v4.0.543) says server-side
-rendering reports "only when a license key is set", and the License FAQ that
-this stays voluntary for Free License users on 4.0; the 5.0 migration page
-asks free users to pass `free-license`.
+rendering reports "only when a license key is set", and the License FAQ says
+"Telemetry in server-side rendering remains voluntary for Free License users";
+the 5.0 migration page, under a heading about Company License customers, says
+to pass `free-license` when eligible for the free license. The plugin's
+app-building skill passes the same key to the render APIs.
 
 **The capture written by hand.** `references/html-capture.md` is removed. It
 was never measured in this repository: no record under `bench/` covers it.
@@ -56,3 +58,28 @@ unknown: the precedence rule in `SKILL.md` is an instruction, not a result.
 Whether the HeyGen plugin's 9 descriptions or Remotion's 13 change which skill
 a video request loads. The plugins' update flow. A HeyGen sign-in, any credit
 and any cloud render: none was used.
+
+**Why `telemetry disable` is back.** 0.20.0 left the lasting setting to the
+user and set only the environment variable. The owner then decided telemetry
+is always off, so 0.21.0 runs it once per machine as well. The CLI's docs say
+any way of turning telemetry off takes the install out of canary rollouts, not
+that command alone.
+
+**From the cold review.** A subagent compared the diff with the installed
+plugins, both tags and Kinocut's source. Confirmed and fixed:
+
+- `npm install --save-dev hyperframes@0.9.35` wrote `"^0.9.35"` (seen in the
+  test project of the render record), so Setup now passes `--save-exact`.
+- HeyGen's rule against rewriting a project's dependency files to match the
+  plugin contradicted "keep the dependency at the plugin's version": a
+  mismatch is now reported and changed only with the user's yes, and the
+  launcher is named as the way to run the CLI while the plugin is installed.
+- `init` writes no dependency, so an existing project needed its own rule.
+- "Run these only when the user asks" could be read as the local render.
+- Uploads were missing from the two short statements of the precedence rule.
+- HeyGen's CLI skill makes `cloud render` the final render on a paid plan, and
+  its main skill runs `usage --json`, which reads the agent's own login.
+- The Git LFS count did not reproduce; it is now quoted as the installer's.
+
+Nothing was rejected. The launcher's `--version` and `telemetry status` runs
+above were not repeated by the reviewer.

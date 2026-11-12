@@ -28,8 +28,9 @@ each one's commands, license and traps are in its reference.
 - Each vendor publishes its own plugin (`hyperframes`, `remotion`). When it is
   installed, load its skills for how to write a scene and run the CLI. This
   skill and its references decide the rest and win where the two disagree: no
-  telemetry, no sign-in and no paid call the user did not ask for, media from
-  this plugin's other skills, and the delivery checks below.
+  telemetry, and no sign-in, upload of the project or paid call the user did
+  not ask for; media from this plugin's other skills; the delivery checks
+  below.
 
 ## Rules for any compositor
 

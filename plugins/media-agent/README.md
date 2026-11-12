@@ -50,8 +50,8 @@ skill has the agent run them, npm serves the packages, each downloads its own
 headless Chrome on the first render, and the HyperFrames CLI sends usage
 telemetry to HeyGen unless `HYPERFRAMES_NO_TELEMETRY=1` is set, which the
 skill sets on every command. With HeyGen's or Remotion's own plugin installed
-beside this one, this plugin's rules win where they disagree: no telemetry, no
-sign-in and no paid call the user did not ask for. The hooks read the tool call and the session transcript, need `jq`,
+beside this one, this plugin's rules win where they disagree: no telemetry,
+and no sign-in, upload of the project or paid call the user did not ask for. The hooks read the tool call and the session transcript, need `jq`,
 and write one marker file per session under the temp directory.
 
 The plugin does not decide licenses for you (Remotion's headcount limit,
