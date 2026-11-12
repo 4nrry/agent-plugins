@@ -121,7 +121,7 @@ async function launchOnce(noSandbox) {
     temp.delete(base); chrome = null;
   };
   try {
-    proc = spawn(binary, args, { stdio: ['ignore', 'ignore', 'pipe'], detached: process.platform !== 'win32', env: { ...process.env, TMPDIR: tmp } });
+    proc = spawn(binary, args, { stdio: ['ignore', 'ignore', 'pipe'], detached: process.platform !== 'win32', env: { ...process.env, TMPDIR: tmp, TMP: tmp, TEMP: tmp } });
     chrome = proc;
     const url = await new Promise((resolve, reject) => {
       let buf = '';
@@ -555,8 +555,24 @@ function print(report) {
 }
 
 async function selfTest() {
-  const mine = () => fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith('page-check-'));
-  const there = new Set(mine());
+  // Everything this run puts in the temporary directory goes under a parent
+  // of its own: the self-test's pages, each Chrome profile launch() makes, and
+  // whatever a child process (the --help run) writes there, since children
+  // inherit the variables. The last check then asks whether that parent holds
+  // anything but the pages, so another page-check running at the same time
+  // cannot be taken for a leak of this one.
+  const tmpVars = ['TMPDIR', 'TMP', 'TEMP'], savedTmp = tmpVars.map((k) => process.env[k]);
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'page-check-run-')); temp.add(parent);
+  try {
+    for (const k of tmpVars) process.env[k] = parent;
+    return await selfTestIn(parent);
+  } finally {
+    tmpVars.forEach((k, i) => { if (savedTmp[i] === undefined) delete process.env[k]; else process.env[k] = savedTmp[i]; });
+    removeDir(parent); temp.delete(parent);
+  }
+}
+
+async function selfTestIn(parent) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'page-check-test-')); temp.add(dir);
   // A local server for what a file cannot show: a redirect, a compressed
   // response, a missing favicon, a frame from another site.
@@ -686,12 +702,12 @@ async function selfTest() {
     ];
     let failedChecks = 0;
     for (const [name, ok, detail] of checks) { if (!ok) { failedChecks++; console.log('FAIL ' + name + (detail !== undefined ? ' ' + JSON.stringify(detail) : '')); } }
-    const left = mine().filter((f) => !there.has(f) && f !== path.basename(dir));
+    const left = fs.readdirSync(parent).filter((f) => f !== path.basename(dir));
     if (left.length) { failedChecks++; console.log('FAIL a temporary directory was left: ' + left.join(', ')); }
     if (failedChecks) { console.log(`self-test: ${failedChecks} of ${checks.length + 1} failed`); return 1; }
     console.log(`self-test OK — ${checks.length + 1} checks: a clean page, a page with twelve planted defects, two pages of traps for the checker, a phone, a server`);
     return 0;
-  } finally { server.close(); server.closeAllConnections?.(); removeDir(dir); temp.delete(dir); }
+  } finally { server.close(); server.closeAllConnections?.(); temp.delete(dir); }
 }
 
 const USAGE = 'usage: page-check.mjs URL_OR_FILE -o OUTDIR [--widths 1440x900,390x844] [--stops 5] [--budget-kb N] [--contrast-area 10] [--no-contrast] [--wait-ms 600] [--no-sandbox]\n       page-check.mjs --self-test\n       page-check.mjs --help';
