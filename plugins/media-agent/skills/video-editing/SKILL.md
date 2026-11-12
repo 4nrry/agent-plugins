@@ -29,8 +29,9 @@ Kinocut wraps ffmpeg in typed operations: it validates the input first and
 returns JSON with `success` and `output_path`, or `success: false` with an
 `error.code` and a message that says how to retry, instead of pages of stderr.
 The plugin registers it as the `kinocut` MCP server (pinned in `.mcp.json`).
-The server lists eight tools by name and reaches every other operation
-through eight family tools; always pass absolute paths.
+By default the server lists 18 tools: eight called by name, eight families
+that run any other operation by name, and `list_operations` and
+`describe_operation` to find one. Always pass absolute paths.
 
 | Task | Call | Note |
 |---|---|---|
@@ -51,11 +52,16 @@ A family call names the operation in full and nests its arguments:
 {"operation": "video_resize", "params": {"input_path": "/abs/in.mp4", "aspect_ratio": "9:16"}}
 ```
 
-A short name (`resize`), a misspelt one or an argument the operation does not
-take returns `success: false` with `invalid_parameter` or `unknown_operation`
-and nothing runs: fetch the schema with `describe_operation` and call again.
-Setting `KINOCUT_TOOLS=all` (or `profile:<name>`) where the server starts lists
-every operation as a tool of its own; the families run the same code.
+Nothing runs on a wrong call, and the error says little. A short name
+(`resize`) or a misspelt one returns `invalid_parameter` without naming the
+operation: look the name up with `list_operations` and its `query`. An
+argument the operation does not take returns `invalid_parameter` naming the
+operation: read its schema with `describe_operation` and call again.
+
+`KINOCUT_TOOLS`, set where the server starts, changes the list: `all` lists
+every operation as a tool of its own and drops the families and the two
+lookup tools (`search_tools` takes their place); `profile:<name>` adds one
+job's tools to the default 18. Leave it unset: this table assumes the default.
 
 - Without `output_path` the result goes beside the input (`clip_trimmed.mp4`).
   An existing output is refused with `output_exists` unless `overwrite: true`,

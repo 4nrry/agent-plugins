@@ -174,7 +174,8 @@ project's dependency from Setup is the second step.
   `hyperframes_inspect` and `hyperframes_render` worked on Kinocut 1.16.4;
   on 2.0.1 only the `hyperframes_not_found` answer without a CLI was checked.
 - Kinocut runs the CLI with telemetry off. For that reason it refuses
-  `hyperframes_preview` on HyperFrames 0.9.35 and any render with `docker: true`,
+  `hyperframes_preview` on every HyperFrames version but 0.8.104 and 0.8.140,
+  0.9.35 included, and any render with `docker: true`,
   with code `hyperframes_telemetry_consent_required`. Do not set
   `KINOCUT_HYPERFRAMES_TELEMETRY=true` to get past it, which turns telemetry
   on: run `preview` or `render --docker` from the CLI instead.
