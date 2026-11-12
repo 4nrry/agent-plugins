@@ -5,12 +5,13 @@ default compositor for a new video project. Until then `video-composition`
 set the two side by side and asked the user once per new project. The owner
 chose HyperFrames on 2026-11-12, after the comparison below.
 
-**The same animation in both.** 2026-11-11, RTX 4070 Laptop 8 GB, HyperFrames
-0.9.35 and Remotion 4.0.543; numbers copied from the notes of the session
-that built it, whose files were in a scratchpad since cleared. Three flat
-characters driven by one JavaScript module, a function of time, through eight
-states in 12 s; the module was shared, so the comparison is of the tooling
-around it, not of the drawing. n=1, no audio.
+**The same animation in both.** 2026-11-11, on this machine (an RTX 4070
+Laptop GPU with 8 GB, per `nvidia-smi`), HyperFrames 0.9.35 and Remotion
+4.0.543. Numbers copied from the notes of the session that built it; its
+files were deleted with that session's scratchpad on 2026-11-12. Flat
+silhouettes traced from six stills, driven by one JavaScript module, a
+function of time, through eight states in 12 s; the module was shared, so the
+comparison is of the tooling around it, not of the drawing. n=1, no audio.
 
 | | HyperFrames 0.9.35 | Remotion 4.0.543 |
 |---|---|---|
@@ -31,14 +32,16 @@ frames, worst frame 0.9986. HyperFrames rendered through the system's FFmpeg
   a company of up to three people; from four it needs a paid license counted
   on the whole company, not on the people who use it (`references/remotion.md`,
   read at tag v4.0.543).
-- A new project is lighter, and HyperFrames checks the rendered frame before
-  the final render.
+- A new HyperFrames project adds no package (Remotion's template brought
+  324 MB of `node_modules`; both still download a headless Chrome on the
+  first render), and HyperFrames checks the rendered frame before the final
+  render.
 - The risk taken: HyperFrames is 0.x, released several times a day (eight
   versions from 0.9.28 to 0.9.35 on 2026-11-10 and 11), and the project itself
   calls Remotion the more mature of the two and says HyperFrames breaks quietly
   when its contract is not followed (read at tag v0.9.35, not quoted in the
-  references). The
-  skill pins its version per project and turns its telemetry off.
+  references). The skill pins its version per project and turns its
+  telemetry off.
 
 **What stays.** An existing project keeps its compositor, and Remotion is
 still chosen when the project is already React or shares components with an

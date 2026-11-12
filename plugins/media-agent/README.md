@@ -55,7 +55,7 @@ and no sign-in, upload of the project or paid call the user did not ask for. The
 and write one marker file per session under the temp directory.
 
 A new video project uses HyperFrames (Apache-2.0); Remotion when the project
-is already React or the user names it. The plugin does not decide licenses
+is already React, shares components with an app, or the user names it. The plugin does not decide licenses
 for you (Remotion's headcount limit, ElevenLabs' free tier): the skills state
 the rule and the user decides. Paths
 and keys come from environment variables (`COMFY_HOME`, `*_API_KEY`).
