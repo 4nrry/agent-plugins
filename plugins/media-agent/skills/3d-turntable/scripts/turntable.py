@@ -1,6 +1,6 @@
 """Turntable of a glTF (.glb) model in Cycles/GPU, without opening Blender.
 
-  blender -b -P turntable.py -- --glb model.glb --out DIR --frames 120 --samples 128 [--res 1080] [--preview]
+  blender -b --python-exit-code 1 -P turntable.py -- --glb model.glb --out DIR --frames 120 --samples 128 [--res 1080] [--preview]
 
 Writes DIR/frame_0001.png ... with a transparent background (RGBA), one full turn around
 the bounding-box center, key/fill/rim area lights and AgX. CYCLES_BACKEND=OPTIX|CUDA
@@ -54,7 +54,9 @@ def area(name, loc, energy, size_, color=(1, 1, 1)):
 area("Key", (dist * 0.6, -dist * 0.6, dist * 0.9), 60 * size * size, size * 1.2, (1.0, 0.96, 0.9))
 area("Fill", (-dist * 0.9, -dist * 0.4, dist * 0.3), 22 * size * size, size * 2.0, (0.92, 0.95, 1.0))
 area("Rim", (-dist * 0.3, dist * 0.9, dist * 0.7), 55 * size * size, size * 0.8)
-world = bpy.data.worlds.new("World"); scene.world = world; world.use_nodes = True
+world = bpy.data.worlds.new("World"); scene.world = world
+if world.node_tree is None:  # Blender 5.2+ already made it; use_nodes is deprecated (gone in 6.0)
+    world.use_nodes = True
 world.node_tree.nodes["Background"].inputs[0].default_value = (0.9, 0.87, 0.82, 1); world.node_tree.nodes["Background"].inputs[1].default_value = 0.15
 
 # animation: one full turn

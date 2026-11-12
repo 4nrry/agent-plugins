@@ -1,6 +1,6 @@
 ---
 name: voice
-description: Produces edit-ready voice-over with any TTS — one sentence per file, spoken text apart from captions, -16 LUFS, a durations JSON for captions and ducking. Use for narration, TTS, pt-BR speech, loudnorm, captions timed from the voice JSON, translating a voice-over, a quiet or mispronounced voice, or a named TTS (ElevenLabs, Kokoro).
+description: Produces edit-ready voice-over with any TTS — one sentence per file, spoken text apart from captions, -16 LUFS, a durations JSON for captions and ducking. Use for narration, TTS, pt-BR speech, loudnorm, captions timed from the voice JSON, translating a voice-over, a quiet or mispronounced voice, a character's fixed voice through voice conversion, or a named TTS or converter (ElevenLabs, Kokoro, Seed-VC).
 ---
 
 # Voice-over
@@ -73,7 +73,9 @@ applies.
   each platform asks is in the `video-composition` skill,
   `references/short-form.md`.
 - A recurring character keeps one voice and one set of settings across
-  episodes; record them beside the voice JSON.
+  episodes; record them beside the voice JSON. To keep one timbre whatever
+  reads the lines, convert each line to a reference voice:
+  [references/voice-conversion.md](references/voice-conversion.md).
 
 ## API keys
 

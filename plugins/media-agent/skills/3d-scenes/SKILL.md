@@ -31,14 +31,18 @@ human.glb out/` renders three figures (front, profile, back) to check a new glb.
 
 ## Running Blender
 
-- Always pass `--python-exit-code 1`: without it Blender 5.2 exits 0 after an
+- Always pass `--python-exit-code 1`: without it Blender exits 0 after an
   uncaught Python error and the pipeline takes an empty folder as a render.
 - One Blender process per scene, in parallel. Cache each plate under a hash of
   the scene sources and skip it when the hash and the frame count match:
   `scene_kit.py` does not do this, the pipeline that calls it does.
-- On a hybrid laptop, EEVEE lands on the integrated GPU unless the process is
-  offloaded: set `__NV_PRIME_RENDER_OFFLOAD=1` and
-  `__GLX_VENDOR_LIBRARY_NAME=nvidia` (what `prime-run` does). Cycles device
+- On a hybrid laptop, offload the process to the NVIDIA card: set
+  `__NV_PRIME_RENDER_OFFLOAD=1`, `__GLX_VENDOR_LIBRARY_NAME=nvidia` and
+  `__VK_LAYER_NV_optimus=NVIDIA_only` (what `prime-run` does). On Blender's
+  OpenGL backend EEVEE otherwise lands on the integrated GPU; the Vulkan
+  backend can find the NVIDIA card on its own. Check before trusting a render
+  time: after a render, `gpu.platform.backend_type_get()` and
+  `gpu.platform.renderer_get()` name the backend and the card. Cycles device
   traps are in the `3d-turntable` skill.
 
 ## Quality

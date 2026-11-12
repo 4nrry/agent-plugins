@@ -19,7 +19,8 @@ description: Retouches images on your own GPU with commercially licensed models 
 - **One GPU job at a time** on an 8 GB card: a diffusion model in fp8 takes
   about 6 GB, so a TTS or music model beside it overflows.
 - **Video upscaling** does not pay off on 8 GB (hours per minute of video, and
-  it invents detail). Use it only to rescue third-party low-resolution footage.
+  it invents detail). Use it only to rescue third-party low-resolution footage;
+  what fit and what it cost are in [references/models.md](references/models.md).
 
 ## With the bundled ComfyUI scripts
 

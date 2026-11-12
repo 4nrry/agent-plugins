@@ -27,6 +27,19 @@ Neither script here writes alpha video.
 - `loading="lazy"` on anything below the first screen.
 - Decorative: `alt=""`. When the animation is the content, describe it.
 
+### Reading one back
+
+To check a packed file frame by frame, or to use an animated WebP as the clip
+for `cutout-frames.sh`, the decoder has to understand animation. Measured on
+2026-11-11 with a 12-frame RGBA WebP written by `cutout_pack.py pack`:
+
+- FFmpeg 9.0.2 decodes it: `ffmpeg -i octopus.webp f%04d.png` wrote all 12
+  frames with their alpha, `ffprobe` names the stream `webp_anim` in `argb`,
+  and `cutout-frames.sh` extracted its frames.
+- FFmpeg 8.1.2 does not: `image data not found`, nothing written, exit 69,
+  and `cutout-frames.sh` stopped at extraction.
+- Pillow reads it with any FFmpeg: `Image.open(p).n_frames` gave 12.
+
 ## Sprite sheet
 
 `cutout_pack.py pack CUTDIR -o octopus.webp --sprite octopus-sheet.webp --css octopus-sheet.css`
