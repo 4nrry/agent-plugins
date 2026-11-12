@@ -163,15 +163,19 @@ they and this plugin disagree, this plugin wins:
 
 ## Kinocut's `hyperframes_*` tools
 
-They run the first CLI this lookup finds: `MCP_VIDEO_HYPERFRAMES_COMMAND`,
+On Kinocut's default tool list they are operations of the `platform_ops`
+family: `{"operation": "hyperframes_render", "params": {...}}`. They run the
+first CLI this lookup finds: `MCP_VIDEO_HYPERFRAMES_COMMAND`,
 then `node_modules/.bin/hyperframes` from the project upward, then
 `hyperframes` on PATH. With none they return `hyperframes_not_found`. The
 project's dependency from Setup is the second step.
 
 - With the dependency from Setup, `hyperframes_info`, `hyperframes_validate`,
-  `hyperframes_inspect` and `hyperframes_render` worked.
+  `hyperframes_inspect` and `hyperframes_render` worked on Kinocut 1.16.4;
+  on 2.0.1 only the `hyperframes_not_found` answer without a CLI was checked.
 - Kinocut runs the CLI with telemetry off. For that reason it refuses
-  `hyperframes_preview` on this version and any render with `docker: true`,
+  `hyperframes_preview` on every HyperFrames version but 0.8.104 and 0.8.140,
+  0.9.35 included, and any render with `docker: true`,
   with code `hyperframes_telemetry_consent_required`. Do not set
   `KINOCUT_HYPERFRAMES_TELEMETRY=true` to get past it, which turns telemetry
   on: run `preview` or `render --docker` from the CLI instead.
