@@ -48,5 +48,46 @@ words = [w for seg in res["segments"] for w in seg["words"]]
   times put a line's first word at 0 and end words late, which shows when a
   caption lights the spoken word.
 
+## Transcribe on an Intel NPU
+
+Intel Core Ultra processors carry an NPU. OpenVINO GenAI runs Whisper on it,
+with word times, and leaves the NVIDIA GPU and its memory free: WhisperX
+holds about 3.5 GB of an 8 GB card while it runs. Use it when the GPU is busy
+(ComfyUI, Blender, a render) or there is no NVIDIA GPU.
+
+- The kernel driver alone is not enough. `/dev/accel/accel0` must exist, and
+  the user-space driver must be installed: the `intel-level-zero-npu` and
+  `intel-driver-compiler-npu` packages from Intel's `linux-npu-driver`
+  releases on GitHub (not in Ubuntu's archive; installing them needs root,
+  so ask the user). Check with
+  `python -c "import openvino as ov; print(ov.Core().available_devices)"`:
+  `NPU` must be in the list.
+- Install in its own environment: `uv venv -p 3.13` and
+  `uv pip install openvino-genai soundfile` (about 280 MB). Take a model
+  already converted by Intel, such as
+  `OpenVINO/whisper-large-v3-turbo-int8-ov` (790 MB, MIT): no torch needed.
+- The first load on the NPU compiles the model for minutes (200 to 275 s
+  here). Pass a cache directory and later loads take seconds:
+
+```python
+import openvino_genai as ovg, soundfile as sf
+
+pipe = ovg.WhisperPipeline("whisper-large-v3-turbo-int8-ov", "NPU",
+                           word_timestamps=True, CACHE_DIR="ov-cache")
+audio, sr = sf.read("audio.wav", dtype="float32")    # 16 kHz mono
+res = pipe.generate(audio.tolist(), language="<|pt|>", return_timestamps=True,
+                    word_timestamps=True)
+words = [(w.word, w.start_ts, w.end_ts) for w in res.words]
+```
+
+- It made as few errors against the script as WhisperX (6.4 % against
+  6.6 %). Its word times are Whisper's own, a median of 75 ms from WhisperX's
+  alignment: good for a caption per phrase, not for
+  lighting each spoken word. For that, align the text with WhisperX as above.
+- The same code runs on `"CPU"`: about as fast as the NPU on an idle machine,
+  about three times slower when another job holds the CPU.
+
 The alternatives measured against it are in
-[2026-11-01-local-stt-CLAIMS.md](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-01-local-stt-CLAIMS.md).
+[2026-11-01-local-stt-CLAIMS.md](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-01-local-stt-CLAIMS.md),
+the NPU in
+[2026-11-11-npu-whisper-CLAIMS.md](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-11-npu-whisper-CLAIMS.md).
