@@ -47,8 +47,14 @@ without a message.
   `TMP` and `TEMP` as well as `TMPDIR` (Chrome on Windows reads the first
   two), and the parent is made and removed by a wrapper around the whole
   self-test, so an early failure no longer leaves it or the changed variables
-  behind. The concurrent rounds and planted leaks above ran before this
-  change; `just check` ran after it.
+  behind. The rounds and leaks above ran before this change. Run again on
+  the changed script: four rounds of two at once, 8 of 8 passed; the same
+  two planted leaks, each exit 1 with `1 of 45 failed` naming nine profile
+  directories and the child's directory; nothing left in the system
+  temporary directory.
+- `just check`, which runs the self-test, twice in a row in this worktree
+  while it ran twice in a row in a second worktree of the same commit: 4 of
+  4 passed.
 - Not measured: macOS and Windows (on Windows `os.tmpdir()` reads `TEMP` and
   `TMP`, which are set; not run there), a leak by a process that resolves its
   temporary directory without reading these variables, and a leak inside the
