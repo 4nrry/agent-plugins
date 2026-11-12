@@ -38,9 +38,18 @@ with one leak planted, run alone:
   temporary directory and leaves it: exit 1, `1 of 45 failed`, the check named
   that directory.
 
-In both, nothing was left in the system temporary directory after the run,
-because the private parent is removed at the end whatever the check found.
+In both, nothing was left in the system temporary directory after the run:
+the private parent is removed at the end whatever the check found. The
+removal swallows its own errors, so a directory it fails to remove stays
+without a message.
 
+- After a cold review, Chrome is given its per-launch temporary directory in
+  `TMP` and `TEMP` as well as `TMPDIR` (Chrome on Windows reads the first
+  two), and the parent is made and removed by a wrapper around the whole
+  self-test, so an early failure no longer leaves it or the changed variables
+  behind. The concurrent rounds and planted leaks above ran before this
+  change; `just check` ran after it.
 - Not measured: macOS and Windows (on Windows `os.tmpdir()` reads `TEMP` and
-  `TMP`, which are set; not run there), and a leak by a process that resolves
-  its temporary directory without reading these variables.
+  `TMP`, which are set; not run there), a leak by a process that resolves its
+  temporary directory without reading these variables, and a leak inside the
+  self-test's own test directory, which is removed with the parent unseen.

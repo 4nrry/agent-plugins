@@ -121,7 +121,7 @@ async function launchOnce(noSandbox) {
     temp.delete(base); chrome = null;
   };
   try {
-    proc = spawn(binary, args, { stdio: ['ignore', 'ignore', 'pipe'], detached: process.platform !== 'win32', env: { ...process.env, TMPDIR: tmp } });
+    proc = spawn(binary, args, { stdio: ['ignore', 'ignore', 'pipe'], detached: process.platform !== 'win32', env: { ...process.env, TMPDIR: tmp, TMP: tmp, TEMP: tmp } });
     chrome = proc;
     const url = await new Promise((resolve, reject) => {
       let buf = '';
@@ -563,7 +563,16 @@ async function selfTest() {
   // cannot be taken for a leak of this one.
   const tmpVars = ['TMPDIR', 'TMP', 'TEMP'], savedTmp = tmpVars.map((k) => process.env[k]);
   const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'page-check-run-')); temp.add(parent);
-  for (const k of tmpVars) process.env[k] = parent;
+  try {
+    for (const k of tmpVars) process.env[k] = parent;
+    return await selfTestIn(parent);
+  } finally {
+    tmpVars.forEach((k, i) => { if (savedTmp[i] === undefined) delete process.env[k]; else process.env[k] = savedTmp[i]; });
+    removeDir(parent); temp.delete(parent);
+  }
+}
+
+async function selfTestIn(parent) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'page-check-test-')); temp.add(dir);
   // A local server for what a file cannot show: a redirect, a compressed
   // response, a missing favicon, a frame from another site.
@@ -698,11 +707,7 @@ async function selfTest() {
     if (failedChecks) { console.log(`self-test: ${failedChecks} of ${checks.length + 1} failed`); return 1; }
     console.log(`self-test OK — ${checks.length + 1} checks: a clean page, a page with twelve planted defects, two pages of traps for the checker, a phone, a server`);
     return 0;
-  } finally {
-    server.close(); server.closeAllConnections?.();
-    tmpVars.forEach((k, i) => { if (savedTmp[i] === undefined) delete process.env[k]; else process.env[k] = savedTmp[i]; });
-    removeDir(parent); temp.delete(dir); temp.delete(parent);
-  }
+  } finally { server.close(); server.closeAllConnections?.(); temp.delete(dir); }
 }
 
 const USAGE = 'usage: page-check.mjs URL_OR_FILE -o OUTDIR [--widths 1440x900,390x844] [--stops 5] [--budget-kb N] [--contrast-area 10] [--no-contrast] [--wait-ms 600] [--no-sandbox]\n       page-check.mjs --self-test\n       page-check.mjs --help';
