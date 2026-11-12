@@ -1,13 +1,13 @@
 # Models and their licenses
 
-Checked against the model cards on 2026-10-26, the SeedVR2 row on
-2026-11-11. Check again before company work: licenses change between
+Checked against the model cards on 2026-10-26, the SeedVR2 and FLUX.2 klein
+rows on 2026-11-11. Check again before company work: licenses change between
 releases.
 
 | Task | Use | License | Not | Why not |
 |---|---|---|---|---|
 | Generate, inpaint | Z-Image-Turbo 6B (Tongyi-MAI) | Apache-2.0 | FLUX.1 dev, FLUX.2 dev, FLUX.2 klein 9B | non-commercial licenses |
-| Generate, alternative | FLUX.2 klein 4B | Apache-2.0 | FLUX.3 Klein | its license allows commercial output only under US$5M revenue; ~25 GB VRAM |
+| Edit by instruction | FLUX.2 klein 4B, fp8 file | Apache-2.0 | FLUX.3 Klein | its license allows commercial output only under US$5M revenue; ~25 GB VRAM |
 | Photo upscale | 4xRealWebPhoto_v4_dat2 (Phips) | CC-BY-4.0, credit | 4x-UltraSharp | CC-BY-NC-SA |
 | Fast upscale | RealESRGAN_x4plus | BSD-3 | | |
 | Background removal | BiRefNet-general | MIT | RMBG-2.0 (BRIA) | gated, non-commercial license; commercial only by contract |
@@ -15,8 +15,27 @@ releases.
 | Background and LaMa nodes | ComfyUI-RMBG (1038lab) | GPL-3 (node code) | | does not affect the images' license |
 | Video upscale, rescue only | SeedVR2 3B (ByteDance), through the `numz/ComfyUI-SeedVR2_VideoUpscaler` node | Apache-2.0 (code, weights, node, and the `cmeka/SeedVR2-GGUF` files) | | not installed; see below |
 
-The bundled workflows use Z-Image Turbo; FLUX.2 klein 4B has not been run with
-them.
+`generate` and `inpaint` use Z-Image Turbo, `edit` uses FLUX.2 klein 4B.
+
+## FLUX.2 klein 4B
+
+Run on 2026-11-11 with ComfyUI 0.45.0: `edit` with the fp8 file, the Z-Image
+text encoder (`qwen_3_4b_fp8_mixed`, loaded as type `flux2`), 4 steps, cfg 1,
+the source as a reference latent on both the prompt and its zeroed
+conditioning. Three instructions on a 1024×576 Z-Image still ("add a small
+succulent in a white pot to the left of the mug", "remove the mug", "make
+the mug matte navy blue") each did what was asked and kept the scene, in 12
+to 15 s once loaded (46 s for the first, which loaded the model), with
+7,668 MiB of VRAM in use at the peak. The output was 1360×768: the source is
+rescaled to about one megapixel, in steps of 16 pixels. Away from the change, pixels differed from the source by 2.6 to
+8.4 levels on average after scaling back, and 26 to 41 % of them by more than
+8.
+
+Carried over, not re-run: the same day, in the notes on the machine's
+tooling, text-to-image with this model at 4 steps drew a mug with two handles
+on 2 of 3 seeds where Z-Image Turbo drew it right, so Z-Image stays the
+generator. Whether the fp8 text encoder or the 4 steps cause it was not
+tested.
 
 ## Z-Image Turbo settings
 

@@ -59,6 +59,10 @@ music under the voice from 0.5 to about 0.16 with a ~0.35 s ramp.
 - License second: the weights' license, or the plan's terms for a cloud
   service, must allow commercial use.
 - Then where it runs: CPU, an 8 GB GPU, or the cloud.
+- Brazilian Portuguese that ships goes through a cloud TTS; local engines
+  serve drafts, offline work, cloned voices and English. The ranking by ear
+  and the scripts that run each local engine are in
+  [references/tts.md](references/tts.md).
 
 ## Real people's voices
 
