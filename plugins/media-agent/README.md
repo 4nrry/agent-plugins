@@ -18,10 +18,10 @@ hooks nor the local MCP server, so only the skills' text applies there.
 |---|---|---|
 | `image-generation` | explore, choose on a contact sheet, final still, what never to generate | Grok Imagine (Grok Build, Hermes), Gemini (agy, API) wrappers; `contact-sheet.sh` |
 | `video-generation` | still-to-video, one camera move, resolution by use, checking every clip | Gemini Omni and Grok video wrappers |
-| `image-retouching` | weight licenses, removal vs inpainting, one GPU job at a time | headless ComfyUI (`comfy-run.py`) |
+| `image-retouching` | weight licenses, removal vs inpainting vs editing by instruction, one GPU job at a time | headless ComfyUI (`comfy-run.py`: background, upscale, remove, inpaint, edit, generate) |
 | `cutout-animation` | a still on a plain background, cycle or ping-pong, one crop box for the clip, format by what the page does, a still for reduced motion | `cutout-frames.sh`, `cutout_pack.py` (animated WebP, sprite sheet and its `steps()` CSS, props from one image) |
 | `page-check` | errors before screenshots, contrast measured against what is rendered behind the text, what the motion lines mean, a weight budget chosen before the run, what nobody checked | `page-check.mjs` (headless Chrome over its DevTools port, no packages) |
-| `voice` | one sentence per file, caption vs spoken text, -16 LUFS, the durations JSON | `vo-normalize.sh`, `hermes-tts.sh` (xAI voice); TTS engine notes |
+| `voice` | one sentence per file, caption vs spoken text, -16 LUFS, the durations JSON, which engine for pt-BR | `vo-normalize.sh`, `hermes-tts.sh` (xAI voice); local engines (`kokoro-tts.py`, `qwen-tts.py`, `chatterbox-tts.py`) and voice conversion (`seed-vc.py`) |
 | `audio` | exact-length music, SFX, fixing real recordings, word times for captions | ElevenLabs (`eleven.py`), ACE-Step, synthesized effects (`sfx-synth.py`), WhisperX notes |
 | `stock-media` | licenses and credits per item, which library has what, the trap in each license | stock search (`media-search.py`: Openverse, Freesound, Pexels, Pixabay) |
 | `video-composition` | video as code: frame-driven scenes, captions from the voice JSON, formats from one source, short vertical video for Reels, Shorts and TikTok, motion for cuts and text | notes for Remotion and HyperFrames, which work beside each vendor's own plugin |

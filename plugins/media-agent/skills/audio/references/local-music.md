@@ -12,6 +12,11 @@ cd <ACE-Step-1.5 clone> && uv sync          # Python 3.11 or 3.12
 uv run python cli.py --config /path/to/ace-step-8gb.toml
 ```
 
+The README's quick start launches a Gradio UI (`uv run acestep`) or a REST
+API (`uv run acestep-api`); `cli.py` is the headless route from a config file.
+A machine can wrap it in a launcher on PATH that runs `cli.py` with the
+clone's environment (`ace-step --config ...`); the arguments are the same.
+
 A caption that worked for institutional music: "calm ambient, warm analog pad,
 soft piano, no drums, minimal, slow evolving", `instrumental = true`, 70 bpm,
 8 steps, `guidance_scale` 7, 40 s.

@@ -6,6 +6,7 @@
   comfy-run.py background photo.jpg        -o out.png                  # BiRefNet, PNG with alpha
   comfy-run.py remove     frame.png        -o out.png --mask m.png | --rect x,y,w,h    # LaMa: logo, object
   comfy-run.py inpaint    photo.jpg "prompt" -o out.png --mask m.png | --rect x,y,w,h  # Z-Image, masked area only
+  comfy-run.py edit       photo.jpg "instruction" -o out.png [--seed N]   # FLUX.2 klein 4B, no mask; output ~1 MP
 
 Mask: PNG where white = area to change. --rect builds the mask inside the graph
 (GetImageSize + SolidMask + MaskComposite), so no PIL is needed here.
@@ -18,7 +19,8 @@ import argparse, json, os, random, subprocess, sys, time, urllib.error, urllib.p
 HERE = os.path.dirname(os.path.abspath(__file__))
 STARTUP_POLLS = int(os.environ.get("COMFY_STARTUP_POLLS", "240"))   # 0.5 s each: 120 s for a cold model load
 WORKFLOWS = os.path.join(os.path.dirname(HERE), "workflows")
-IMAGE_NODE = {"upscale": "1", "background": "1", "remove": "1", "inpaint": "7"}
+IMAGE_NODE = {"upscale": "1", "background": "1", "remove": "1", "inpaint": "7", "edit": "6"}
+STEPS = {"generate": 8, "inpaint": 8, "edit": 4}   # Z-Image Turbo is distilled for 8, FLUX.2 klein for 4
 MASK_LOAD_NODE = {"remove": "2", "inpaint": "8"}
 MASK_NODE = {"remove": "3", "inpaint": "9"}
 
@@ -86,14 +88,14 @@ def run(server, wf, out):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("workflow", choices=["generate", "upscale", "background", "remove", "inpaint"])
+    p.add_argument("workflow", choices=["generate", "upscale", "background", "remove", "inpaint", "edit"])
     p.add_argument("args", nargs="+", help="image and/or prompt, depending on the workflow")
     p.add_argument("-o", "--out", required=True)
     p.add_argument("--mask")
     p.add_argument("--rect", help="x,y,w,h in pixels; builds the mask in the graph")
     p.add_argument("--size", default="1024x1024", help="WxH for generate (multiples of 16)")
     p.add_argument("--seed", type=int)
-    p.add_argument("--steps", type=int, default=8)
+    p.add_argument("--steps", type=int, help="sampling steps (default: 8 for generate and inpaint, 4 for edit)")
     p.add_argument("--factor", type=float, default=4.0, help="final upscale factor (the model does 4x; lower = resample)")
     p.add_argument("--denoise", type=float, default=1.0, help="inpaint: 1.0 redraws the area; lower preserves more")
     p.add_argument("--server", default=os.environ.get("COMFY_SERVER", "http://127.0.0.1:8188"))
@@ -103,17 +105,20 @@ def main():
     with open(os.path.join(WORKFLOWS, a.workflow + ".json")) as f:
         wf = json.load(f)
     seed = a.seed if a.seed is not None else random.randrange(2**31)
+    steps = a.steps or STEPS.get(a.workflow)
 
     if a.workflow == "generate":
         (prompt,) = a.args
         w, h = (int(v) for v in a.size.lower().split("x"))
         wf["4"]["inputs"]["text"] = prompt
         wf["6"]["inputs"].update(width=w, height=h)
-        wf["7"]["inputs"].update(seed=seed, steps=a.steps)
+        wf["7"]["inputs"].update(seed=seed, steps=steps)
     else:
         image = a.args[0]
         if not os.path.isfile(image):
             sys.exit(f"image not found: {image}")
+    if a.workflow in ("inpaint", "edit") and len(a.args) != 2:
+        sys.exit(f"{a.workflow} takes an image and a prompt")
     if a.workflow in MASK_NODE and bool(a.mask) == bool(a.rect):
         sys.exit("pass --mask OR --rect")
 
@@ -148,7 +153,11 @@ def main():
                 rect_mask_nodes(wf, IMAGE_NODE[a.workflow], MASK_NODE[a.workflow], a.rect)
         if a.workflow == "inpaint":
             wf["4"]["inputs"]["text"] = a.args[1]
-            wf["12"]["inputs"].update(seed=seed, steps=a.steps, denoise=a.denoise)
+            wf["12"]["inputs"].update(seed=seed, steps=steps, denoise=a.denoise)
+        if a.workflow == "edit":
+            wf["4"]["inputs"]["text"] = a.args[1]
+            wf["14"]["inputs"]["steps"] = steps
+            wf["16"]["inputs"]["noise_seed"] = seed
         run(a.server, wf, a.out)
     finally:
         # A server that never came up is stopped even with --keep: nothing can use it.

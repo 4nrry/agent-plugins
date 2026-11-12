@@ -36,13 +36,15 @@ uv pip install -p .venv/bin/python -r ComfyUI/requirements.txt -r ComfyUI/custom
   `.venv/bin/` (`pip`, `activate`) keep the old absolute path, so recreate the
   environment before using those.
 
-Model files, with the names the workflows expect (about 19 GB):
+Model files, with the names the workflows expect (about 23 GB):
 
 | File | Folder under `ComfyUI/models/` | Source |
 |---|---|---|
 | `z_image_turbo_bf16.safetensors` | `diffusion_models` | `Comfy-Org/z_image_turbo`, `split_files/` |
 | `qwen_3_4b_fp8_mixed.safetensors` | `text_encoders` | same |
 | `ae.safetensors` | `vae` | same |
+| `flux-2-klein-4b-fp8.safetensors` (only `edit` loads it, 4.1 GB) | `diffusion_models` | `black-forest-labs/FLUX.2-klein-4b-fp8` |
+| `flux2-vae.safetensors` (only `edit`) | `vae` | `Comfy-Org/Flux-2-Klein-4B`, `split_files/vae/` |
 | `4xRealWebPhoto_v4_dat2.safetensors` | `upscale_models` | `Phips/4xRealWebPhoto_v4_dat2` |
 | `RealESRGAN_x4plus.pth` (optional: no bundled workflow loads it) | `upscale_models` | Real-ESRGAN releases |
 | BiRefNet-general (4 files) | `RMBG/BiRefNet` | `1038lab/BiRefNet` |

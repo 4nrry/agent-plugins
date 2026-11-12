@@ -26,10 +26,22 @@ repository is archived, so the recipe pins its last commit.
 | Seed | 42, set for Python, NumPy and torch before the call | `inference.py` sets none, so without it two runs can differ |
 | Reference | the first 25 s | `inference.py` cuts the reference there; a longer one adds nothing |
 
-`inference.py` takes `--source` (the line), `--target` (the reference) and
-`--output` (a directory). An installed copy, checked on 2026-11-11: Python
-3.10.22, torch and torchaudio 2.4.0+cu121, an environment of 5.8 GB, and
-1.8 GB of checkpoints that the first run downloaded into the clone.
+`scripts/seed-vc.py` applies the recipe: it loads the models once, converts
+each line with seed 42 and writes `OUTDIR/<line name>.wav`:
+
+```bash
+git clone https://github.com/Plachtaa/seed-vc && git -C seed-vc checkout 51383efd921027683c89e5348211d93ff12ac2a8
+uv venv -p 3.10 .venv && uv pip install -p .venv/bin/python torch==2.4.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu121
+uv pip install -p .venv/bin/python -r <voice skill>/references/seed-vc-requirements-lock.txt
+SEED_VC_REPO=$PWD/seed-vc .venv/bin/python <voice skill>/scripts/seed-vc.py REF.wav out/ line1.wav line2.wav
+```
+
+The lock file holds the versions of the environment the recipe was set up
+in, torch aside. An installed copy, checked on 2026-11-11: Python 3.10.22,
+torch and torchaudio 2.4.0+cu121, an environment of 5.8 GB, and 1.8 GB of
+checkpoints that the first run downloaded into the clone. There, the script
+gave the same samples as the toolbox's own wrapper for two lines (largest
+difference 0), each 3.800 s in and 3.796 s out.
 
 Carried over, not re-run: a short line converts in about 4 s on an RTX 4070
 Laptop after about 40 s of model loading (the notes of the media toolbox this
