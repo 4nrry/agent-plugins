@@ -39,6 +39,8 @@ for `cutout-frames.sh`, the decoder has to understand animation. Measured on
 - FFmpeg 8.1.2 does not: `image data not found`, nothing written, exit 69,
   and `cutout-frames.sh` stopped at extraction.
 - Pillow reads it with any FFmpeg: `Image.open(p).n_frames` gave 12.
+- `ffmpeg -hide_banner -decoders` lists `webp_anim` on the 9.0.2 build and
+  only `webp` on 8.1.2. No other version was tried.
 
 ## Sprite sheet
 

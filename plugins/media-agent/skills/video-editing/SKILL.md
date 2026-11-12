@@ -18,9 +18,9 @@ Whatever the tool: check the output with `ffprobe` (duration, fps, streams)
 and watch the cut points.
 
 With raw ffmpeg, give `drawtext` a font file
-(`drawtext=fontfile=/path/to/font.ttf:text=...`). Some builds, static ones
-among them, find no font by name and stop with `impossible to find font
-information`, with or without `font=`. Subtitles burned through libass still
+(`drawtext=fontfile=/path/to/font.ttf:text=...`). Some builds find no font
+by name and stop with `impossible to find font information`, with or without
+`font=`. Subtitles burned through libass still
 find fonts by name.
 
 ## Kinocut, the bundled tool

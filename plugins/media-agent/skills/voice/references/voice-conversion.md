@@ -49,11 +49,15 @@ higher is closer.
 | ElevenLabs voice changer (cloud) | about 0.84 to 0.87 |
 
 The ranges overlap, and the notes record neither how many lines nor which
-voices; they ranked Seed-VC first. A score is not a listener: let a native
-speaker compare before choosing.
+voices; they ranked Seed-VC first. The encoder belongs to one of the
+contestants, which may favour ChatterboxVC. A score is not a listener: let a
+native speaker compare before choosing.
 
 Where the multilingual Chatterbox TTS is already installed, the same notes
 ran ChatterboxVC with no extra download by loading that model's `s3gen.pt`.
 Read in the `chatterbox-tts` 0.1.7 source, not run: `ChatterboxVC` wraps an
 `S3Gen`, the multilingual TTS loads its `S3Gen` from `s3gen.pt`, and
-`ChatterboxVC.from_pretrained` downloads `s3gen.safetensors` instead.
+`ChatterboxVC.from_pretrained` downloads `s3gen.safetensors` and `conds.pt`
+instead. The two `s3gen` files differ in size (1,057,165,844 and
+1,056,484,620 bytes on `ResembleAI/chatterbox`), so they may not hold the same
+weights; nobody compared them.

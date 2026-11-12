@@ -17,10 +17,12 @@ uv pip install -p .venv/bin/python -r ComfyUI/requirements.txt -r ComfyUI/custom
 - **Repository.** ComfyUI lives at `Comfy-Org/ComfyUI`; the old
   `comfyanonymous/ComfyUI` address redirects there.
 - **Release.** The pins are the install the workflows were last run on:
-  ComfyUI v0.45.0, ComfyUI-RMBG 3.3.0 and torch 2.14.1+cu130. There
-  `background`, `remove` and `upscale` ran (2026-11-11); `generate` and
-  `inpaint` last ran on an earlier release. To move to a newer one, check out
-  its tag, run the requirements line again, and run each workflow once.
+  ComfyUI v0.45.0, ComfyUI-RMBG 3.3.0 and torch 2.14.1+cu130 (checked on
+  2026-11-11). Carried over, not re-run here: on that install `background`,
+  `remove` and `upscale` ran and `generate` and `inpaint` did not (the
+  machine's tooling audit of the same day); those two last ran on an earlier
+  release. To move to a newer one, check out its tag, run the requirements
+  line again, and run each workflow once.
 - **Python.** The ComfyUI README at v0.45.0 recommends Python 3.13 and says to
   try 3.12 when a custom node's dependencies give trouble on 3.13. The
   commands use 3.12 because that is the version the workflows ran on. On 3.13

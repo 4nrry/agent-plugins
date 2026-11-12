@@ -61,9 +61,9 @@ installed beside this one: it runs that skill's `comfy-run.py` and
 `comfy-serve.sh`, so this folder copied alone stops before any frame is
 extracted, naming the missing script.
 `cutout_pack.py` needs Pillow.
-A clip that is itself an animated WebP needs FFmpeg 9 or newer: older builds
-cannot decode animated WebP and stop with `image data not found`
-([references/web-formats.md](references/web-formats.md)).
+A clip that is itself an animated WebP needs an ffmpeg that lists the
+`webp_anim` decoder (`ffmpeg -decoders`); without it extraction stops with
+`image data not found` ([references/web-formats.md](references/web-formats.md)).
 
 - This removes the background with a segmentation model, which is what was
   run on a grey studio sweep with a soft shadow. A chroma key needs a solid

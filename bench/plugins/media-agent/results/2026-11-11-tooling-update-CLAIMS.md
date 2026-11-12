@@ -48,13 +48,18 @@ transparency) packed by `cutout_pack.py pack` into a 200×102 animated WebP of
   extracted 12 frames and then stopped at the server, exit 1, as designed;
   with 8.1.2 first on PATH it wrote no frame and exited 69 inside ffmpeg.
 - Pillow 13 read the same file as 12 frames, RGBA, `is_animated` true.
+- `ffmpeg -decoders`: 9.0.2 lists `webp` and `webp_anim`, 8.1.2 only `webp`.
+  The skill names the decoder rather than a version, since no other build was
+  tried.
 
 **Blender: `use_nodes`.** A probe on 5.2.0, 5.2.4 and 5.3.0, each started with
 `--factory-startup`: a new material already has a node tree (`Material
 Output`, `Principled BSDF`) and a new world already has one (`Background`,
 `World Output`), and `use_nodes` reads `True`. On 5.2.4 and 5.3.0, reading
 either property printed `DeprecationWarning: 'Material.use_nodes'` (or
-`'World.use_nodes'`) `is expected to be removed in Blender 6.0`. The scripts
+`'World.use_nodes'`) `is expected to be removed in Blender 6.0`; the cold
+review saw the same two warnings on 5.2.0, which this probe did not look
+for. The scripts
 now touch `use_nodes` only when `node_tree` is `None`.
 
 **Blender: the two scripts before and after.** Test model: a rigged glb made
@@ -145,7 +150,10 @@ converted.
 - `ResembleAI/chatterbox` card `mit`; it holds both `s3gen.pt` and
   `s3gen.safetensors`. In the `chatterbox-tts` 0.1.7 package (installed copy):
   the multilingual TTS downloads `s3gen.pt`, `ChatterboxVC.from_pretrained`
-  downloads `s3gen.safetensors`, and both load it into the same `S3Gen` class.
+  downloads `s3gen.safetensors` and `conds.pt`, and both load into the same
+  `S3Gen` class. The repository's tree lists `s3gen.pt` at 1,057,165,844
+  bytes and `s3gen.safetensors` at 1,056,484,620; whether they hold the same
+  weights was not checked (it needs the download).
 
 ## Carried over, not run here
 
@@ -177,3 +185,17 @@ every accepted and rejected model of those notes (Z-Image-Turbo,
 RMBG-2.0, FLUX.1 dev), as did the TTS table in `voice/references/tts.md`.
 This batch adds SeedVR2 (a row and a section in `models.md`) and Seed-VC (the
 new `voice/references/voice-conversion.md`).
+
+## Cold review
+
+A subagent read the diff without this record's conclusions and re-checked the
+upstream facts and the runs on this machine. It confirmed the upstream
+facts, the `drawtext`, libass and animated WebP results, the `use_nodes`
+probe, both scripts on 5.3.0 and 5.2.4, the exit codes and the GPU table. It
+did not re-run the pixel and timing tables, `check_motion.py` or OptiX. Its
+findings, all applied: the ComfyUI workflow results in `install.md` lacked the
+carried-over marker; `3d-scenes` stated the Vulkan observation without its
+caveat; `video-editing` generalised one build to "static ones"; the
+animated-WebP requirement named a version in a `SKILL.md` body; the
+ChatterboxVC note omitted `conds.pt` and the size difference; the similarity
+table did not say the encoder is one contestant's.
