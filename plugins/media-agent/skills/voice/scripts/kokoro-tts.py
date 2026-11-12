@@ -36,6 +36,9 @@ def main(argv):
         lang = lang_for(a.voice)
     except ValueError as e:
         sys.exit(f"kokoro-tts: {e}")
+    import os
+    if not os.path.isdir(os.path.dirname(os.path.abspath(a.out))):
+        sys.exit(f"kokoro-tts: the directory of {a.out} does not exist")
     import numpy as np
     import soundfile as sf
     from kokoro import KPipeline

@@ -30,7 +30,8 @@ on "O relatório custa até vinte mil reais e sai em três dias.":
 | `qwen-tts.py --seed 7` (VoiceDesign 1.7B) | 4.5 s in 22 s | the old wrapper has no seed: not compared |
 | `chatterbox-tts.py --seed 7` (v2) | 4.1 s in 63 s with the load | the old wrapper has no seed: not compared |
 | `chatterbox-tts.py --model pt-br --source <upstream src> --seed 7` | 3.8 s in 72 s with the load | the pt-BR launcher, same seed: same length, samples within 0.00003 |
-| `seed-vc.py REF OUTDIR line1 line2` (reference: the v2 take) | both lines, 112 s with the load; 3.800 s in, 3.796 s out, 22.05 kHz | the old batch wrapper on the same files: identical samples (largest difference 0) |
+| `seed-vc.py REF OUTDIR line1 line2` (reference: the v2 take) | both lines; 3.800 s in, 3.796 s out, 22.05 kHz; 112 s, which turned out to be two model loads (see the cold review) | the old batch wrapper on the same files: identical samples (largest difference 0) |
+| `seed-vc.py`, fixed, on line1, the same file as `lineA`, and line2 | 24 s for the three, one load; line1 and lineA identical; line1 identical to the run above | |
 
 The upstream source given to `--model pt-br` was `resemble-ai/chatterbox` at
 `ab55923c27757c90cfcc407baa57dc25a7d25217`. The pack's files resolved from
@@ -90,3 +91,28 @@ session that ran these tests first:
 `chatterbox-tts`, `chatterbox-ptbr`, `seed-vc`, `seed-vc-batch`) still call
 the toolbox's copies of these scripts. Repointing them is outside this
 repository; the mapping is in the hand-over note for the owner.
+
+## Cold review
+
+A subagent read the branch without this record's conclusions. The GPU was
+busy for it, so it ran no script for real; it ran the self-tests, a stub of
+Seed-VC's `inference.py`, and read upstream. Applied from its findings:
+
+- **`seed-vc.py` reloaded the models for every line.** Upstream `main` is
+  wrapped by `@torch.no_grad()`, so replacing `load_models` in the wrapper's
+  globals reached torch's module, not `inference.py`. The toolbox's batch
+  wrapper, which this script was ported from, has the same defect. Fixed by
+  patching the unwrapped function and loading once before the first line,
+  then seeding each line; measured above (24 s for three lines).
+- `seed-vc.py` now refuses an `OUTDIR` that holds an input, and names every
+  output `.wav`.
+- `qwen-tts.py` refused nothing for `--size 0.6B` without `--clone`, a model
+  that does not exist; it now refuses that, `--instruct` with `--clone`, and a
+  missing reference file.
+- `tts.md` stated the listener's view of ElevenLabs and Gemini TTS as a
+  finding; it is now attributed as a judgment this comparison did not test,
+  and the Gemini row says it was not run through this plugin.
+- `comfy-run.py` refuses `--mask` and `--rect` on workflows that take none;
+  `models.md` gives the peak in MiB and says the edit output steps by 16
+  pixels.
+- `kokoro-tts.py` names a missing output directory instead of a traceback.

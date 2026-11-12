@@ -7,8 +7,9 @@ each line keeps its timing and takes the timbre of the reference recording.
 Run it with the Python of the environment that matches the clone (Python 3.10,
 torch 2.4.0 from the cu121 index, then references/seed-vc-requirements-lock.txt).
 --repo, or SEED_VC_REPO, is a clone of github.com/Plachtaa/seed-vc at commit 51383ef.
-The models load once for all lines; each line is converted with seed 42 and written
-as OUTDIR/<line name>.wav at 22.05 kHz. The recipe and its sources are in
+The models load once, before the first line; each line is then converted from seed 42,
+so the same line gives the same output wherever it sits in the list, and is written as
+OUTDIR/<line name>.wav (22.05 kHz) beside the others; OUTDIR must not hold any input. The recipe and its sources are in
 references/voice-conversion.md. --self-test needs none of the packages.
 """
 import argparse
@@ -30,10 +31,18 @@ def parse(argv, env=os.environ):
     a = p.parse_args(argv)
     if not a.repo or not os.path.isfile(os.path.join(a.repo, "inference.py")):
         p.error("--repo (or SEED_VC_REPO) must be a Seed-VC clone with inference.py")
-    names = [os.path.basename(x) for x in a.lines]
+    names = [out_name(x) for x in a.lines]
     if len(set(names)) != len(names):
         p.error("two lines share a file name; their outputs would overwrite each other")
+    out = os.path.abspath(a.outdir)
+    if any(os.path.dirname(os.path.abspath(x)) == out for x in [a.ref, *a.lines]):
+        p.error("OUTDIR holds an input; write the conversions somewhere else")
     return a
+
+
+def out_name(line):
+    """The output keeps the line's name, always as .wav (the converter writes WAV)."""
+    return os.path.splitext(os.path.basename(line))[0] + ".wav"
 
 
 def main(argv):
@@ -44,6 +53,7 @@ def main(argv):
     for f in [ref, *lines]:
         if not os.path.isfile(f):
             sys.exit(f"seed-vc: no such file: {f}")
+    import inspect
     import random
     import runpy
     import shutil
@@ -61,8 +71,10 @@ def main(argv):
         if "models" not in loaded:
             loaded["models"] = load_models(args)
         return loaded["models"]
-    g["main"].__globals__["load_models"] = load_once
+    # main() is wrapped by @torch.no_grad(): its own globals are the wrapped function's.
+    inspect.unwrap(g["main"]).__globals__["load_models"] = load_once
     os.makedirs(outdir, exist_ok=True)
+    load_once(argparse.Namespace(**RECIPE))   # loading draws random numbers: do it before seeding
     for src in lines:
         random.seed(SEED)
         np.random.seed(SEED)
@@ -72,8 +84,8 @@ def main(argv):
             out = [f for f in os.listdir(tmp) if f.endswith(".wav")]
             if len(out) != 1:
                 sys.exit(f"seed-vc: expected one wav for {src}, got {out}")
-            shutil.move(os.path.join(tmp, out[0]), os.path.join(outdir, os.path.basename(src)))
-        print("ok", os.path.basename(src), flush=True)
+            shutil.move(os.path.join(tmp, out[0]), os.path.join(outdir, out_name(src)))
+        print("ok", out_name(src), flush=True)
 
 
 def self_test():
@@ -83,7 +95,11 @@ def self_test():
         a = parse(["r.wav", "out", "a.wav", "b.wav"], env={"SEED_VC_REPO": repo})
         assert a.repo == repo and a.lines == ["a.wav", "b.wav"]
         assert parse(["r.wav", "out", "a.wav", "--repo", repo], env={}).repo == repo
+        assert out_name("x/line.mp3") == "line.wav" and out_name("a.b.wav") == "a.b.wav"
         for argv, env in ((["r.wav", "out", "x/a.wav", "y/a.wav"], {"SEED_VC_REPO": repo}),
+                          (["r.wav", "out", "x/a.wav", "y/a.mp3"], {"SEED_VC_REPO": repo}),
+                          (["r.wav", ".", "a.wav"], {"SEED_VC_REPO": repo}),
+                          (["out/r.wav", "out", "a.wav"], {"SEED_VC_REPO": repo}),
                           (["r.wav", "out", "a.wav"], {}),
                           (["r.wav", "out", "a.wav"], {"SEED_VC_REPO": os.path.join(repo, "missing")})):
             try:

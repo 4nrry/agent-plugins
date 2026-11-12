@@ -26,7 +26,7 @@ key's budget belongs to something else.
 | Qwen3-TTS 1.7B | nothing (local) | 8 GB GPU | Apache-2.0 | Portuguese sounds European; `--instruct` does not fix it |
 | Chatterbox Multilingual (v2) | nothing (local) | 8 GB GPU, Python 3.11 | MIT | the `perth` watermarker is `None` in some builds: fall back to the dummy one; upstream calls Chatterbox retired research, no longer maintained, since August 2026 |
 | Chatterbox, Brazilian Portuguese pack | nothing (local) | 8 GB GPU, about 3.3 GB (carried over) | MIT | `ResembleAI/Chatterbox-Multilingual-pt-br`; chatterbox-tts 0.1.7 from PyPI cannot load it, it needs the upstream source |
-| Gemini TTS (`gemini-3.8-flash-tts`) | Gemini API key, per use | cloud, Gemini API | Gemini API terms | not tried yet |
+| Gemini TTS (`gemini-3.8-flash-tts`) | Gemini API key, per use | cloud, Gemini API | Gemini API terms | not run through this plugin |
 
 ## Which one, by ear
 
@@ -36,12 +36,14 @@ same seed, on Chatterbox v2 and the pack, without a side-by-side against the
 cloud. The verdict, recorded in that day's notes on the machine's tooling:
 
 - The Brazilian Portuguese pack sounds slightly better than Chatterbox v2.
-- No local engine reads Brazilian Portuguese as well as ElevenLabs or Gemini
-  TTS Flash. Final pt-BR narration goes to one of those.
+- The listener's judgment, which this comparison did not test: no
+  local engine reads Brazilian Portuguese as well as ElevenLabs or Gemini TTS
+  Flash.
 - In English the local engines are good: try them first.
 
-So: pt-BR narration that ships through a cloud TTS; the pt-BR pack for drafts,
-work without a network and cloned voices; English local first. In the same
+The maintainer's rule from that: pt-BR narration that ships through a cloud
+TTS; the pt-BR pack for drafts, work without a network and cloned voices;
+English local first. In the same
 notes Whisper large-v3-turbo transcribed the six test takes without a word
 wrong, so the difference is accent and prosody, which only listening judges.
 
@@ -57,7 +59,7 @@ directory, with the environment's Python as `python`:
 | `qwen-tts.py "text" -o out.wav [--instruct "..."] [--clone ref.wav --ref-text "..."] [--seed N]` | `uv venv -p 3.12`, then `uv pip install qwen-tts torch soundfile` | 4.5 s of speech in 22 s, model already cached |
 | `chatterbox-tts.py "text" -o out.wav [--ref voice.wav] [--seed N]` | `uv venv -p 3.11`, then `uv pip install chatterbox-tts` | v2: 4.1 s of speech in 63 s with the load |
 | `chatterbox-tts.py ... --model pt-br --source SRC` | the same, plus a checkout of `resemble-ai/chatterbox` newer than 0.1.7; SRC is its `src/` | 3.8 s of speech in 72 s with the load |
-| `seed-vc.py REF.wav OUTDIR a.wav [b.wav ...]` | see [voice-conversion.md](voice-conversion.md) | two lines in 112 s with the load |
+| `seed-vc.py REF.wav OUTDIR a.wav [b.wav ...]` | see [voice-conversion.md](voice-conversion.md) | three lines in 24 s with the load |
 
 - The first run of each model downloads it into the Hugging Face cache.
   `--model pt-br` fetches the pack's three files and three from the base

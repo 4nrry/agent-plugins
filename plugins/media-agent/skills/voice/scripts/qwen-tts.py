@@ -11,6 +11,7 @@ with it, the Base model, which clones from the reference (more closely when
 --self-test needs none of the packages.
 """
 import argparse
+import os
 import sys
 import time
 
@@ -25,7 +26,7 @@ def parse(argv):
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("text")
     p.add_argument("-o", "--out", default="qwen-out.wav")
-    p.add_argument("--instruct", default=DEFAULT_INSTRUCT, help="the voice, in words (VoiceDesign only)")
+    p.add_argument("--instruct", help="the voice, in words (VoiceDesign only; default: a calm Brazilian male voice)")
     p.add_argument("--clone", help="reference audio to clone (switches to the Base model)")
     p.add_argument("--ref-text", help="transcript of --clone")
     p.add_argument("--language", default="Portuguese")
@@ -34,6 +35,13 @@ def parse(argv):
     a = p.parse_args(argv)
     if a.ref_text and not a.clone:
         p.error("--ref-text only goes with --clone")
+    if a.instruct and a.clone:
+        p.error("--instruct does nothing with --clone: the reference sets the voice")
+    if a.size == "0.6B" and not a.clone:
+        p.error("there is no 0.6B VoiceDesign model; use --size 1.7B, or --clone")
+    if a.clone and not os.path.isfile(a.clone):
+        p.error(f"no such file: {a.clone}")
+    a.instruct = a.instruct or DEFAULT_INSTRUCT
     return a
 
 
@@ -60,14 +68,18 @@ def main(argv):
 def self_test():
     assert model_id("1.7B", None) == "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
     assert model_id("0.6B", "ref.wav") == "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
-    a = parse(["oi", "--clone", "r.wav", "--ref-text", "oi"])
-    assert a.clone == "r.wav" and a.language == "Portuguese"
-    try:
-        parse(["oi", "--ref-text", "oi"])
-    except SystemExit:
-        pass
-    else:
-        raise AssertionError("--ref-text without --clone must be refused")
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".wav") as ref:
+        a = parse(["oi", "--clone", ref.name, "--ref-text", "oi", "--size", "0.6B"])
+        assert a.clone == ref.name and a.language == "Portuguese"
+        assert parse(["oi"]).instruct == DEFAULT_INSTRUCT
+        for bad in (["oi", "--ref-text", "oi"], ["oi", "--size", "0.6B"],
+                    ["oi", "--clone", ref.name, "--instruct", "x"], ["oi", "--clone", ref.name + ".missing"]):
+            try:
+                parse(bad)
+            except SystemExit:
+                continue
+            raise AssertionError(f"must be refused: {bad}")
     print("qwen-tts self-test: ok")
 
 

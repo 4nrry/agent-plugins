@@ -27,7 +27,8 @@ repository is archived, so the recipe pins its last commit.
 | Reference | the first 25 s | `inference.py` cuts the reference there; a longer one adds nothing |
 
 `scripts/seed-vc.py` applies the recipe: it loads the models once, converts
-each line with seed 42 and writes `OUTDIR/<line name>.wav`:
+each line from seed 42 and writes `OUTDIR/<line name>.wav`, refusing an
+`OUTDIR` that holds an input:
 
 ```bash
 git clone https://github.com/Plachtaa/seed-vc && git -C seed-vc checkout 51383efd921027683c89e5348211d93ff12ac2a8
@@ -41,7 +42,8 @@ in, torch aside. An installed copy, checked on 2026-11-11: Python 3.10.22,
 torch and torchaudio 2.4.0+cu121, an environment of 5.8 GB, and 1.8 GB of
 checkpoints that the first run downloaded into the clone. There, the script
 gave the same samples as the toolbox's own wrapper for two lines (largest
-difference 0), each 3.800 s in and 3.796 s out.
+difference 0), each 3.800 s in and 3.796 s out, and the same samples for one
+line given twice under two names. Three lines took 24 s, the load included.
 
 Carried over, not re-run: a short line converts in about 4 s on an RTX 4070
 Laptop after about 40 s of model loading (the notes of the media toolbox this

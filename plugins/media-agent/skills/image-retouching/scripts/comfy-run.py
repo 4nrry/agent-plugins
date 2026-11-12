@@ -121,6 +121,8 @@ def main():
         sys.exit(f"{a.workflow} takes an image and a prompt")
     if a.workflow in MASK_NODE and bool(a.mask) == bool(a.rect):
         sys.exit("pass --mask OR --rect")
+    if a.workflow not in MASK_NODE and (a.mask or a.rect):
+        sys.exit(f"{a.workflow} takes no mask: remove and inpaint do")
 
     proc, ready = None, False
     try:

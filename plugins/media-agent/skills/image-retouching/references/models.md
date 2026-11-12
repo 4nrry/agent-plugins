@@ -25,9 +25,9 @@ the source as a reference latent on both the prompt and its zeroed
 conditioning. Three instructions on a 1024×576 Z-Image still ("add a small
 succulent in a white pot to the left of the mug", "remove the mug", "make
 the mug matte navy blue") each did what was asked and kept the scene, in 12
-to 15 s once loaded (46 s for the first, which loaded the model), with VRAM at
-7.7 GB at the peak. The output was 1360×768: the source is rescaled to one
-megapixel. Away from the change, pixels differed from the source by 2.6 to
+to 15 s once loaded (46 s for the first, which loaded the model), with
+7,668 MiB of VRAM in use at the peak. The output was 1360×768: the source is
+rescaled to about one megapixel, in steps of 16 pixels. Away from the change, pixels differed from the source by 2.6 to
 8.4 levels on average after scaling back, and 26 to 41 % of them by more than
 8.
 
