@@ -54,8 +54,10 @@ beside this one, this plugin's rules win where they disagree: no telemetry,
 and no sign-in, upload of the project or paid call the user did not ask for. The hooks read the tool call and the session transcript, need `jq`,
 and write one marker file per session under the temp directory.
 
-The plugin does not decide licenses for you (Remotion's headcount limit,
-ElevenLabs' free tier): the skills state the rule and the user decides. Paths
+A new video project uses HyperFrames (Apache-2.0); Remotion when the project
+is already React or the user names it. The plugin does not decide licenses
+for you (Remotion's headcount limit, ElevenLabs' free tier): the skills state
+the rule and the user decides. Paths
 and keys come from environment variables (`COMFY_HOME`, `*_API_KEY`).
 
 **Evidence:** behavior checks from one real production, not effect
@@ -66,6 +68,8 @@ The cut-out route's timings and file sizes from one landing-page prototype are i
 What `page-check.mjs` found on planted defects and on that prototype is in
 [`2026-11-10-page-check-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-10-page-check-CLAIMS.md).
 One small render each on HyperFrames and Remotion, with what they downloaded, is in
-[`2026-11-11-hyperframes-remotion-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-11-hyperframes-remotion-CLAIMS.md).
+[`2026-11-11-hyperframes-remotion-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-11-hyperframes-remotion-CLAIMS.md);
+the same animation built in both, and why HyperFrames became the default, in
+[`2026-11-12-compositor-default-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-12-compositor-default-CLAIMS.md).
 What each vendor's own plugin installs, costs in context and says about sign-in and prices is in
 [`2026-11-11-vendor-plugins-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-11-vendor-plugins-CLAIMS.md).

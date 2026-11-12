@@ -11,19 +11,21 @@ each one's commands, license and traps are in its reference.
 
 ## Choose the compositor
 
-| | Remotion | HyperFrames |
+| | HyperFrames (default) | Remotion |
 |---|---|---|
-| Source | React components, each a function of the frame | HTML files with a paused timeline the renderer seeks |
-| License | paid for a company of four or more people | Apache-2.0 |
-| Preview | Studio, whose visual edits are written back to the code | a browser editor on the same files |
-| Installs | a Node project with a bundler | one pinned package in the project |
-| Fits when | the project is already React, or shares components with an app | the source is HTML, a site or a design export, or the license must not depend on headcount |
-| Reference | [remotion.md](references/remotion.md) | [hyperframes.md](references/hyperframes.md) |
+| Source | HTML files with a paused timeline the renderer seeks | React components, each a function of the frame |
+| License | Apache-2.0 | paid for a company of four or more people |
+| Preview | a browser editor on the same files | Studio, whose visual edits are written back to the code |
+| Installs | one pinned package in the project | a Node project with a bundler |
+| Fits when | any new project, and a source that is HTML, a site or a design export | the project is already React, or shares components with an app |
+| Reference | [hyperframes.md](references/hyperframes.md) | [remotion.md](references/remotion.md) |
 
 - An existing project keeps its compositor.
-- A new one where the request names none and both fit: ask the user which,
-  once, before installing anything. Both download their own headless Chrome on
-  the first render, and Remotion's license is for whoever signs to decide.
+- A new one uses HyperFrames, unless the request names Remotion or the
+  project is already React or shares components with an app.
+- Before installing Remotion for a company of four or more people, say that
+  it needs a paid license; whoever signs decides.
+- Either one downloads its own headless Chrome on the first render.
 - Read the reference's license section before writing a scene.
 - Each vendor publishes its own plugin (`hyperframes`, `remotion`). When it is
   installed, load its skills for how to write a scene and run the CLI. This
