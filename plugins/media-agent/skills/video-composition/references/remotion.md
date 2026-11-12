@@ -4,6 +4,14 @@ Checked against the repository at tag v4.0.543 on 2026-11-11; 5.0 is not
 released. What was run is in the
 [2026-11-11 record](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-11-hyperframes-remotion-CLAIMS.md).
 
+## Contents
+- License
+- Traps
+- Studio and the paid editor products
+- With Remotion's plugin installed
+- 3D with `@remotion/three`
+- Formats and stills
+
 ## License
 
 Source-available, not open source. Free for an individual, a for-profit
@@ -51,8 +59,11 @@ the rule and leave the decision to whoever signs. Licenses are bought at
 - A minimal project is about 250 MB of `node_modules`, and the first render
   downloads Chrome Headless Shell (102 MB, 243 MB on disk) into
   `node_modules/.remotion`. Tell the user before it.
-- A local render reports nothing unless a license key is set. Rendering in the
-  browser with `@remotion/web-renderer` always reports to Remotion.
+- A local render reports nothing unless a license key is set, and
+  `free-license` counts as a key. On the free license the report is
+  voluntary: pass no `--license-key`, and no `licenseKey` to `renderMedia()`
+  and the other render APIs. Rendering in the browser with
+  `@remotion/web-renderer` always reports to Remotion.
 
 ## Studio and the paid editor products
 
@@ -66,11 +77,15 @@ the rule and leave the decision to whoever signs. Licenses are bought at
   editor product for end users. Neither edits a video: do not suggest them for
   making one.
 
-## For agents
+## With Remotion's plugin installed
 
-- Remotion publishes its own skills (`npx remotion skills add`, written to
-  `.agents/skills`) and a Claude Code plugin. Install them only when the user
-  asks.
+- Its skills are the API reference; `remotion-best-practices` routes to the
+  others. Load them to write components. The license, the traps above and
+  this skill's delivery checks still apply.
+- Its render skill and its app-building skill say to pass `free-license` as
+  the key on the free license. Leave the key out, as above.
+- Without the plugin, `npx remotion skills add` writes Remotion's skills to
+  `.agents/skills` in the project.
 - Any docs page comes back as Markdown with `.md` appended to its URL.
 - The hosted Remotion MCP server was shut down on 2026-10-26: remove
   `remotion-documentation` from an MCP config that still lists it.

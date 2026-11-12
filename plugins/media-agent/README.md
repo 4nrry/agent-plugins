@@ -24,7 +24,7 @@ hooks nor the local MCP server, so only the skills' text applies there.
 | `voice` | one sentence per file, caption vs spoken text, -16 LUFS, the durations JSON | `vo-normalize.sh`, `hermes-tts.sh` (xAI voice); TTS engine notes |
 | `audio` | exact-length music, SFX, fixing real recordings, word times for captions | ElevenLabs (`eleven.py`), ACE-Step, synthesized effects (`sfx-synth.py`), WhisperX notes |
 | `stock-media` | licenses and credits per item, which library has what, the trap in each license | stock search (`media-search.py`: Openverse, Freesound, Pexels, Pixabay) |
-| `video-composition` | video as code: frame-driven scenes, captions from the voice JSON, formats from one source, short vertical video for Reels, Shorts and TikTok, motion for cuts and text | notes for Remotion, HyperFrames and a capture written by hand (HTML + Chrome + ffmpeg) |
+| `video-composition` | video as code: frame-driven scenes, captions from the voice JSON, formats from one source, short vertical video for Reels, Shorts and TikTok, motion for cuts and text | notes for Remotion and HyperFrames, which work beside each vendor's own plugin |
 | `video-editing` | re-render vs patch the mp4, which Kinocut tool for which edit, checking the output | Kinocut, registered as an MCP server (`.mcp.json`); its CLI as the fallback |
 | `3d-turntable` | a 360° product turn as transparent frames | headless Blender (`turntable.py`) |
 | `3d-scenes` | scripted sets, rigged .glb figures that keep their rotation and pose, preview and final quality, frozen-frame check | `scene_kit.py`, `check_motion.py` (headless Blender) |
@@ -49,7 +49,9 @@ locally. Remotion and HyperFrames are not bundled: when the `video-composition`
 skill has the agent run them, npm serves the packages, each downloads its own
 headless Chrome on the first render, and the HyperFrames CLI sends usage
 telemetry to HeyGen unless `HYPERFRAMES_NO_TELEMETRY=1` is set, which the
-skill sets on every command. The hooks read the tool call and the session transcript, need `jq`,
+skill sets on every command. With HeyGen's or Remotion's own plugin installed
+beside this one, this plugin's rules win where they disagree: no telemetry,
+and no sign-in, upload of the project or paid call the user did not ask for. The hooks read the tool call and the session transcript, need `jq`,
 and write one marker file per session under the temp directory.
 
 The plugin does not decide licenses for you (Remotion's headcount limit,
@@ -65,3 +67,5 @@ What `page-check.mjs` found on planted defects and on that prototype is in
 [`2026-11-10-page-check-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-10-page-check-CLAIMS.md).
 One small render each on HyperFrames and Remotion, with what they downloaded, is in
 [`2026-11-11-hyperframes-remotion-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-11-hyperframes-remotion-CLAIMS.md).
+What each vendor's own plugin installs, costs in context and says about sign-in and prices is in
+[`2026-11-11-vendor-plugins-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-11-vendor-plugins-CLAIMS.md).

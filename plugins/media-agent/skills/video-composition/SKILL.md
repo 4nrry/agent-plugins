@@ -11,22 +11,26 @@ each one's commands, license and traps are in its reference.
 
 ## Choose the compositor
 
-| | Remotion | HyperFrames | Capture written by hand |
-|---|---|---|---|
-| Source | React components, each a function of the frame | HTML files with a paused timeline the renderer seeks | one `comp.html` with `seek(t)` |
-| License | paid for a company of four or more people | Apache-2.0 | none |
-| Preview | Studio, whose visual edits are written back to the code | a browser editor on the same files | none |
-| Installs | a Node project with a bundler | a CLI in the npx cache; a package in the project only for Kinocut's tools | Playwright |
-| Fits when | the project is already React, or shares components with an app | the source is HTML, a site or a design export, or the license must not depend on headcount | nothing but Playwright may be installed |
-| Reference | [remotion.md](references/remotion.md) | [hyperframes.md](references/hyperframes.md) | [html-capture.md](references/html-capture.md) |
+| | Remotion | HyperFrames |
+|---|---|---|
+| Source | React components, each a function of the frame | HTML files with a paused timeline the renderer seeks |
+| License | paid for a company of four or more people | Apache-2.0 |
+| Preview | Studio, whose visual edits are written back to the code | a browser editor on the same files |
+| Installs | a Node project with a bundler | one pinned package in the project |
+| Fits when | the project is already React, or shares components with an app | the source is HTML, a site or a design export, or the license must not depend on headcount |
+| Reference | [remotion.md](references/remotion.md) | [hyperframes.md](references/hyperframes.md) |
 
 - An existing project keeps its compositor.
-- A new one where the request names none and both Remotion and HyperFrames
-  fit: ask the user which, once, before installing anything. Both download
-  their own headless Chrome on the first render, HyperFrames sends usage
-  telemetry until it is turned off, and Remotion's license is for whoever
-  signs to decide.
+- A new one where the request names none and both fit: ask the user which,
+  once, before installing anything. Both download their own headless Chrome on
+  the first render, and Remotion's license is for whoever signs to decide.
 - Read the reference's license section before writing a scene.
+- Each vendor publishes its own plugin (`hyperframes`, `remotion`). When it is
+  installed, load its skills for how to write a scene and run the CLI. This
+  skill and its references decide the rest and win where the two disagree: no
+  telemetry, and no sign-in, upload of the project or paid call the user did
+  not ask for; media from this plugin's other skills; the delivery checks
+  below.
 
 ## Rules for any compositor
 
