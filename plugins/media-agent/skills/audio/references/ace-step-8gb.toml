@@ -1,5 +1,7 @@
 # ACE-Step 1.5 on an 8 GB GPU: instrumental background track, no auxiliary LM.
 # Usage: cd <ACE-Step-1.5 clone> && uv run python cli.py --config /path/to/ace-step-8gb.toml
+# with ACESTEP_CHECKPOINTS_DIR=<clone>/checkpoints set, or a run from any other
+# folder downloads the weights (about 10 GB) again into ./checkpoints there.
 #
 # What makes it fit: use_cot_* = false (otherwise the 1.7B LM is loaded even with
 # thinking = false), use_format/sample_mode = false, offload_* = true.
