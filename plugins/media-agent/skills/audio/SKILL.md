@@ -21,6 +21,9 @@ your own GPU; transcription alone on an Intel NPU) and
   checked: ElevenLabs ([elevenlabs.md](references/elevenlabs.md)) and ACE-Step
   ([local-music.md](references/local-music.md)) allow it, with the limits
   those files give; Google Flow Music has published no commercial terms.
+- ACE-Step: set `ACESTEP_CHECKPOINTS_DIR` to the clone's `checkpoints/` on
+  every run. Without it, a `cli.py` run from any other folder downloads about
+  10 GB of weights into `./checkpoints` there and still loads the clone's.
 - Make it the length of the cut. Generate at that length, or generate 40 s and
   loop with a 2 s crossfade: long generations degrade toward the end.
 - For institutional pieces: instrumental, no drums, slow, minimal.
