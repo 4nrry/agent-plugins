@@ -24,8 +24,8 @@ hooks nor the local MCP server, so only the skills' text applies there.
 | `voice` | one sentence per file, caption vs spoken text, -16 LUFS, the durations JSON, which engine for pt-BR | `vo-normalize.sh`, `hermes-tts.sh` (xAI voice); local engines (`kokoro-tts.py`, `qwen-tts.py`, `chatterbox-tts.py`) and voice conversion (`seed-vc.py`) |
 | `audio` | exact-length music, SFX, fixing real recordings, word times for captions | ElevenLabs (`eleven.py`), ACE-Step, synthesized effects (`sfx-synth.py`), WhisperX notes |
 | `stock-media` | licenses and credits per item, which library has what, the trap in each license | stock search (`media-search.py`: Openverse, Freesound, Pexels, Pixabay) |
-| `video-composition` | video as code: frame-driven scenes, captions from the voice JSON, formats from one source, short vertical video for Reels, Shorts and TikTok, motion for cuts and text | notes for Remotion and HyperFrames, which work beside each vendor's own plugin |
-| `video-editing` | re-render vs patch the mp4, which Kinocut tool for which edit, checking the output | Kinocut, registered as an MCP server (`.mcp.json`); its CLI as the fallback |
+| `video-composition` | video as code: frame-driven scenes, captions from the voice JSON, formats from one source, short vertical video for Reels, Shorts and TikTok, motion for cuts and text, a Three.js stage (one camera, sub-frame motion blur, impacts, 3D to HTML) | notes for Remotion and HyperFrames, which work beside each vendor's own plugin; a tested Three.js stage for HyperFrames (`references/threejs-stage/`) |
+| `video-editing` | re-render vs patch the mp4, which Kinocut tool for which edit, checking the output, breaking a video down frame by frame | Kinocut, registered as an MCP server (`.mcp.json`); its CLI as the fallback; `breakdown.py` (cuts, flashes against their sound, word frames, contact sheets) |
 | `3d-turntable` | a 360° product turn as transparent frames | headless Blender (`turntable.py`) |
 | `3d-scenes` | scripted sets, rigged .glb figures that keep their rotation and pose, preview and final quality, frozen-frame check | `scene_kit.py`, `check_motion.py` (headless Blender) |
 | `sourced-video` | two opened sources per fact, what stays out, equal time for each side, sources on screen | `check_sources.py` (episode spec) |
@@ -73,3 +73,5 @@ the same animation built in both, and why HyperFrames became the default, in
 [`2026-11-12-compositor-default-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-12-compositor-default-CLAIMS.md).
 What each vendor's own plugin installs, costs in context and says about sign-in and prices is in
 [`2026-11-11-vendor-plugins-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-11-vendor-plugins-CLAIMS.md).
+The Three.js stage test, the breakdown of the ad it learned from and the checks of `breakdown.py` are in
+[`2026-11-17-threejs-stage-CLAIMS.md`](https://github.com/4nrry/agent-plugins/blob/main/bench/plugins/media-agent/results/2026-11-17-threejs-stage-CLAIMS.md).

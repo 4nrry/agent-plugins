@@ -1,0 +1,41 @@
+<!doctype html>
+<html
+  lang="pt-BR"
+  data-composition-variables='[{"id":"samples","type":"number","label":"Motion-blur samples","description":"0 sizes the samples to the motion (one per 2 px of travel, 16 to 64, none when still); 1 is no blur; any other number is fixed.","default":0,"min":0,"max":64,"step":1},{"id":"shutter","type":"number","label":"Shutter angle","description":"Degrees of one frame the shutter stays open.","default":180,"min":0,"max":360,"step":1}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <title>Three.js stage test</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1080px; height: 1920px; overflow: hidden; background: #0b0f1a; }
+      #root { position: relative; width: 100%; height: 100%; }
+      #stage { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+      #ui { position: absolute; inset: 0; pointer-events: none; font-family: "Inter", sans-serif; }
+      #count { position: absolute; left: 0; right: 0; top: 440px; text-align: center; color: #e7c77d;
+               font-size: 260px; font-weight: 900; line-height: 1; opacity: 0; transform-origin: 50% 60%; }
+      #caption { position: absolute; left: 130px; right: 200px; top: 312px; text-align: center; color: #fff;
+                 font-size: 66px; font-weight: 800; line-height: 1.1; text-shadow: 0 2px 14px rgba(0, 0, 0, 0.75); }
+      #caption span { display: inline-block; margin: 0 12px; opacity: 0; }
+      .bar { position: absolute; opacity: 0; border-radius: 6px; overflow: hidden; }
+      .bar .spine, .bar .row { position: absolute; inset: 0; display: flex; align-items: center; }
+      .bar .frame { position: absolute; border: 2px solid #e7c77d; }
+      .bar .spine { justify-content: center; color: #e7c77d; font: 700 64px "EB Garamond", serif; padding-top: 0.05em; }
+      .bar .row { padding-left: 44px; color: #fff; font-size: 46px; font-weight: 700; opacity: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="7.3"
+         data-width="1080" data-height="1920" data-fps="30" data-no-timeline>
+      <canvas id="stage" class="clip" data-start="0" data-duration="7.3" data-track-index="1"></canvas>
+      <div id="ui" class="clip" data-start="0" data-duration="7.3" data-track-index="2">
+        <div id="count"></div>
+        <div id="caption"></div>
+        <div id="bars"></div>
+      </div>
+      <audio id="sfx" class="clip" src="sfx.wav" data-start="0" data-duration="6" data-track-index="3"></audio>
+    </div>
+    <script type="module" src="assets/stage.js"></script>
+  </body>
+</html>

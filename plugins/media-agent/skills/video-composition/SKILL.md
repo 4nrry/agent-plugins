@@ -1,6 +1,6 @@
 ---
 name: video-composition
-description: Builds a marketing video as code from its source project — frame-driven scenes, captions from the voice JSON, b-roll placement, ducked music, real-time 3D, and 16:9, 1:1, 9:16, 4:5 plus a carousel from one source. Use for an institutional video, a short vertical video (Reels, Shorts, TikTok), code-drawn motion graphics, LinkedIn formats, declaring AI at upload, Remotion, HyperFrames, Three.js, or HTML rendered to video.
+description: Builds a marketing video as code from its source project — frame-driven scenes, captions from the voice JSON, b-roll placement, ducked music, real-time 3D, and 16:9, 1:1, 9:16, 4:5 plus a carousel from one source. Use for an institutional video, a short vertical video (Reels, Shorts, TikTok), code-drawn motion graphics, LinkedIn formats, declaring AI at upload, Remotion, HyperFrames, a Three.js stage with whips, motion blur and impacts, or HTML rendered to video.
 ---
 
 # Video composition as code
@@ -47,16 +47,18 @@ each one's commands, license and traps are in its reference.
   follow the voice word by word, come from aligning that text to the audio
   (`audio` skill).
 - **Audio levels:** each sentence at -16 LUFS before assembly, music ducked
-  under the voice, and `loudnorm` at -16 LUFS on the final file; the render
-  does not normalize.
+  under the voice and back up when it ends, and `loudnorm` at -16 LUFS on the
+  final file; the render does not normalize.
 - **Footage:** stock b-roll and photos need a license per item
   (`stock-media` skill for the rule; its `scripts/media-search.py` searches
   Pexels, Pixabay and Openverse). Download at 1080p30: re-encoding 4K at
   render time costs more. Generated shots come from the `video-generation`
   skill.
 - **3D:** a pre-rendered turntable (`3d-turntable` skill) looks best for the
-  product hero shot and takes minutes; a real-time Three.js scene takes seconds
-  and suits supporting shots and reframing one move for several formats.
+  product hero shot and takes minutes. A real-time Three.js stage takes
+  seconds and can carry a whole piece of objects, type and interface: one
+  camera with whips instead of cuts, motion blur, impacts and the hand-off
+  from 3D to HTML are in [references/threejs.md](references/threejs.md).
   Scripted Blender sets with characters are the `3d-scenes` skill; their
   plates come in here, and a tape look over them is in
   [references/lofi-look.md](references/lofi-look.md).
@@ -98,6 +100,9 @@ off.
 - **Captions.** They carry the voice; emphasis (an accent color, a box) is rare:
   the product name or the one number, never two at once. Never over a mouth or
   chin, and never under the platform's buttons.
+- **Call to action.** The written call lands with the spoken one. In a
+  25 s ad broken down frame by frame, it came 2.4 s after the words, and the
+  end card ran 3.3 s with no voice.
 - **Test the opening.** Render two or three openings (only the hook changes,
   which code makes cheap) and post them as tests to people who do not follow
   the account; keep the one that holds. Compare with the account's own median:
@@ -118,6 +123,10 @@ off.
 - Check fps, duration and resolution with `ffprobe`, and -16 LUFS with
   `ffmpeg -af ebur128`.
 - Look at frame 0 on its own, at phone size: it is what the feed shows.
+- Run the `video-editing` skill's `scripts/breakdown.py` on the render: hard
+  cuts, each flash against its sound in frames, each word's frame, and a
+  sheet of consecutive frames around every change. The same script breaks
+  down a reference video before you copy what it does.
 - Encode H.264 High, `yuv420p`, AAC at 48 kHz, `-movflags +faststart`, at the
   frame rate the piece was made in, and check the platform's length cap
   (`references/short-form.md`).
