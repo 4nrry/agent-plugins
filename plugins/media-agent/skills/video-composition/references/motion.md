@@ -46,6 +46,10 @@ fraction of its width:
 
 - One more word every 0.14 s. Measure the whole line against the safe zone
   from the first word, so the last word cannot spill.
+- Under a voice with word times (`audio` skill), each word can enter on the
+  frame where it is spoken instead. Not yet used in this series; in a 25 s ad
+  broken down frame by frame, each of 18 title words appeared within 2 frames
+  of its spoken start.
 - Each new word jolts the line ±6 px horizontally for 2 frames.
 - A tick under each word: band noise 1.8–5.2 kHz, 40 ms, exponential decay,
   about −21 dBFS.
@@ -114,6 +118,9 @@ Parameters as their sources give them; not yet tried in this series.
   ([Fluxnote](https://fluxnote.io/guides/how-to-make-alex-hormozi-style-captions)).
   This conflicts with the skill's rule of one emphasis at a time; pick one
   per series.
+- **On a Three.js stage:** a camera whip with sub-frame motion blur, an
+  impact (flash, ring, sparks, number and hit on one frame) and the hand-off
+  from 3D to HTML, measured in a 6 s test: [threejs.md](threejs.md).
 - **Documentary map moves:** track points placed in Google Earth Studio,
   exported as 3D data to After Effects, where a script builds a 3D camera and
   null layers with text attached, so labels follow the camera

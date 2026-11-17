@@ -1,6 +1,6 @@
 ---
 name: video-editing
-description: Edits a finished video file when only the rendered mp4 exists, with typed operations that return structured results; text or scene changes go back to the source. Use to trim, cut a teaser, merge, resize or crop an existing file, burn in an .srt or subtitles, normalize a finished mp4's audio or extract a frame, or when Kinocut or ffmpeg is named.
+description: Edits a finished video file when only the rendered mp4 exists, with typed operations that return structured results; text or scene changes go back to the source. Use to trim, cut a teaser, merge, resize or crop an existing file, burn in an .srt or subtitles, normalize a finished mp4's audio or extract a frame, to break a video down frame by frame (cuts, flashes against their sound, when each word lands), or when Kinocut or ffmpeg is named.
 ---
 
 # Editing finished video
@@ -13,6 +13,7 @@ description: Edits a finished video file when only the rendered mp4 exists, with
 | Cut, merge, resize, crop, extract a frame, burn in an `.srt` | a typed operation on the mp4 (Kinocut, below) |
 | Normalize each voice-over sentence | before assembly (`voice` skill); it lands closer to -16 LUFS than normalizing the mixed file |
 | A filter the typed tool lacks | raw ffmpeg |
+| Learn from a reference video, or check a render's timing | `scripts/breakdown.py` (below) |
 
 Whatever the tool: check the output with `ffprobe` (duration, fps, streams)
 and watch the cut points.
@@ -22,6 +23,35 @@ With raw ffmpeg, give `drawtext` a font file
 by name and stop with `impossible to find font information`, with or without
 `font=`. Subtitles burned through libass still
 find fonts by name.
+
+## Breaking a video down frame by frame
+
+`scripts/breakdown.py VIDEO --out DIR [--words WORDS.json]` reads a finished
+mp4 and writes `report.md` and `report.json`. It needs ffmpeg, numpy and
+Pillow. The report has:
+
+- the hard cuts;
+- the change zones, each with a sheet of its consecutive frames;
+- the flashes, each with its nearest low hit in frames;
+- the sound onsets, loudness and silences;
+- with `--words` (WhisperX JSON or a list of `{word, start}`), each word's
+  frame.
+
+It also writes contact sheets every half second. Use it on a reference
+before copying what it does, and on a render before delivery.
+
+- A cut needs a frame that changes far more than its neighbours and does not
+  come back. A flash rises and falls with the same picture before and after,
+  and its fall is part of it. So a whip, a fade to a white card, a camera
+  move or a held white frame reads as a zone, not a cut.
+- Its thresholds were tuned on four clips and tried on no other: a 25 s ad
+  (0 cuts and 4 flashes, as read by eye), two synthetic clips (a cut, a
+  flash, a held flash) and a 6 s Three.js render (3 flashes, 0 cuts). The
+  record is the Three.js stage one linked from the plugin's README.
+- A sound can read one frame early: AAC spreads a hit's energy a little
+  before it.
+- Text appearing on screen is a small change under the zone threshold: read
+  it off the sheets against the word table.
 
 ## Kinocut, the bundled tool
 

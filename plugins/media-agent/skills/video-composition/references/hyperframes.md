@@ -75,6 +75,13 @@ npx hyperframes doctor --json                   # always exits 0
   PID.
 - Config goes to `~/.hyperframes/`, fonts and project history to
   `~/.cache/hyperframes/`, outside the project.
+- 0.9.59 refuses to run Chrome from a cache that another account could write:
+  with `~/.cache` at mode 775 it stopped with "can be changed by another user
+  account" and downloaded nothing. Do not change the user's `~/.cache`
+  mode; set `HYPERFRAMES_CACHE_DIR` to a private folder (for example
+  `~/.hyperframes/cache`, mode 700) on every command. The browser downloads
+  again there, 261 MB, or the existing `chrome/chrome-headless-shell` folder
+  can be copied in.
 
 ## The contract
 
