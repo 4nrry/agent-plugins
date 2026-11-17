@@ -12,7 +12,10 @@ Writes into DIR:
   zone_NN.jpg             consecutive frames around each change zone
 
 WORDS is WhisperX JSON (segments[].words[]) or a list of {word, start, end}
-in seconds. Needs ffmpeg and ffprobe on PATH, numpy and Pillow.
+in seconds. Needs ffmpeg and ffprobe on PATH, numpy and Pillow. DIR is the
+script's own: it replaces frames/, overview_*.jpg and zone_*.jpg there.
+Frames are counted as decoded, so a variable-frame-rate file drifts against
+the sound and the word times.
 
 What it cannot see: a word appearing as text on screen is a small local
 change, below the zone threshold; read it off the zone and overview sheets.
@@ -52,16 +55,19 @@ def run(cmd, **kw):
 
 def probe(video):
     out = run(["ffprobe", "-v", "error", "-show_entries",
-               "stream=codec_type,codec_name,width,height,r_frame_rate,sample_rate,channels:format=duration",
+               "stream=codec_type,codec_name,width,height,r_frame_rate,avg_frame_rate,sample_rate,channels:format=duration",
                "-of", "json", str(video)], text=True).stdout
     info = json.loads(out)
     v = next((s for s in info["streams"] if s["codec_type"] == "video"), None)
     if v is None:
         sys.exit(f"breakdown: no video stream in {video}")
     a = next((s for s in info["streams"] if s["codec_type"] == "audio"), None)
-    num, den = (int(x) for x in v["r_frame_rate"].split("/"))
+    rate = v["r_frame_rate"] if not v["r_frame_rate"].startswith("0/") else v.get("avg_frame_rate", "0/0")
+    num, den = (int(x) for x in rate.split("/"))
+    if not num or not den:
+        sys.exit(f"breakdown: {video} reports no frame rate")
     return {"width": v["width"], "height": v["height"], "fps": num / den,
-            "fps_fraction": v["r_frame_rate"], "video_codec": v["codec_name"],
+            "fps_fraction": rate, "video_codec": v["codec_name"],
             "duration": float(info["format"]["duration"]),
             "audio": None if a is None else {"codec": a["codec_name"],
                                              "sample_rate": int(a["sample_rate"]),
@@ -132,7 +138,11 @@ def find_flashes(luma, shapes):
             back = len(after) > 0 and any(
                 shapes.corr(r, j + 1 + int(np.argmin(after))) >= SAME for r in refs)
             if falls and (kept or back):
-                out.append({"frame": j, "start": i, "rise": round(float(rise), 1)})
+                low = j + 1 + int(np.argmin(after))
+                end = next((k for k in range(j + 1, low + 1) if luma[k] - base < FLASH_FALL * rise), low)
+                out.append({"frame": i, "peak": j, "end": end, "rise": round(float(rise), 1)})
+                i = end + 1
+                continue
             i = j + 3
         else:
             i += 1
@@ -143,7 +153,9 @@ def find_cuts(d, shapes, flashes):
     """A hard cut is one frame that changes far more than its neighbours, after
     which the previous picture does not come back, and that is not a flash."""
     med = float(np.median(d[1:])) if len(d) > 1 else 0.0
-    in_flash = {k for f in flashes for k in range(f["start"], f["frame"] + 1)}
+    # The whole flash, its fall included: a white frame dropping back to the
+    # picture is not a cut.
+    in_flash = {k for f in flashes for k in range(f["frame"], f["end"] + 2)}
     cuts = []
     for i in range(1, len(d)):
         nb = max(d[i - 1] if i > 1 else 0.0, d[i + 1] if i + 1 < len(d) else 0.0)
@@ -167,7 +179,7 @@ def find_zones(d, cuts, flashes):
     for a, b in zones:
         peak = a + int(np.argmax(d[a:b + 1]))
         kind = "cut" if any(a <= c <= b for c in cuts) else \
-               "flash" if any(a <= f["frame"] <= b for f in flashes) else "move"
+               "flash" if any(a <= f["frame"] <= b or a <= f["peak"] <= b for f in flashes) else "move"
         out.append({"start": a, "end": b, "frames": b - a + 1, "peak_frame": peak,
                     "peak_diff": round(float(d[peak]), 1), "kind": kind})
     return out, round(thr, 2)
@@ -222,8 +234,11 @@ def loudness(video):
     if not m:
         return None
     j = json.loads(m.group(0))
-    return {"integrated_lufs": float(j["input_i"]), "true_peak_dbtp": float(j["input_tp"]),
-            "lra_lu": float(j["input_lra"])}
+
+    def num(key):  # a silent track gives -inf, which JSON cannot hold
+        v = float(j[key])
+        return v if np.isfinite(v) else None
+    return {"integrated_lufs": num("input_i"), "true_peak_dbtp": num("input_tp"), "lra_lu": num("input_lra")}
 
 
 def load_words(path, fps):
@@ -234,10 +249,10 @@ def load_words(path, fps):
         items = data
     out = []
     for w in items:
-        if "start" not in w:
+        if w.get("start") is None:
             continue
-        out.append({"word": w.get("word", w.get("text", "")).strip(), "start": float(w["start"]),
-                    "frame": int(float(w["start"]) * fps)})
+        out.append({"word": str(w.get("word", w.get("text", ""))).strip(), "start": float(w["start"]),
+                    "frame": int(float(w["start"]) * fps + 1e-6)})
     return out
 
 
@@ -277,8 +292,11 @@ def write_md(r, dest):
          + (f"; audio {p['audio']['codec']} {p['audio']['sample_rate']} Hz" if p["audio"] else "; no audio"), ""]
     if r.get("loudness"):
         lo = r["loudness"]
-        L += [f"Loudness: {lo['integrated_lufs']} LUFS integrated, true peak {lo['true_peak_dbtp']} dBTP, "
-              f"LRA {lo['lra_lu']} LU.", ""]
+        if lo["integrated_lufs"] is None:
+            L += ["Loudness: silent.", ""]
+        else:
+            L += [f"Loudness: {lo['integrated_lufs']} LUFS integrated, true peak {lo['true_peak_dbtp']} dBTP, "
+                  f"LRA {lo['lra_lu']} LU.", ""]
     L += [f"Frame difference: median {r['median_diff']}, zone threshold {r['zone_threshold']} "
           "(mean absolute difference of the grey frame, 0-255).", "",
           f"## Hard cuts: {len(r['cuts'])}", ""]
@@ -289,12 +307,13 @@ def write_md(r, dest):
         L.append(f"| {k + 1} | f{z['start']}-f{z['end']} | {t(z['start'])}-{t(z['end'])} | {z['kind']} | "
                  f"{z['peak_diff']} at f{z['peak_frame']} | {sheet_name} |")
     L += ["", "## Flashes and their sound", "",
+          "A flash's frame is the one where the light jumps; the peak can come a frame later. "
           "Offset is the sound hit's frame minus the flash's; positive means the sound comes later. "
           "A hit can read one frame early: AAC spreads a transient's energy a little before it.", "",
-          "| Flash | Time (s) | Luma rise | Nearest low hit | Offset (frames) |", "|---|---|---|---|---|"]
+          "| Flash | Time (s) | Peak | Luma rise | Nearest low hit | Offset (frames) |", "|---|---|---|---|---|---|"]
     for fl in r["flashes"]:
         h = fl.get("low_hit")
-        L.append(f"| f{fl['frame']} | {t(fl['frame'])} | {fl['rise']} | "
+        L.append(f"| f{fl['frame']} | {t(fl['frame'])} | f{fl['peak']} | {fl['rise']} | "
                  + (f"f{h} | {h - fl['frame']:+d} |" if h is not None else "none within "
                     f"{SYNC_WINDOW} frames | |"))
     if r.get("audio"):

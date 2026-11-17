@@ -50,18 +50,20 @@ stage adds to it.
   (`Georgia` came out as EB Garamond). Name the family, `await
   document.fonts.load()` in setup, and only then draw a `CanvasTexture` with
   it, so the texture and the HTML use the same letters.
-- Two renders of the same test were not bit-identical: 39 to 63 of 180 frames
-  differed, the worst at 50.1 dB PSNR (no visible difference), and the audio
-  was identical. Compare renders by PSNR, not by `sha256`.
+- Repeat renders were not bit-identical: 39 to 63 of 180 frames differed,
+  the worst at 50.1 dB PSNR (no visible difference), and the audio was
+  identical. With the sparks never culled, two renders of the final copy
+  still differed in 56 of 219 frames, so culling is not the cause. Compare renders by PSNR, not by `sha256`.
 
 ## One camera, whips instead of cuts
 
-The reference ad has no hard cut in 25 s (`breakdown.py`: 0 cuts, 14 change
-zones): every change of shot is a camera move.
+The reference ad has no hard cut in 25 s (`breakdown.py`, whose thresholds
+were tuned on that ad: 0 cuts, 14 change zones): every change of shot is a
+camera move.
 
 - Shots are `(position, target)` pairs. Inside a shot the camera drifts
-  linearly; between shots it whips in 4 to 6 frames with an ease-in-out
-  (reference: 4 to 5 frames; test: 5).
+  linearly; between shots it whips with an ease-in-out in 4 to 5 frames, as
+  in the reference (the test used 5).
 - Text leaves 2 frames before a whip and the next line enters on its word
   after it.
 
@@ -92,6 +94,9 @@ all the time pays more.
 - Render linear HDR (half float). Bloom from a bright pass (threshold about
   1.0) blurred at half and quarter size, then ACES tone mapping and sRGB in
   the final pass only.
+- Clear the bloom targets to black. The test first cleared one to the
+  background colour, which the final pass then added over the whole frame:
+  the dark floor read 8.7 mean luma instead of 5.2, until a review caught it.
 - What blooms is what goes above 1.0: emissive labels, lit rods, additive
   rings and sparks. Keep the rest under it.
 - Fog towards the background colour, a spot from above, a cold rim light.
@@ -150,8 +155,8 @@ letters, then labels that overlapped for about half a second. In the test:
 6. Fly the elements to their new places in the same order, so none crosses
    another. Hide the labels during the flight and show them after it.
 
-After all six steps the swap still jumped by 18.1 (mean absolute difference
-of the grey frame, 0–255, over the band the stack fills), against 3.0 to 5.3
+After all six steps the swap still jumped by 18.3 (mean absolute difference
+of the grey frame, 0–255, over the band the stack fills), against 3.1 to 5.4
 for the same band one frame apart in a drift or during the flight. The bloom and the
 lighting gradient exist only in 3D, and the canvas and HTML text sat about
 10 px apart vertically. Swap inside a move or a flash, or fade the 3D-only
@@ -161,5 +166,5 @@ light out first.
 
 Run the `video-editing` skill's `breakdown.py` on the render. It reports the
 cuts (there should be none), the change zones with their sheets, each flash
-with its sound's offset in frames, and each word's frame. Then look at the
+with its sound's offset in frames, and, with `--words`, each word's frame. Then look at the
 zone sheets for the whips and the swap.

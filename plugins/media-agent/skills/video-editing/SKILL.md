@@ -41,13 +41,13 @@ It also writes contact sheets every half second. Use it on a reference
 before copying what it does, and on a render before delivery.
 
 - A cut needs a frame that changes far more than its neighbours and does not
-  come back; a flash rises and falls with the same picture before and after.
-  So a whip, a fade to a white card or a camera move reads as a zone, not a
-  cut.
-- Checked on a 25 s ad (0 cuts and 4 flashes, as read by eye), a synthetic
-  clip (its cut and its flash), and a 6 s Three.js render (3 flashes, 0
-  cuts). The record is the Three.js stage one linked from the plugin's
-  README.
+  come back. A flash rises and falls with the same picture before and after,
+  and its fall is part of it. So a whip, a fade to a white card, a camera
+  move or a held white frame reads as a zone, not a cut.
+- Its thresholds were tuned on four clips and tried on no other: a 25 s ad
+  (0 cuts and 4 flashes, as read by eye), two synthetic clips (a cut, a
+  flash, a held flash) and a 6 s Three.js render (3 flashes, 0 cuts). The
+  record is the Three.js stage one linked from the plugin's README.
 - A sound can read one frame early: AAC spreads a hit's energy a little
   before it.
 - Text appearing on screen is a small change under the zone threshold: read

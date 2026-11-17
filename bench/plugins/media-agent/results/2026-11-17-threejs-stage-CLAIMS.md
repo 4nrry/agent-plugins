@@ -51,7 +51,7 @@ made of every change, and the voice was transcribed with word times
 
 ## `breakdown.py`
 
-Three clips, the rules tuned on them; not tried on any other.
+Three clips, the rules tuned on them, and a fourth from the review (below); not tried on any other.
 
 | Clip | Read by eye or built | Script |
 |---|---|---|
@@ -82,9 +82,12 @@ bars at 4.5 s that fly into a list. The sound track is `sfx-synth.py slam`
 at those three times plus a band-noise whoosh. The words are typed times,
 not a voice.
 
-- **Cache.** The first run stopped: "~/.cache can be changed by another user
+- **Cache.** The first run printed that the cached browser was "missing, not
+  the pinned build, or writable by another account ... re-downloading", then
+  stopped before any download: "~/.cache can be changed by another user
   account" (mode 775). `HYPERFRAMES_CACHE_DIR=~/.hyperframes/cache` (mode
-  700), with the existing headless shell copied in, ran.
+  700), with the existing headless shell copied in (261 MB on disk, the size
+  the 2026-11-11 record measured for its download), ran.
 - **Fonts.** The compiler fetched Inter (11 faces) and EB Garamond (7 faces)
   from Google Fonts; `Georgia, serif` in the CSS was drawn in EB Garamond.
   The canvas texture had used the system's serif.
@@ -125,7 +128,8 @@ not a voice.
   In render 4 the swap still changed the stack's band (y 600–1400) by 18.13,
   mean absolute grey difference. Ordinary consecutive pairs in that band
   changed by 3.01 (f100 to 101), 5.27 (f140 to 141) and 4.36 (f150 to 151).
-  The text sat about 10 px apart vertically.
+  After the bloom fix below: 18.34 against 3.07, 5.37 and 4.17. The text sat
+  about 10 px apart vertically.
 - **`check --json`** on the copy: ok, no errors. It first warned
   `outside_safe_zone` for the counter and the caption; they were moved into
   the narrowest of HyperFrames' Shorts, Reels and TikTok areas. Still
@@ -135,8 +139,34 @@ not a voice.
     swap, carrying on the 3D labels;
   - `nested_structure_needs_subcomposition`.
 
-  Final render of the copy: sha256 `10083dae…0d91a` (not in this repo:
-  historical).
+  Final render of the copy, after the fixes below: sha256 `9048b0db…fbe49` (not
+  in this repo: historical).
+
+## After the cold review
+
+A read-only reviewer read the diff cold, ran `just check` and tried
+`breakdown.py` on synthetic clips. It confirmed three defects; each was fixed
+and re-run.
+
+- **A held flash's fall was reported as a cut.** A white frame held 3 frames
+  (testsrc2, frames 60–62) gave a cut at 63. Now a flash covers its fall:
+  that clip gives no cut and one flash at 60 (peak 62), with its hit read at
+  59 (AAC). The three earlier clips gave the same cuts and flashes as before.
+  The flash's frame is now where the light jumps, with the peak beside it.
+- **A silent track wrote `-Infinity` into `report.json`.** Now it is `null`,
+  and the report says "silent".
+- **The quarter-size bloom target was cleared to the background colour,**
+  which the final pass added over the whole frame. The dark floor at frame
+  20 read 8.7 mean luma before the fix and 5.2 after. Flashes, cuts and
+  sound offsets came out unchanged. Two renders after the fix: 163 of 219
+  frames identical, worst 50.24 dB. Cost numbers above were taken before the
+  fix; it adds no pass.
+
+Also taken from the review: words with a null `start` are skipped; a word's
+frame gets the same 1e-6 tolerance as the stage's; a video stream reporting
+`0/0` falls back to its average rate; the sparks are never culled. The help
+text says that variable frame rate drifts and that `--out` is the script's
+own.
 
 **Not measured.** A real voice with aligned word times. A piece longer than
 7.3 s. Chrome's software GPU (`--no-browser-gpu`). Page motion blur on the

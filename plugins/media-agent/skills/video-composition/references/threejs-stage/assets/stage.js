@@ -165,6 +165,9 @@ const sparks = IMPACTS.map((_, k) => {
   geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(SPARKS * 3), 3));
   const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: new THREE.Color(3, 2.4, 1.4), size: 0.05,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  // Its bounding sphere would be computed once, from whatever frame a worker drew
+  // first; never cull, so every worker draws the same sparks.
+  pts.frustumCulled = false;
   scene.add(pts);
   return { pts, vel };
 });
@@ -255,6 +258,7 @@ function drawCanvas(t) {
     pass(addMat, accumRT, false);
   }
   poseAt(t);
+  renderer.setClearColor(0x000000, 1); // bloom targets start black, not at the background
   brightMat.uniforms.tex.value = accumRT.texture;
   pass(brightMat, half[0]);
   blur(half, W / 2, H / 2);
