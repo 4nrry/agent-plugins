@@ -14,7 +14,7 @@ Other tools get the skill through `just link-skills global` at the repo root.
 
 | Command | Backends | What it does |
 |---|---|---|
-| `ask` | agy, opencode, Codex, Grok, Hermes, Claude Code, Copilot, Cursor; Muse, Kimi built from `--help`, untested | one read-only turn, or the next turn of a session (`--session`); `--web` for web search, away from the repository (file tools removed, or a new empty directory on agy, opencode and Codex), `--schema` for a JSON object back |
+| `ask` | agy, opencode, Codex, Grok, Hermes, Claude Code, Copilot, Cursor; Muse, Kimi built from `--help`, untested | one read-only turn, or the next turn of a session (`--session`); `--web` for web search, away from the repository (file tools removed, or a new empty directory on agy, opencode and Codex, holding only an ai-memory marker), `--schema` for a JSON object back |
 | `review` | every `ask` backend; agy, opencode and Copilot under crew's guard hooks | schema'd findings on a diff or files |
 | `delegate` | agy, opencode, Copilot, Codex, Grok, Cursor, Claude Code (from another host) | one coding slice under the worker CLI's own hooks and a gate |
 | `backends` | all | binary, tiers, effort values, read-only mechanism, last version tested |
@@ -42,6 +42,31 @@ lets Copilot, Codex and Cursor install the plugin.
 
 Every worker carries `CREW_RUN`, and crew refuses to start a worker inside one.
 `ask` also fails when the work tree changes, and stops what the run left behind.
+
+## ai-memory marker
+
+An `ask --web` on agy, opencode or Codex runs in a new directory,
+`/tmp/crew-web-<uid>/<random>/cwd`. ai-memory names a project after its folder
+when it finds no marker, so every run would leave a project called `cwd`; and
+outside the home it reads a marker only in the working directory itself (or
+the root of its checkout), never a parent folder's. crew therefore writes
+`.ai-memory.toml` in that directory before the CLI starts, with the two keys
+ai-memory needs:
+
+```toml
+workspace = "default"
+project = "fleet-workers"
+```
+
+`fleet-workers` is also where agent-fleet's `fleet_worker.py` puts its own
+workers, which run through this same `ask --web`. The file is a plain TOML file
+that does nothing for anyone who does not use ai-memory. `CREW_AI_MEMORY_PROJECT`
+sets the project name (letters, digits, `.`, `_`, `-`; up to 64); `off`, or an
+empty value, writes nothing and leaves the directory empty. A name that is not
+valid writes nothing and the verdict's `warnings` say so. The marker is not
+reported among the files a worker left; a worker that rewrote it is. claude, grok
+and hermes have no such directory (they run in `--cwd` with their file tools
+removed), so crew writes no marker for them.
 
 ## What a delegate does
 
@@ -89,6 +114,10 @@ Upgrading from 0.5.x: the skills `delegate`, `review`, `agy`, `opencode` and
 `crew.py` moved to `scripts/`. From 0.13.0 the skill folder is `skills/crew/`
 (Agent Plugins layout); set `CREW_PY` again if you pinned the old path (it is
 agent-fleet's `fleet_worker.py` that reads it, not crew).
+
+Upgrading to 0.17.0: the directory an `ask --web` runs in on agy, opencode and
+Codex now holds an `.ai-memory.toml` marker; `CREW_AI_MEMORY_PROJECT=off` leaves
+it empty as before.
 
 Upgrading to 0.15.2: in a linked worktree, new runs go to
 `/tmp/crew-state-<uid>/`; earlier ones stay in the main checkout's

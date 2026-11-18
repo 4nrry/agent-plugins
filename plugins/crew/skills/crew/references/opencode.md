@@ -95,4 +95,6 @@ keeps `external_directory: deny`: the worker should find no file to open, so
 what it needs goes in the prompt. That denial was not exercised in a run.
 opencode keeps a conversation in the directory of its first turn and fails a
 later one with "Location not found" once that directory is gone; crew then
-makes it again, empty, runs the turn once more and removes it.
+makes it again, empty but for the ai-memory marker every `--web` directory
+carries (`CREW_AI_MEMORY_PROJECT`, see the README), runs the turn once more and
+removes it.

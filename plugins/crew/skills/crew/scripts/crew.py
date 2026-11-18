@@ -104,6 +104,14 @@ STATE_NAME = "crew"
 # backend's sandbox starts, but one rule for every backend is simpler. /tmp is
 # shared, so the directory is this user's, mode 0700, checked on every run.
 STATE_TMP_ROOT = "/tmp"
+# A `--web` worker runs in a new directory under STATE_TMP_ROOT. Without an
+# ai-memory marker, ai-memory names the project after that folder (`cwd`, from
+# `crew-web-<uid>/<random>/cwd`), so the folder gets a marker of its own: one
+# project for every run. Outside the home ai-memory reads a marker only in the
+# working directory itself, never a parent's, so the marker has to be there.
+AI_MEMORY_ENV = "CREW_AI_MEMORY_PROJECT"   # a project name, or `off`; unset gives the default
+AI_MEMORY_DEFAULT = "fleet-workers"        # also where agent-fleet's fleet_worker.py puts its workers
+AI_MEMORY_MARKER = ".ai-memory.toml"
 DEFAULT_MODEL = "gemini-3.8-flash-high"
 DEFAULT_TIMEOUT = "30m"
 DEFAULT_REVIEW_TIMEOUT = "15m"
@@ -481,10 +489,53 @@ def own_dir(path: str, use: str) -> str:
     return path
 
 
+def ai_memory_marker(env):
+    """What to write as `.ai-memory.toml` in a `--web` worker's directory, as
+    `(text, problem)`. `$CREW_AI_MEMORY_PROJECT` names the project (default
+    `fleet-workers`); `off`, or an empty value, writes nothing. A name ai-memory
+    could not take as a plain project name writes nothing either, and the
+    problem says so. agent-fleet's fleet_worker.py carries the same rule for its
+    own directory: the two plugins share no code."""
+    value = env.get(AI_MEMORY_ENV)
+    name = AI_MEMORY_DEFAULT if value is None else value.strip()
+    if not name or name.lower() == "off":
+        return None, None
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", name):
+        return None, (f"{AI_MEMORY_ENV}={value!r} is not a project name (letters, digits, '.', '_', '-'; up to "
+                      f"64): no {AI_MEMORY_MARKER} written, so ai-memory names this run's project after its "
+                      "temporary folder")
+    return ('# ai-memory: every `crew ask --web` run in a temporary directory shares this project; '
+            f'{AI_MEMORY_ENV}=off turns this file off.\n'
+            f'workspace = "default"\nproject = "{name}"\n'), None
+
+
+def write_ai_memory_marker(directory: str, marker) -> None:
+    """Write `marker` (from ai_memory_marker) in `directory`; nothing for None.
+    The worker's CLI starts afterwards, so it finds the file in place."""
+    if marker:
+        with open(os.path.join(directory, AI_MEMORY_MARKER), "w", encoding="utf-8") as fh:
+            fh.write(marker)
+
+
+def left_files(directory: str, marker) -> list:
+    """Names in `directory`, except the marker crew wrote there itself and the
+    worker did not change: that file is not something the worker left."""
+    names = sorted(os.listdir(directory))
+    if marker and AI_MEMORY_MARKER in names:
+        try:
+            with open(os.path.join(directory, AI_MEMORY_MARKER), encoding="utf-8") as fh:
+                if fh.read() == marker:
+                    names.remove(AI_MEMORY_MARKER)
+        except (OSError, ValueError):
+            pass
+    return names
+
+
 def web_dir() -> str:
     """A new directory for one `--web` ask on a backend that keeps its file
     tools (backends.WEB_EMPTY_DIR): `/tmp/crew-web-<uid>/<random>/`, with
-    `cwd/`, empty, where the worker runs, `run/` for what crew hands it (the
+    `cwd/`, where the worker runs, empty (the caller then writes the ai-memory
+    marker in it, see ai_memory_marker), `run/` for what crew hands it (the
     schema, opencode's web config) and `owner`, this process's pid. The caller
     removes it. The parent, mode 0700, holds only such directories; one older
     than a day whose owner is gone is a killed run's and is removed here. It
@@ -3361,8 +3412,10 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
     `web`: the backend's web profile, search and fetch. The backends in
     WEB_ONLY lose their file tools with it; those in WEB_EMPTY_DIR keep them
     and run in a new empty directory (web_dir) instead of `cwd`, so the
-    repository is not in front of the worker. The verdict's `read_only` says
-    which.
+    repository is not in front of the worker. The one file put there is the
+    ai-memory marker (ai_memory_marker), which keeps ai-memory from making a
+    project of each such directory; `$CREW_AI_MEMORY_PROJECT` renames the
+    project and `off` writes no file. The verdict's `read_only` says which.
     `schema`: a JSON object is expected back, natively where the CLI supports it,
     else asked for in the prompt; it lands in the verdict's `structured`."""
     import backends
@@ -3380,8 +3433,14 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
     spec, warnings = r["spec"], list(r["warnings"])
     web_base = web_dir() if web and backend in backends.WEB_EMPTY_DIR else None
     run_cwd = os.path.join(web_base, "cwd") if web_base else cwd
+    marker = None
     lost = None
     try:
+        if web_base:
+            marker, problem = ai_memory_marker(env)
+            write_ai_memory_marker(run_cwd, marker)
+            if problem:
+                warnings.append(problem)
         try:
             repo = repo_root(cwd)
         except Exception:
@@ -3451,6 +3510,7 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
                 break
             lost = again_dir                  # ours from here on, and ours to remove
             os.mkdir(os.path.join(lost, "cwd"), 0o700)
+            write_ai_memory_marker(os.path.join(lost, "cwd"), marker)
             for name, text in (("stdout", out), ("stderr", err)):
                 with open(os.path.join(rundir, f"{name}.first.log"), "w", encoding="utf-8") as fh:
                     fh.write(text)
@@ -3459,7 +3519,7 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
         stray = []
         if lost:
             try:
-                stray = sorted(os.listdir(os.path.join(lost, "cwd"))) + sorted(set(os.listdir(lost)) - {"cwd"})
+                stray = left_files(os.path.join(lost, "cwd"), marker) + sorted(set(os.listdir(lost)) - {"cwd"})
             except OSError:
                 pass
             shutil.rmtree(lost, ignore_errors=True)
@@ -3467,7 +3527,7 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
             # A warning, not a failure: no run here has shown what each CLI leaves
             # in its working directory on a normal turn, and the directory goes anyway.
             try:
-                wrote = sorted(os.listdir(run_cwd)) + sorted(set(os.listdir(web_base)) - {"cwd", "run", "owner"})
+                wrote = left_files(run_cwd, marker) + sorted(set(os.listdir(web_base)) - {"cwd", "run", "owner"})
             except OSError:
                 wrote = ["(the directory itself was removed)"]
             wrote += stray
