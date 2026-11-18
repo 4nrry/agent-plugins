@@ -68,6 +68,13 @@ conversation continues across such turns with `--session`. grok and hermes also 
 engines cannot read. `--schema file.json` returns the reply's JSON object in
 `structured`, natively where the CLI supports it.
 
+The one file crew puts in that directory is an `.ai-memory.toml` marker
+(`workspace = "default"`, `project = "fleet-workers"`), so ai-memory keeps one
+project for every such run instead of one named after each random folder.
+`CREW_AI_MEMORY_PROJECT=<name>` renames the project; `off` (or an empty value)
+writes no file and leaves the directory empty. The marker is not counted among
+the files a worker left.
+
 Hermes gets no file tools, so put the code in the prompt. Kimi has no verified
 read-only headless mode.
 

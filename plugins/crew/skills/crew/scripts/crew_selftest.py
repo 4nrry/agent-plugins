@@ -1159,9 +1159,9 @@ def self_test() -> int:
                 wenv = dict(fenv, PWD=rrepo, OLDPWD=rrepo)
                 v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
                 d, listing, pwd, oldpwd, _, args = (v["text"] or "|||||").split("|", 5)
-                check(v["ok"] and d.startswith(wreal) and d.endswith(os.sep + "cwd") and listing == ""
+                check(v["ok"] and d.startswith(wreal) and d.endswith(os.sep + "cwd") and listing == ".ai-memory.toml,"
                       and "new empty directory" in v["read_only"] and not any("left files" in w for w in v["warnings"]),
-                      "ask --web: agy runs in a new empty directory under crew-web-<uid>")
+                      "ask --web: agy runs in a new empty directory under crew-web-<uid>, holding only the ai-memory marker")
                 check(os.path.realpath(pwd) == d and oldpwd == "" and rrepo not in args,
                       "ask --web: the worker starts with PWD on its directory, no OLDPWD, no repository in its arguments")
                 check(os.listdir(wparent) == [] and stat.S_IMODE(os.lstat(wparent).st_mode) == 0o700,
@@ -1181,11 +1181,60 @@ def self_test() -> int:
                     standin(name, version, reply)
                     v = crew.run_ask(name, "ping", cwd=repo, env=wenv, web=True)
                     f = (v["text"] or "||||").split("|")
-                    check(f[0].startswith(wreal) and f[0].endswith(os.sep + "cwd") and f[1] == ""
+                    check(f[0].startswith(wreal) and f[0].endswith(os.sep + "cwd") and f[1] == ".ai-memory.toml,"
                           and os.path.realpath(f[2]) == f[0] and rrepo not in (v["text"] or "")
                           and (name != "opencode" or os.path.realpath(f[4]).startswith(wreal)),
                           f"ask --web: {name} runs in a new empty directory too ({v['failures']})")
                 check(os.listdir(wparent) == [], "ask --web: those directories are removed as well")
+                # ai-memory: the directory carries a marker, so ai-memory makes one project of every run instead of one per
+                # random folder; $CREW_AI_MEMORY_PROJECT renames the project or turns the file off
+                marker_reply = (r"""printf '{"conversation_id":"w1","status":"SUCCESS","response":"M[%s]"}' """
+                                r""""$(tr '\n"' '~^' 2>/dev/null < .ai-memory.toml)" """)
+                standin("agy", "1.4.4", marker_reply)
+                tail = "workspace = ^default^~project = ^%s^~]"
+                v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
+                check(v["ok"] and (v["text"] or "").endswith(tail % "fleet-workers")
+                      and not any("left files" in w for w in v["warnings"]),
+                      f"ask --web: the marker names workspace default and project fleet-workers ({v['text']!r})")
+                v = crew.run_ask("agy", "ping", cwd=repo, env=dict(wenv, CREW_AI_MEMORY_PROJECT=" my-bucket.v2 "), web=True)
+                check(v["ok"] and (v["text"] or "").endswith(tail % "my-bucket.v2"),
+                      f"ask --web: $CREW_AI_MEMORY_PROJECT renames the project ({v['text']!r})")
+                for off in ("off", "OFF", "", "  "):
+                    v = crew.run_ask("agy", "ping", cwd=repo, env=dict(wenv, CREW_AI_MEMORY_PROJECT=off), web=True)
+                    check(v["ok"] and v["text"] == "M[]" and not any(".ai-memory" in w for w in v["warnings"]),
+                          f"ask --web: {off!r} writes no marker and the directory is empty again ({v['warnings']})")
+                for bad in ('x"\nproject = "y', "a b", "../up", "-lead", "x" * 65):
+                    v = crew.run_ask("agy", "ping", cwd=repo, env=dict(wenv, CREW_AI_MEMORY_PROJECT=bad), web=True)
+                    check(v["ok"] and v["text"] == "M[]"
+                          and sum("no .ai-memory.toml written" in w for w in v["warnings"]) == 1,
+                          f"ask --web: a value that is no project name writes nothing and is reported ({bad[:20]!r})")
+                standin("agy", "1.4.4", agy_reply)
+                v = crew.run_ask("agy", "ping", cwd=repo, env=dict(wenv, CREW_AI_MEMORY_PROJECT="off"), web=True)
+                check(v["ok"] and (v["text"] or "|||||").split("|", 5)[1] == "" and not any("left files" in w for w in v["warnings"]),
+                      "ask --web: with the marker off the worker's directory is empty, as it was before the marker")
+                standin("agy", "1.4.4", "echo changed > .ai-memory.toml\n" + marker_reply)
+                v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
+                check(v["ok"] and any("left files" in w and ".ai-memory.toml" in w for w in v["warnings"]),
+                      "ask --web: a marker the worker rewrote is reported as a file it left")
+                standin("agy", "1.4.4", "echo changed > ../beside.txt\n" + marker_reply)
+                v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
+                check(v["ok"] and any("left files" in w and "beside.txt" in w and ".ai-memory.toml" not in w
+                                      for w in v["warnings"]), "ask --web: the marker is not counted among the files left")
+                check(os.listdir(wparent) == [], "ask --web: and the directories are removed")
+                try:
+                    import tomllib
+                except ImportError:
+                    tomllib = None
+                text, problem = crew.ai_memory_marker({})
+                check(problem is None and text.endswith('workspace = "default"\nproject = "fleet-workers"\n')
+                      and (tomllib is None or tomllib.loads(text) == {"workspace": "default", "project": "fleet-workers"}),
+                      "ai_memory_marker: the default is the minimal marker, valid TOML")
+                text, problem = crew.ai_memory_marker({crew.AI_MEMORY_ENV: "a-b_c.1"})
+                check(problem is None and (tomllib is None or tomllib.loads(text)["project"] == "a-b_c.1"),
+                      "ai_memory_marker: a plain name is accepted")
+                check(crew.ai_memory_marker({crew.AI_MEMORY_ENV: "off"}) == (None, None)
+                      and crew.ai_memory_marker({crew.AI_MEMORY_ENV: ""}) == (None, None),
+                      "ai_memory_marker: off and an empty value write nothing and report nothing")
                 # opencode keeps a conversation in its first turn's directory: a later turn needs it back
                 oc_ok = r"""printf '{"type":"text","sessionID":"s1","part":{"text":"%s"}}\n' "$seen" """
                 oc_lost = r"""printf '{"type":"unknown","message":"Location not found: %s"}\n' """
@@ -1194,6 +1243,16 @@ def self_test() -> int:
                 v = crew.run_ask("opencode", "again", session="s1", cwd=repo, env=wenv, web=True)
                 check(v["ok"] and any("made it again" in w for w in v["warnings"]) and os.listdir(wparent) == [],
                       f"ask --web: opencode's lost conversation directory is made again for the turn, then removed ({v['failures']})")
+                # the directory made again is where the turn's conversation lives: it gets the marker too, and the
+                # marker is not a stray file
+                standin("opencode", "2.1.0",
+                        f'if [ -f "{wreal}gone1/cwd/.ai-memory.toml" ]; then echo '
+                        '\'{"type":"text","sessionID":"s1","part":{"text":"marker-there"}}\'; '
+                        f'else {oc_lost} "{wreal}gone1/cwd"; exit 1; fi')
+                v = crew.run_ask("opencode", "again", session="s1", cwd=repo, env=wenv, web=True)
+                check(v["ok"] and v["text"] == "marker-there" and any("made it again" in w for w in v["warnings"])
+                      and not any("left files" in w for w in v["warnings"]) and os.listdir(wparent) == [],
+                      f"ask --web: the directory made again holds the marker, which is not reported ({v['failures']})")
                 v = crew.run_ask("opencode", "first", cwd=repo, env=wenv, web=True)
                 check(not v["ok"] and os.listdir(wparent) == [],
                       "ask --web: without --session a lost directory is a plain failure")
@@ -1253,7 +1312,7 @@ def self_test() -> int:
                       "ask --web: files left in or beside the empty directory are reported and the repo is untouched")
                 check(sorted(os.listdir(wparent)) == ["fresh", "held"],
                       "ask --web: a day-old leftover goes; one whose owner still runs and a fresh one stay")
-                standin("agy", "1.4.4", 'rmdir "$(pwd -P)"\n' + agy_reply)
+                standin("agy", "1.4.4", 'rm -f .ai-memory.toml; rmdir "$(pwd -P)"\n' + agy_reply)
                 v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
                 check(v["ok"] and any("was removed" in w for w in v["warnings"]),
                       "ask --web: a worker that removes its directory still gets a verdict")

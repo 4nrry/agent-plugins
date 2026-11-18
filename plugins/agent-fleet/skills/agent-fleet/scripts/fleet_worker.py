@@ -18,7 +18,10 @@ WHAT IT GUARANTEES, AND HOW
   This script owns the research: prompts, schemas, sanitizing, merge, ranking.
 - Read-only by construction, not by prompt. crew's web profile gives each
   worker web search and fetch away from any repository: here in a temporary
-  directory holding only its prompt and schema.
+  directory holding only its prompt, its schema and an ai-memory marker
+  (`.ai-memory.toml`, project `fleet-workers`), so ai-memory does not make a
+  project of every random folder. `FLEET_WORKER_AI_MEMORY_PROJECT` renames the
+  project and `off` writes no file; crew's own `--web` directory follows it.
 - Closed schema. crew passes the schema natively where the CLI supports it,
   else asks for it in the prompt; the object is validated here either way,
   and arrays are cut to the schema's maxItems.
@@ -297,11 +300,49 @@ def find_crew():
              "install the crew plugin there or set CREW_PY to its crew.py")
 
 
+AI_MEMORY_ENV = "FLEET_WORKER_AI_MEMORY_PROJECT"
+AI_MEMORY_DEFAULT = "fleet-workers"
+AI_MEMORY_MARKER = ".ai-memory.toml"
+CREW_AI_MEMORY_ENV = "CREW_AI_MEMORY_PROJECT"   # the same switch, in crew's own directory (see run_one)
+
+
+def ai_memory_marker(env=None):
+    """What to write as `.ai-memory.toml` in a worker's temporary directory, as
+    `(text, problem)`. Without a marker ai-memory names the project after the
+    folder, so each run's random `/tmp/fleet-worker-XXXX` became a project of
+    its own; and outside the home it reads a marker only in the working
+    directory itself, never a parent's. `$FLEET_WORKER_AI_MEMORY_PROJECT`
+    names the project (default `fleet-workers`); `off`, or an empty value,
+    writes nothing. A name ai-memory could not take as a plain project name
+    writes nothing either, and the problem says so. crew.py carries the same
+    rule for its own `--web` directory (`CREW_AI_MEMORY_PROJECT`): the two
+    plugins share no code."""
+    value = (os.environ if env is None else env).get(AI_MEMORY_ENV)
+    name = AI_MEMORY_DEFAULT if value is None else value.strip()
+    if not name or name.lower() == "off":
+        return None, None
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", name):
+        return None, (f"{AI_MEMORY_ENV}={value!r} is not a project name (letters, digits, '.', '_', '-'; "
+                      f"up to 64): no {AI_MEMORY_MARKER} written, so ai-memory names this run's project after "
+                      "its temporary folder")
+    return ('# ai-memory: every run of a temporary fleet_worker.py directory shares this project; '
+            f'{AI_MEMORY_ENV}=off turns this file off.\n'
+            f'workspace = "default"\nproject = "{name}"\n'), None
+
+
 def run_one(crew: str, backend: str, prompt: str, schema: dict, model, timeout: int,
             tier: str = "cheap", effort=None) -> dict:
-    """One worker turn through `crew.py ask --web --schema`, in an empty temp dir."""
+    """One worker turn through `crew.py ask --web --schema`, in a temp dir that
+    holds only the prompt, the schema and the ai-memory marker."""
     t0 = time.time()
+    marker, problem = ai_memory_marker()
+    warns = [problem] if problem else []
+    env = None
+    if AI_MEMORY_ENV in os.environ:       # one switch for both directories: crew's `--web` one follows it
+        env = dict(os.environ, **{CREW_AI_MEMORY_ENV: os.environ[AI_MEMORY_ENV] if marker else "off"})
     with tempfile.TemporaryDirectory(prefix="fleet-worker-") as workdir:
+        if marker:                        # before the CLI starts: it may read the folder at once
+            Path(workdir, AI_MEMORY_MARKER).write_text(marker, encoding="utf-8")
         pf, sf = Path(workdir, ".prompt.md"), Path(workdir, ".schema.json")
         pf.write_text(safe_arg(prompt), encoding="utf-8")
         sf.write_text(json.dumps(schema), encoding="utf-8")
@@ -310,14 +351,15 @@ def run_one(crew: str, backend: str, prompt: str, schema: dict, model, timeout: 
                *(["--model", model] if model else []), *(["--effort", effort] if effort else [])]
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 90,
-                                  stdin=subprocess.DEVNULL)
+                                  stdin=subprocess.DEVNULL, env=env)
         except subprocess.TimeoutExpired:
-            return {"ok": False, "problems": [f"timeout after {timeout + 90}s"], "seconds": round(time.time() - t0)}
+            return {"ok": False, "problems": [f"timeout after {timeout + 90}s"], "warnings": warns,
+                    "seconds": round(time.time() - t0)}
     try:
         v = json.loads(proc.stdout)
     except ValueError:
         return {"ok": False, "problems": [f"crew printed no verdict: {proc.stderr.strip()[-300:]}"],
-                "seconds": round(time.time() - t0)}
+                "warnings": warns, "seconds": round(time.time() - t0)}
     if raw_dir := os.environ.get("FLEET_WORKER_RAW"):   # debugging: keep crew's verdict
         Path(raw_dir, f"{backend}-{int(t0 * 1000)}.json").write_text(json.dumps(v, indent=2), encoding="utf-8")
     obj, problems = v.get("structured"), list(v.get("failures", []))
@@ -327,7 +369,7 @@ def run_one(crew: str, backend: str, prompt: str, schema: dict, model, timeout: 
         obj = prune(obj, schema)
     return {"ok": obj is not None and not problems, "result": obj, "problems": problems,
             "usage": v.get("usage"), "model": v.get("model"), "version": v.get("version"),
-            "warnings": v.get("warnings", []), "seconds": round(time.time() - t0)}
+            "warnings": warns + v.get("warnings", []), "seconds": round(time.time() - t0)}
 
 
 # --------------------------------------------------------------------------
@@ -648,6 +690,77 @@ def self_test() -> int:
             subprocess.run = orig_run
         check(r["ok"] and r["result"]["results"][0]["title"] == "T" and r["warnings"] == ["w"]
               and r["version"] == "v1", f"run_one: crew verdict read, strings cleaned ({r})")
+        # The temporary directory holds the ai-memory marker, written before crew starts, so ai-memory does not
+        # make a project of every random folder; the switch is passed on to crew's own directory.
+        spy = Path(wd, "spy.py")
+        spy.write_text("import json, os, sys\n"
+                       "a = sys.argv[1:]\n"
+                       "cwd = a[a.index('--cwd') + 1]\n"
+                       "m = os.path.join(cwd, '.ai-memory.toml')\n"
+                       "with open(os.environ['SPY_OUT'], 'w') as fh:\n"
+                       "    json.dump({'files': sorted(os.listdir(cwd)), 'crew_var': os.environ.get('CREW_AI_MEMORY_PROJECT'),\n"
+                       "               'marker': open(m).read() if os.path.exists(m) else None}, fh)\n"
+                       "print(json.dumps({'ok': True, 'structured': {'results': []}, 'warnings': [], 'failures': []}))\n",
+                       encoding="utf-8")
+        spy_out = Path(wd, "spy.json")
+        saved_env = {k: os.environ.get(k) for k in (AI_MEMORY_ENV, CREW_AI_MEMORY_ENV, "SPY_OUT")}
+
+        def spied(value=None):
+            """run_one with the switch unset (None) or set to `value`; what the crew stand-in found."""
+            for k in (AI_MEMORY_ENV, CREW_AI_MEMORY_ENV):
+                os.environ.pop(k, None)
+            if value is not None:
+                os.environ[AI_MEMORY_ENV] = value
+            os.environ["SPY_OUT"] = str(spy_out)
+            try:
+                r = real(str(spy), "echo", "prompt", SEARCH_SCHEMA, None, 30)
+            finally:
+                for k, v in saved_env.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
+            return r, json.loads(spy_out.read_text(encoding="utf-8"))
+
+        try:
+            import tomllib
+        except ImportError:
+            tomllib = None
+        r, seen = spied()
+        check(r["ok"] and seen["files"] == [".ai-memory.toml", ".prompt.md", ".schema.json"] and r["warnings"] == [],
+              f"the worker directory holds the marker beside the prompt and the schema ({seen['files']})")
+        check(seen["marker"] and seen["marker"].endswith('workspace = "default"\nproject = "fleet-workers"\n')
+              and (tomllib is None or tomllib.loads(seen["marker"]) == {"workspace": "default", "project": "fleet-workers"}),
+              f"the default marker is workspace default, project fleet-workers ({seen['marker']!r})")
+        check(seen["crew_var"] is None, "an unset switch is not invented for crew")
+        r, seen = spied("my-bucket.v2")
+        check(seen["marker"] is not None and 'project = "my-bucket.v2"' in seen["marker"]
+              and (tomllib is None or tomllib.loads(seen["marker"])["project"] == "my-bucket.v2")
+              and seen["crew_var"] == "my-bucket.v2", "the switch renames the project, for crew's directory too")
+        for off in ("off", "OFF", "", "  "):
+            r, seen = spied(off)
+            check(r["ok"] and seen["marker"] is None and seen["files"] == [".prompt.md", ".schema.json"]
+                  and seen["crew_var"] == "off" and r["warnings"] == [],
+                  f"{off!r} writes no marker and turns crew's off too")
+        for bad in ('x"\nproject = "y', "a b", "../up", "-lead", "x" * 65):
+            r, seen = spied(bad)
+            check(seen["marker"] is None and seen["crew_var"] == "off" and len(r["warnings"]) == 1
+                  and "no .ai-memory.toml written" in r["warnings"][0],
+                  f"a value that is no project name writes nothing and is reported ({bad[:20]!r})")
+        # the problem is reported when crew prints no verdict, too
+        nojson = Path(wd, "nojson.py")
+        nojson.write_text("print('not json')\n", encoding="utf-8")
+        os.environ[AI_MEMORY_ENV] = "a b"
+        try:
+            r = real(str(nojson), "echo", "prompt", SEARCH_SCHEMA, None, 30)
+        finally:
+            for k, v in saved_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        check(not r["ok"] and len(r["warnings"]) == 1 and "no .ai-memory.toml written" in r["warnings"][0],
+              f"an invalid name is reported when crew printed no verdict ({r})")
         check(engines([{"backend": "grok", "model": "m", "version": "v", "warnings": ["w", "w"]}])
               == ([{"backend": "grok", "model": "m", "version": "v"}], ["w"]), "engines dedups warnings")
         check(safe_arg("-x") == "Task:\n-x", "leading dash never becomes a flag")

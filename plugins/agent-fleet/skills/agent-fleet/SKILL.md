@@ -69,7 +69,9 @@ record in [bench/shared](https://github.com/4nrry/agent-plugins/tree/main/bench/
   vendor), read-only, through the crew plugin's `ask`. See
   [references/cli-workers.md](references/cli-workers.md). Ask the user before
   the first run on each backend in a session: it spends their quota there and
-  sends the question to that provider.
+  sends the question to that provider. Each worker's temporary directory
+  carries an ai-memory marker (project `fleet-workers`); to rename the project
+  or write none, set `FLEET_WORKER_AI_MEMORY_PROJECT` (`off` turns it off).
 - Search X only when the question is about posts, announcements, an account
   or what people say, or the user asks for it.
 

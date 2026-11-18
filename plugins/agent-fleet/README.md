@@ -46,7 +46,11 @@ root.
   the provider of each CLI it is told to use: xAI (grok), Google
   (agy), OpenAI (codex), Anthropic (claude), opencode's Zen, or the provider
   hermes is set to. It runs only when the agent calls it; the skill says to
-  ask first.
+  ask first. Each worker turn runs in a temporary directory that holds the
+  prompt, the schema and an `.ai-memory.toml` marker
+  (`project = "fleet-workers"`), so ai-memory does not make a project of every
+  random folder; `FLEET_WORKER_AI_MEMORY_PROJECT` renames the project and `off`
+  writes no file (`references/cli-workers.md`).
 - `verify_citations.py` fetches the URLs a report cites, public http(s)
   addresses only, and sends nothing else. `yt_captions.py` runs `yt-dlp`
   against YouTube when it is installed.
