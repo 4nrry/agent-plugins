@@ -6,7 +6,8 @@ source bar.
 
 ```yaml
 id: ep012
-min_sources: 2              # opened sources per fact line
+level: news                 # news (default), science or fiction: SKILL.md, "Three levels"
+min_sources: 2              # opened sources per fact line; the level sets it (news 2, science 1, fiction 1)
 sources:
   g1:       {url: "https://...", opened: true,  note: "timeline, gives 13h22"}
   poder360: {url: "https://...", opened: true}
@@ -17,7 +18,7 @@ narration:
     caption: "13h22: o pedido chega ao tribunal"
     sources: [g1, poder360]
   - id: N2
-    kind: quote             # fact (default), quote, question, framing
+    kind: quote             # fact (default), quote, question, framing; common and story outside news
     text: "O senador disse que não reconhece o resultado."
     sources: [g1]
   - id: N9
@@ -40,6 +41,29 @@ needs_verification:         # links someone still has to open
   - {name: "CBN", url: "https://..."}
 ```
 
+A `science` spec is the same file with one source per fact and lines
+everyone knows marked `common`:
+
+```yaml
+id: lua-caindo
+level: science
+sources:
+  noaa: {url: "https://oceanservice.noaa.gov/...", opened: true, note: "tide force goes with 1/d^3"}
+narration:
+  - id: N1
+    kind: question
+    text: "E se a Lua começasse a cair na Terra?"
+  - id: N2
+    kind: common
+    text: "A Lua puxa o mar e faz a maré."
+  - id: N3
+    text: "Na metade do caminho, a maré fica oito vezes mais forte."
+    sources: [noaa]
+```
+
+In a `fiction` spec every line is `story` unless it says otherwise; a real
+fact the story leans on is `kind: fact` with its one source.
+
 - `opened: true` means a person (or an agent with a fetch tool) read the page
   and the line's claim is in it; a search snippet is not opened.
 - `forbid` lists the exact phrasings a rewrite would reach for, numbers
@@ -48,3 +72,9 @@ needs_verification:         # links someone still has to open
   is not thereby confirmed.
 - `kind: framing` is for neutral connective lines ("Foram dois pedidos.") that
   restate sourced lines; overusing it to skip the source rule defeats the check.
+- `kind: common` (science and fiction only) is what everyone knows. A digit in
+  it fails the check: a number, a date or a study is a `fact` with a source.
+- `kind: story` (science and fiction only) is an invented line, told as a
+  story. A news spec has none.
+- `min_sources` below 2 in a news spec fails the check: lowering it is how a
+  rumor gets back in.

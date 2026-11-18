@@ -28,7 +28,7 @@ hooks nor the local MCP server, so only the skills' text applies there.
 | `video-editing` | re-render vs patch the mp4, which Kinocut tool for which edit, checking the output, breaking a video down frame by frame | Kinocut, registered as an MCP server (`.mcp.json`); its CLI as the fallback; `breakdown.py` (cuts, flashes against their sound, word frames, contact sheets) |
 | `3d-turntable` | a 360° product turn as transparent frames | headless Blender (`turntable.py`) |
 | `3d-scenes` | scripted sets, rigged .glb figures that keep their rotation and pose, preview and final quality, frozen-frame check | `scene_kit.py`, `check_motion.py` (headless Blender) |
-| `sourced-video` | two opened sources per fact, what stays out, equal time for each side, sources on screen | `check_sources.py` (episode spec) |
+| `sourced-video` | sourcing by level: news gets two opened sources per fact, what stays out, equal time for each side and sources on screen; science and curiosity one checked source, off screen; fiction none, never passed as fact | `check_sources.py` (episode spec, `--self-test`) |
 
 Two hooks warn and never block:
 
