@@ -1208,6 +1208,10 @@ def self_test() -> int:
                     check(v["ok"] and v["text"] == "M[]"
                           and sum("no .ai-memory.toml written" in w for w in v["warnings"]) == 1,
                           f"ask --web: a value that is no project name writes nothing and is reported ({bad[:20]!r})")
+                standin("agy", "1.4.4", agy_reply)
+                v = crew.run_ask("agy", "ping", cwd=repo, env=dict(wenv, CREW_AI_MEMORY_PROJECT="off"), web=True)
+                check(v["ok"] and (v["text"] or "|||||").split("|", 5)[1] == "" and not any("left files" in w for w in v["warnings"]),
+                      "ask --web: with the marker off the worker's directory is empty, as it was before the marker")
                 standin("agy", "1.4.4", "echo changed > .ai-memory.toml\n" + marker_reply)
                 v = crew.run_ask("agy", "ping", cwd=repo, env=wenv, web=True)
                 check(v["ok"] and any("left files" in w and ".ai-memory.toml" in w for w in v["warnings"]),

@@ -60,17 +60,20 @@ search and fetch (claude, agy, opencode, grok, codex, hermes), for a question
 that must not see the repository. claude, grok and hermes lose their file
 tools with it. agy, opencode and codex keep theirs, so crew runs each such
 turn in a new empty directory instead of `--cwd`, removed afterwards; a file
-the worker left there is a warning. The one file crew puts there is an
-`.ai-memory.toml` marker (`workspace = "default"`, `project = "fleet-workers"`),
-so ai-memory keeps one project for every such run instead of one named after
-each random folder. `CREW_AI_MEMORY_PROJECT=<name>` renames the project;
-`off` (or an empty value) writes no file and leaves the directory empty. That hides the repository; it does not
+the worker left there is a warning. That hides the repository; it does not
 confine the worker: agy and codex can still open an absolute path, so keep
 paths out of the prompt and put what the worker needs in the prompt itself
 (opencode's profile is set to deny paths outside its directory). A
 conversation continues across such turns with `--session`. grok and hermes also search X posts, users and threads, which other
 engines cannot read. `--schema file.json` returns the reply's JSON object in
 `structured`, natively where the CLI supports it.
+
+The one file crew puts in that directory is an `.ai-memory.toml` marker
+(`workspace = "default"`, `project = "fleet-workers"`), so ai-memory keeps one
+project for every such run instead of one named after each random folder.
+`CREW_AI_MEMORY_PROJECT=<name>` renames the project; `off` (or an empty value)
+writes no file and leaves the directory empty. The marker is not counted among
+the files a worker left.
 
 Hermes gets no file tools, so put the code in the prompt. Kimi has no verified
 read-only headless mode.

@@ -336,6 +336,7 @@ def run_one(crew: str, backend: str, prompt: str, schema: dict, model, timeout: 
     holds only the prompt, the schema and the ai-memory marker."""
     t0 = time.time()
     marker, problem = ai_memory_marker()
+    warns = [problem] if problem else []
     env = None
     if AI_MEMORY_ENV in os.environ:       # one switch for both directories: crew's `--web` one follows it
         env = dict(os.environ, **{CREW_AI_MEMORY_ENV: os.environ[AI_MEMORY_ENV] if marker else "off"})
@@ -352,12 +353,13 @@ def run_one(crew: str, backend: str, prompt: str, schema: dict, model, timeout: 
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 90,
                                   stdin=subprocess.DEVNULL, env=env)
         except subprocess.TimeoutExpired:
-            return {"ok": False, "problems": [f"timeout after {timeout + 90}s"], "seconds": round(time.time() - t0)}
+            return {"ok": False, "problems": [f"timeout after {timeout + 90}s"], "warnings": warns,
+                    "seconds": round(time.time() - t0)}
     try:
         v = json.loads(proc.stdout)
     except ValueError:
         return {"ok": False, "problems": [f"crew printed no verdict: {proc.stderr.strip()[-300:]}"],
-                "seconds": round(time.time() - t0)}
+                "warnings": warns, "seconds": round(time.time() - t0)}
     if raw_dir := os.environ.get("FLEET_WORKER_RAW"):   # debugging: keep crew's verdict
         Path(raw_dir, f"{backend}-{int(t0 * 1000)}.json").write_text(json.dumps(v, indent=2), encoding="utf-8")
     obj, problems = v.get("structured"), list(v.get("failures", []))
@@ -367,7 +369,7 @@ def run_one(crew: str, backend: str, prompt: str, schema: dict, model, timeout: 
         obj = prune(obj, schema)
     return {"ok": obj is not None and not problems, "result": obj, "problems": problems,
             "usage": v.get("usage"), "model": v.get("model"), "version": v.get("version"),
-            "warnings": ([problem] if problem else []) + v.get("warnings", []), "seconds": round(time.time() - t0)}
+            "warnings": warns + v.get("warnings", []), "seconds": round(time.time() - t0)}
 
 
 # --------------------------------------------------------------------------
@@ -745,6 +747,20 @@ def self_test() -> int:
             check(seen["marker"] is None and seen["crew_var"] == "off" and len(r["warnings"]) == 1
                   and "no .ai-memory.toml written" in r["warnings"][0],
                   f"a value that is no project name writes nothing and is reported ({bad[:20]!r})")
+        # the problem is reported when crew prints no verdict, too
+        nojson = Path(wd, "nojson.py")
+        nojson.write_text("print('not json')\n", encoding="utf-8")
+        os.environ[AI_MEMORY_ENV] = "a b"
+        try:
+            r = real(str(nojson), "echo", "prompt", SEARCH_SCHEMA, None, 30)
+        finally:
+            for k, v in saved_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+        check(not r["ok"] and len(r["warnings"]) == 1 and "no .ai-memory.toml written" in r["warnings"][0],
+              f"an invalid name is reported when crew printed no verdict ({r})")
         check(engines([{"backend": "grok", "model": "m", "version": "v", "warnings": ["w", "w"]}])
               == ([{"backend": "grok", "model": "m", "version": "v"}], ["w"]), "engines dedups warnings")
         check(safe_arg("-x") == "Task:\n-x", "leading dash never becomes a flag")

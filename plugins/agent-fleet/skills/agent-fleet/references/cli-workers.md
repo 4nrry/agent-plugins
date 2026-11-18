@@ -36,12 +36,14 @@ names a project after the folder, so every run left one behind; outside the
 home it reads a marker only in the working directory itself, never a parent's,
 which is why the file is in each directory and not above them. crew writes the
 same marker in its own `--web` directory (agy, opencode and codex run there,
-not in this one), so one project holds both.
+not in this one), so by default one project holds both.
 
 `FLEET_WORKER_AI_MEMORY_PROJECT=<name>` renames the project (letters, digits,
 `.`, `_`, `-`; up to 64) and is passed on to crew as `CREW_AI_MEMORY_PROJECT`;
-`off`, or an empty value, writes no marker in either directory. A name that is
-not valid writes none and the result's `warnings` say so. The file is plain
+`off`, or an empty value, writes no marker in either directory. Set it, not
+`CREW_AI_MEMORY_PROJECT`, to move a fleet run: with it unset crew's directory
+follows whatever `CREW_AI_MEMORY_PROJECT` says. A name that is not valid
+writes none and the result's `warnings` say so. The file is plain
 TOML and does nothing for anyone who does not use ai-memory.
 
 ## Choosing backends

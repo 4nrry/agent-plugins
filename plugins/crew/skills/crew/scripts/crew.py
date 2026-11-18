@@ -524,7 +524,7 @@ def left_files(directory: str, marker) -> list:
     if marker and AI_MEMORY_MARKER in names:
         try:
             with open(os.path.join(directory, AI_MEMORY_MARKER), encoding="utf-8") as fh:
-                if fh.read() == marker:
+                if fh.read(len(marker) + 1) == marker:      # bounded: the worker may have put anything there
                     names.remove(AI_MEMORY_MARKER)
         except (OSError, ValueError):
             pass
@@ -3515,7 +3515,7 @@ def run_ask(backend: str, prompt: str, *, tier="cheap", model=None, effort=None,
                 with open(os.path.join(rundir, f"{name}.first.log"), "w", encoding="utf-8") as fh:
                     fh.write(text)
             warnings.append("opencode keeps a conversation in its first turn's directory, which was removed: "
-                            "made it again, empty, and ran the turn once more")
+                            "made it again, empty but for the ai-memory marker, and ran the turn once more")
         stray = []
         if lost:
             try:
