@@ -9,7 +9,8 @@ spec that cannot be read, PyYAML missing). Exit 1 lists every problem:
 - a fact line (narration or on-screen) without the opened sources its level
   needs (news 2, science 1, fiction 1), or citing a source id the spec does
   not define;
-- an unknown level, a news spec whose min_sources is below 2, or a news line
+- an unknown level, a min_sources below its level's floor (news 2, science and
+  fiction 1; the floor still applies to every fact line), or a news line
   marked common or story (news has no unsourced or invented lines);
 - a common-knowledge line with a digit in it (a number or date needs a source);
 - a phrase recorded under `left_out` that appears in any spoken or shown text;
@@ -65,9 +66,11 @@ def check(spec):
     if level not in LEVELS:
         problems.append("level %r is unknown: use news, science or fiction" % (level,))
         level = "news"
-    need = int(spec.get("min_sources", LEVELS[level]))
-    if level == "news" and need < 2:
-        problems.append("min_sources %d is below the 2 a news spec needs" % need)
+    floor = LEVELS[level]
+    need = int(spec.get("min_sources", floor))
+    if need < floor:
+        problems.append("min_sources %d is below the %d a %s spec needs" % (need, floor, level))
+        need = floor
     default_kind = "story" if level == "fiction" else "fact"
     lines = [("narration", ln) for ln in spec.get("narration") or []]
     lines += [("screen", ln) for ln in spec.get("screen") or []]
@@ -87,12 +90,12 @@ def check(spec):
         if kind in ("common", "story") and level == "news":
             problems.append("%s %s is %s, which a news spec cannot have: a fact with %d opened sources"
                             % (where, lid, kind, need))
-        if kind == "common" and any(ch.isdigit() for ch in (ln.get("text") or "") + (ln.get("caption") or "")):
+        if kind == "common" and any(ch.isdigit() for ch in str(ln.get("text") or "") + str(ln.get("caption") or "")):
             problems.append("%s %s is common knowledge with a number in it: a number or date is a fact with a source"
                             % (where, lid))
         if kind not in KINDS:
             problems.append("%s %s has unknown kind %r" % (where, lid, kind))
-    shown = [ln.get("text") or "" for _, ln in lines] + [ln.get("caption") or "" for _, ln in lines]
+    shown = [str(ln.get("text") or "") for _, ln in lines] + [str(ln.get("caption") or "") for _, ln in lines]
     blob = "\n".join(shown).lower()
     for item in spec.get("left_out") or []:
         for phrase in item.get("forbid") or []:
@@ -117,7 +120,9 @@ def self_test():
     cases = [
         ("news, two opened sources", {"sources": src, "narration": [{"id": "N1", "text": "x", "sources": ["a", "b"]}]}, 0),
         ("news, one opened source", {"sources": src, "narration": [{"id": "N1", "text": "x", "sources": ["a", "c"]}]}, 1),
-        ("news, min_sources lowered", {"min_sources": 1, "sources": src, "narration": [{"id": "N1", "text": "x", "sources": ["a"]}]}, 1),
+        ("news, min_sources lowered", {"min_sources": 1, "sources": src, "narration": [{"id": "N1", "text": "x", "sources": ["a"]}]}, 2),
+        ("science, min_sources lowered", {"level": "science", "min_sources": 0, "narration": [{"id": "N1", "text": "x"}]}, 2),
+        ("a number YAML read as int", {"level": "science", "narration": [{"id": "N1", "kind": "common", "text": 2026}]}, 1),
         ("news, common line", {"sources": src, "narration": [{"id": "N1", "kind": "common", "text": "x"}]}, 1),
         ("news, story line", {"sources": src, "narration": [{"id": "N1", "kind": "story", "text": "x"}]}, 1),
         ("science, one opened source", {"level": "science", "sources": src, "narration": [{"id": "N1", "text": "x", "sources": ["a"]}]}, 0),

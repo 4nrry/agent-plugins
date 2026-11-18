@@ -76,5 +76,5 @@ fact the story leans on is `kind: fact` with its one source.
   it fails the check: a number, a date or a study is a `fact` with a source.
 - `kind: story` (science and fiction only) is an invented line, told as a
   story. A news spec has none.
-- `min_sources` below 2 in a news spec fails the check: lowering it is how a
-  rumor gets back in.
+- `min_sources` below its level's floor (2 in news, 1 otherwise) fails the
+  check, and the floor still applies: lowering it is how a rumor gets back in.

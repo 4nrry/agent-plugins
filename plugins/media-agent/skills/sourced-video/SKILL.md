@@ -26,7 +26,7 @@ checks structure; whether a source really says the line is a person's call.
 |---|---|---|---|
 | `news` (default) | news, current events, politics, elections, anything a side disputes | two opened sources; a single-source item stays out | a source bar on every fact shot; the sources also go in the post caption |
 | `science` | science, curiosity, "what if", explainers, the real facts inside a story | one reliable source checked once (an official body, a study, a reference work, a specialist outlet), noted in the script | no source bar; the post caption may list the sources |
-| `fiction` | invented stories, microdrama, horror, comedy | nothing | nothing, and it never presents itself as fact |
+| `fiction` | invented stories, microdrama, horror, comedy | nothing for an invented line; a real fact it leans on, one source | nothing, and it never presents itself as fact |
 
 - **Science:** what everyone knows (water boils at 100 °C at sea level) needs
   no lookup (`kind: common`); a number, a study, a date or a quote always
