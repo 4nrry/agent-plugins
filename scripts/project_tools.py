@@ -19,6 +19,7 @@ longer wants are removed; entries written by hand are left alone. Config blocks
 sit between marker comments; files and folders this script owns carry the
 plugin name and a marker. Stdlib only.
 """
+import hashlib
 import json
 import shutil
 import subprocess
@@ -30,46 +31,76 @@ END = "# <<< link_skills.py"
 OWNED = ".link_skills"  # marker file inside a folder this script owns
 
 
+def git_root(path: Path):
+    """The work tree root holding path, or None outside git."""
+    p = subprocess.run(["git", "-C", str(path), "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+    return Path(p.stdout.strip()).resolve() if p.returncode == 0 and p.stdout.strip() else None
+
+
 def tracked(repo: Path, rel: str) -> bool:
-    if not (repo / ".git").exists():
+    if git_root(repo) is None:
         return False
-    return subprocess.run(["git", "-C", str(repo), "ls-files", "--error-unmatch", rel],
+    return subprocess.run(["git", "-C", str(repo), "ls-files", "--error-unmatch", "--", rel],
                           capture_output=True).returncode == 0
 
 
-def toml_block(path: Path, body: str, dry: bool) -> bool:
-    """Replace the marked block in a TOML file with body (empty removes it).
-    Returns True when the file changed."""
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
+def split_block(text: str):
+    """(text without the managed block, block body) or None when the markers are broken."""
     lines = text.split("\n")
-    if BEGIN in lines and END in lines[lines.index(BEGIN):]:
-        i = lines.index(BEGIN)
-        j = i + lines[i:].index(END)
-        lines = lines[:i] + lines[j + 1:]
-    rest = "\n".join(lines).strip("\n")
-    new = rest
+    begins = [i for i, line in enumerate(lines) if line == BEGIN]
+    ends = [i for i, line in enumerate(lines) if line == END]
+    if not begins and not ends:
+        return text, ""
+    if len(begins) != 1 or len(ends) != 1 or ends[0] < begins[0]:
+        return None
+    i, j = begins[0], ends[0]
+    rest = lines[:i] + lines[j + 1:]
+    while i and rest[i - 1:i] == [""]:  # the blank line this script put before the block
+        del rest[i - 1]
+        i -= 1
+    return "\n".join(rest), "\n".join(lines[i + 1:j])
+
+
+def toml_block(path: Path, body: str, dry: bool, log: list, tool: str):
+    """Make the managed block of a TOML file hold body (empty removes it).
+    Returns "only" when the file holds nothing but the block, "shared" when it
+    also has hand-written content, None when the file has no block."""
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    parts = split_block(text)
+    if parts is None:
+        log.append(f"  ! {tool}: {path} has a broken {BEGIN!r} marker pair; left alone")
+        return None
+    rest, _ = parts
     if body:
-        new = (rest + "\n\n" if rest else "") + f"{BEGIN}\n{body.strip()}\n{END}"
-    new = new + "\n" if new else ""
-    if new == text or (not new and not path.exists()):
-        return False
-    if not dry:
-        if new:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(new, encoding="utf-8")
-        else:
-            path.unlink()
-    return True
+        sep = "" if not rest.strip() else ("\n" if rest.endswith("\n") else "\n\n")
+        new = (rest if rest.strip() else "") + sep + f"{BEGIN}\n{body.strip()}\n{END}\n"
+    else:
+        new = rest
+    if new != text:
+        log.append(f"  {tool}: {path.name}" + ("" if body else " (block removed)"))
+        if not dry:
+            if new.strip():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(new, encoding="utf-8")
+            elif path.exists():
+                path.unlink()
+    if not body:
+        return None
+    return "shared" if rest.strip() else "only"
 
 
-def outside_block_has(path: Path, header: str) -> bool:
+def hand_written_headers(path: Path) -> set:
+    """Table headers outside the managed block, normalised to their dotted parts."""
     if not path.exists():
-        return False
-    lines = path.read_text(encoding="utf-8").split("\n")
-    if BEGIN in lines and END in lines[lines.index(BEGIN):]:
-        i = lines.index(BEGIN)
-        lines = lines[:i] + lines[i + lines[i:].index(END) + 1:]
-    return header in (line.strip() for line in lines)
+        return set()
+    parts = split_block(path.read_text(encoding="utf-8"))
+    rest = parts[0] if parts else path.read_text(encoding="utf-8")
+    out = set()
+    for line in rest.split("\n"):
+        s = line.strip()
+        if s.startswith("[") and not s.startswith("[[") and s.endswith("]"):
+            out.add(tuple(x.strip().strip('"') for x in s[1:-1].split(".")))
+    return out
 
 
 def q(s: str) -> str:
@@ -78,17 +109,19 @@ def q(s: str) -> str:
 
 def mcp_servers(plugin_dir: Path) -> dict:
     try:
-        return json.loads((plugin_dir / "mcp.json").read_text(encoding="utf-8")).get("mcpServers", {}) or {}
-    except (OSError, ValueError):
+        servers = json.loads((plugin_dir / "mcp.json").read_text(encoding="utf-8")).get("mcpServers", {})
+    except (OSError, ValueError, AttributeError):
         return {}
+    return servers if isinstance(servers, dict) else {}
 
 
 def hook_events(plugin_dir: Path) -> list:
     try:
         spec = json.loads((plugin_dir / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        events = spec.get("hooks", {})
+    except (OSError, ValueError, AttributeError):
         return []
-    return sorted(e for e in spec.get("hooks", {}) if e in ("PreToolUse", "PostToolUse", "UserPromptSubmit"))
+    return sorted(e for e in events if e in ("PreToolUse", "PostToolUse", "UserPromptSubmit"))
 
 
 def claude(repo: Path, plugins: list, gone: list, dry: bool, log: list) -> None:
@@ -96,21 +129,26 @@ def claude(repo: Path, plugins: list, gone: list, dry: bool, log: list) -> None:
     try:
         data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except ValueError:
-        log.append(f"  ! {path} is not valid JSON; left alone")
+        data = None
+    if not isinstance(data, dict) or not isinstance(data.get("enabledPlugins", {}), dict):
+        log.append(f"  ! claude: {path} is not a settings object with an enabledPlugins map; left alone")
         return
-    enabled = data.setdefault("enabledPlugins", {})
+    enabled = dict(data.get("enabledPlugins", {}))
     before = dict(enabled)
     for p in plugins:
         enabled[f"{p}@{MARKETPLACE_NAME}"] = True
     for p in gone:
         enabled.pop(f"{p}@{MARKETPLACE_NAME}", None)
-    if not enabled:
-        data.pop("enabledPlugins")
-    if enabled != before:
-        log.append(f"  claude: {path.relative_to(repo)}")
-        if not dry:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    if enabled == before:
+        return
+    if enabled:
+        data["enabledPlugins"] = enabled
+    else:
+        data.pop("enabledPlugins", None)
+    log.append("  claude: .claude/settings.local.json")
+    if not dry:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
 def codex(repo: Path, plugins: list, dry: bool, log: list) -> list:
@@ -120,27 +158,34 @@ def codex(repo: Path, plugins: list, dry: bool, log: list) -> list:
         if plugins:
             log.append(f"  ! codex: {rel} is tracked by git; not changed (Codex gets the skills only)")
         return []
+    have = hand_written_headers(path)
     body = []
     for p in plugins:
-        header = f'[plugins."{p}@{MARKETPLACE_NAME}"]'
-        if outside_block_has(path, header):
-            log.append(f"  ! codex: {rel} already has {header} outside the managed block; kept as is")
+        if ("plugins", f"{p}@{MARKETPLACE_NAME}") in have:
+            log.append(f"  ! codex: {rel} already has [plugins.\"{p}@{MARKETPLACE_NAME}\"] by hand; kept as is")
             continue
-        body.append(f"{header}\nenabled = true")
-    if toml_block(path, "\n\n".join(body), dry):
-        log.append(f"  codex: {rel}")
-    return [f"/{rel}"] if (path.exists() or body) else []
+        body.append(f'[plugins."{p}@{MARKETPLACE_NAME}"]\nenabled = true')
+    state = toml_block(path, "\n\n".join(body), dry, log, "codex")
+    return [rel] if state == "only" else []
 
 
 def grok(repo: Path, source: Path, plugins: list, gone: list, dry: bool, log: list) -> list:
     rel = ".grok/config.toml"
     launch = source / "adapters/mcp_launch.py"
     hooks_py = source / "adapters/claude_hooks.py"
-    body, excludes = [], []
+    body, excludes, seen = [], [], {}
+    have = hand_written_headers(repo / rel)
     for p in plugins:
         pdir = source / "plugins" / p
         for server in sorted(mcp_servers(pdir)):
-            body.append(f"[mcp_servers.{server}]\ncommand = \"python3\"\n"
+            if ("mcp_servers", server) in have:
+                log.append(f"  ! grok: {rel} already has [mcp_servers.{server}] by hand; kept as is")
+                continue
+            if server in seen:
+                log.append(f"  ! grok: MCP server {server!r} is in both {seen[server]} and {p}; kept {seen[server]}'s")
+                continue
+            seen[server] = p
+            body.append(f"[mcp_servers.{q(server)}]\ncommand = \"python3\"\n"
                         f"args = [{q(str(launch))}, {q(p)}, {q(server)}]")
         events = hook_events(pdir)
         hook_file = repo / f".grok/hooks/4nrry-{p}.json"
@@ -150,26 +195,31 @@ def grok(repo: Path, source: Path, plugins: list, gone: list, dry: bool, log: li
                               for e in events}}
             new = json.dumps(spec, indent=2) + "\n"
             if not hook_file.exists() or hook_file.read_text(encoding="utf-8") != new:
-                log.append(f"  grok: {hook_file.relative_to(repo)}")
+                log.append(f"  grok: .grok/hooks/{hook_file.name}")
                 if not dry:
                     hook_file.parent.mkdir(parents=True, exist_ok=True)
                     hook_file.write_text(new, encoding="utf-8")
-            excludes.append(f"/.grok/hooks/4nrry-{p}.json")
+            excludes.append(f".grok/hooks/4nrry-{p}.json")
     for p in gone:
         hook_file = repo / f".grok/hooks/4nrry-{p}.json"
         if hook_file.exists():
-            log.append(f"  grok: - {hook_file.relative_to(repo)}")
+            log.append(f"  grok: - .grok/hooks/{hook_file.name}")
             if not dry:
                 hook_file.unlink()
     if tracked(repo, rel):
         if body:
             log.append(f"  ! grok: {rel} is tracked by git; MCP servers not added")
-    else:
-        if toml_block(repo / rel, "\n\n".join(body), dry):
-            log.append(f"  grok: {rel}")
-        if (repo / rel).exists() or body:
-            excludes.append(f"/{rel}")
+    elif toml_block(repo / rel, "\n\n".join(body), dry, log, "grok") == "only":
+        excludes.append(rel)
     return excludes
+
+
+def tree_digest(folder: Path) -> str:
+    h = hashlib.sha256()
+    for f in sorted(folder.rglob("*")):
+        if f.is_file():
+            h.update(str(f.relative_to(folder)).encode() + b"\0" + f.read_bytes() + b"\0")
+    return h.hexdigest()
 
 
 def antigravity(repo: Path, source: Path, skills_of, plugins: list, gone: list, dry: bool, log: list) -> list:
@@ -178,48 +228,62 @@ def antigravity(repo: Path, source: Path, skills_of, plugins: list, gone: list, 
     for p in gone:
         folder = repo / f".agents/plugins/{p}"
         if (folder / OWNED).exists():
-            log.append(f"  antigravity: - {folder.relative_to(repo)}")
+            log.append(f"  antigravity: - .agents/plugins/{p}")
             if not dry:
                 shutil.rmtree(folder)
     for p in plugins:
         pdir = source / "plugins" / p
         folder = repo / f".agents/plugins/{p}"
         if folder.exists() and not (folder / OWNED).exists():
-            log.append(f"  ! antigravity: {folder.relative_to(repo)} exists and is not this script's; left alone")
+            log.append(f"  ! antigravity: .agents/plugins/{p} exists and is not this script's; left alone")
             continue
-        excludes.append(f"/.agents/plugins/{p}/")
+        excludes.append(f".agents/plugins/{p}/")
         try:
             manifest = json.loads((pdir / "plugin.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            manifest = {"name": p}
+            manifest = {}
+        if not isinstance(manifest, dict):
+            manifest = {}
+        files = {"plugin.json": {"name": p, **{k: manifest[k] for k in ("version", "description") if k in manifest}}}
         servers = {s: {"command": "python3", "args": [str(launch), p, s]} for s in sorted(mcp_servers(pdir))}
-        files = {"plugin.json": {k: manifest[k] for k in ("name", "version", "description") if k in manifest}}
         if servers:
             files["mcp_config.json"] = {"mcpServers": servers}
-        stamp = manifest.get("version", "") + "\n" + "\n".join(sorted(skills_of(p)))
-        current = (folder / OWNED).read_text(encoding="utf-8") if (folder / OWNED).exists() else None
-        same = current == stamp and all(
-            (folder / n).exists() and json.loads((folder / n).read_text(encoding="utf-8")) == v
-            for n, v in files.items())
-        if same:
+        skills = skills_of(p)
+        try:
+            stamp = json.dumps({"files": files, "skills": {n: tree_digest(d) for n, d in sorted(skills.items())}},
+                               sort_keys=True)
+        except OSError as exc:
+            log.append(f"  ! antigravity: cannot read the skills of {p}: {exc}")
             continue
-        log.append(f"  antigravity: {folder.relative_to(repo)} ({len(skills_of(p))} skills copied)")
+        marker = folder / OWNED
+        if marker.exists() and marker.read_text(encoding="utf-8") == stamp:
+            continue
+        log.append(f"  antigravity: .agents/plugins/{p} ({len(skills)} skills copied)")
         if dry:
+            continue
+        tmp = folder.with_name(f".{p}.link_skills-tmp")
+        try:
+            if tmp.exists():
+                shutil.rmtree(tmp)
+            (tmp / "skills").mkdir(parents=True)
+            for name, target in sorted(skills.items()):
+                shutil.copytree(target, tmp / "skills" / name, symlinks=False)
+            for name, value in files.items():
+                (tmp / name).write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+            (tmp / OWNED).write_text(stamp, encoding="utf-8")
+        except (OSError, shutil.Error) as exc:
+            shutil.rmtree(tmp, ignore_errors=True)
+            log.append(f"  ! antigravity: copying the skills of {p} failed ({exc}); the old copy stays")
             continue
         if folder.exists():
             shutil.rmtree(folder)
-        (folder / "skills").mkdir(parents=True)
-        for name, target in sorted(skills_of(p).items()):
-            shutil.copytree(target, folder / "skills" / name, symlinks=False)
-        for name, value in files.items():
-            (folder / name).write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
-        (folder / OWNED).write_text(stamp, encoding="utf-8")
+        tmp.rename(folder)
     return excludes
 
 
 def sync_tools(repo: Path, source: Path, skills_of, plugins: list, previous: list, dry: bool) -> list:
     """Write every tool's project config for plugins; remove it for previous - plugins.
-    skills_of(plugin) -> {skill name: skill dir}. Returns the paths to git-exclude."""
+    skills_of(plugin) -> {skill name: skill dir}. Returns paths relative to repo to git-exclude."""
     gone = sorted(set(previous) - set(plugins))
     log = []
     claude(repo, plugins, gone, dry, log)
@@ -243,7 +307,7 @@ def trust_notes(repo: Path) -> list:
         projects = tomllib.loads((home / ".codex/config.toml").read_text(encoding="utf-8")).get("projects", {})
         if projects.get(str(repo), {}).get("trust_level") != "trusted":
             notes.append("Codex: not trusted, so .codex/config.toml is ignored "
-                         f"(trust it, or add [projects.\"{repo}\"] trust_level = \"trusted\")")
+                         f"(add [projects.\"{repo}\"] trust_level = \"trusted\" to ~/.codex/config.toml)")
     except (OSError, ValueError):
         pass
     try:
@@ -302,8 +366,8 @@ def self_test() -> int:
            and not (repo / ".agents/plugins/m/skills/s1").is_symlink(), "antigravity gets a real copy")
         ok(json.loads((repo / ".agents/plugins/m/mcp_config.json").read_text())["mcpServers"]["srv"]["command"]
            == "python3", "antigravity gets the MCP server")
-        ok(set(ex) >= {"/.codex/config.toml", "/.grok/config.toml", "/.grok/hooks/4nrry-m.json",
-                       "/.agents/plugins/m/"}, "excludes cover the written files")
+        ok(set(ex) == {".grok/config.toml", ".grok/hooks/4nrry-m.json", ".agents/plugins/m/"},
+           "excludes cover the files only this script wrote, not a hand-written codex file")
         before = (repo / ".grok/config.toml").read_text()
         quiet(repo, src, skills_of, ["m"], ["m"], False)
         ok((repo / ".grok/config.toml").read_text() == before, "a second run changes nothing")
@@ -323,6 +387,38 @@ def self_test() -> int:
         subprocess.run(["git", "-C", str(repo), "add", ".codex/config.toml"], check=True)
         quiet(repo, src, skills_of, ["m"], ["m"], False)
         ok((repo / ".codex/config.toml").read_text() == "", "a tracked codex file is not changed")
+
+        # Review cases: broken markers, odd settings, hand-written servers, a bad skill, a subfolder.
+        g = repo / ".grok/config.toml"
+        g.write_text(f"{BEGIN}\n[mine]\nkeep = 1\n")
+        quiet(repo, src, skills_of, ["m"], ["m"], False)
+        quiet(repo, src, skills_of, ["m"], ["m"], False)
+        ok(g.read_text() == f"{BEGIN}\n[mine]\nkeep = 1\n", "a broken marker pair leaves the file alone")
+        g.write_text('[mcp_servers.srv]\ncommand = "own"\n')
+        quiet(repo, src, skills_of, ["m"], ["m"], False)
+        ok(tomllib.loads(g.read_text())["mcp_servers"]["srv"]["command"] == "own", "a hand-written server is kept")
+        (repo / ".claude/settings.local.json").write_text("[]")
+        quiet(repo, src, skills_of, ["m"], ["m"], False)
+        ok((repo / ".claude/settings.local.json").read_text() == "[]", "odd settings are left alone")
+        copy = repo / ".agents/plugins/m"
+        if copy.exists():
+            import shutil as _sh
+            _sh.rmtree(copy)
+        quiet(repo, src, skills_of, ["m"], ["m"], False)
+        (pdir / "skills/s1/SKILL.md").write_text("---\nname: s1\ndescription: changed\n---\n")
+        quiet(repo, src, skills_of, ["m"], ["m"], False)
+        ok("changed" in (copy / "skills/s1/SKILL.md").read_text(), "an edited skill refreshes the copy")
+        (pdir / "skills/s1/dangling").symlink_to(t / "nowhere")
+        quiet(repo, src, skills_of, ["m"], ["m"], False)
+        ok((copy / OWNED).exists() and "changed" in (copy / "skills/s1/SKILL.md").read_text(),
+           "a failed copy keeps the old one")
+        (pdir / "skills/s1/dangling").unlink()
+        sub_dir = repo / "sub"
+        (sub_dir / ".codex").mkdir(parents=True)
+        (sub_dir / ".codex/config.toml").write_text("")
+        subprocess.run(["git", "-C", str(repo), "add", "sub/.codex/config.toml"], check=True)
+        quiet(sub_dir, src, skills_of, ["m"], [], False)
+        ok((sub_dir / ".codex/config.toml").read_text() == "", "a tracked file in a subfolder is not changed")
     print(f"self-test: {checks} checks ok")
     return 0
 

@@ -124,14 +124,16 @@ def git_exclude(repo: Path) -> Path:
     return path if path.is_absolute() else repo / path
 
 
-def write_exclude(repo: Path, names: list, dry: bool, extra=()) -> None:
+def write_exclude(repo: Path, names: list, dry: bool, extra=(), prefix: str = "") -> None:
+    """One marked block per project folder (prefix: its path below the git root)."""
     path = git_exclude(repo)
     text = path.read_text(encoding="utf-8") if path.exists() else ""
-    text = re.sub(rf"\n?{re.escape(EXCLUDE_BEGIN)}\n.*?{re.escape(EXCLUDE_END)}\n", "\n",
+    begin = EXCLUDE_BEGIN + (f" {prefix.rstrip('/')}" if prefix else "")
+    text = re.sub(rf"\n?{re.escape(begin)}\n.*?{re.escape(EXCLUDE_END)}(\n|$)", "\n",
                   text, flags=re.S).rstrip("\n")
     if names or extra:
-        block = "\n".join([EXCLUDE_BEGIN, *[f"/.agents/skills/{n}" for n in names], *extra,
-                           EXCLUDE_END])
+        block = "\n".join([begin, *[f"/{prefix}.agents/skills/{n}" for n in names],
+                           *[f"/{prefix}{e.lstrip('/')}" for e in extra], EXCLUDE_END])
         text = f"{text}\n\n{block}" if text else block
     if not dry:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -161,8 +163,10 @@ def cmd_project(source, sources, repo: Path, plugins, dry) -> int:
     conflicts = sync(repo / ".agents/skills", want, sources, dry)
     extra = project_tools.sync_tools(repo, source, lambda p: plugin_skills(source, p),
                                      sorted(set(plugins)), sorted(previous), dry)
-    if (repo / ".git").exists():
-        write_exclude(repo, sorted(want), dry, sorted(set(extra)))
+    root = project_tools.git_root(repo)
+    if root is not None:
+        prefix = "" if root == repo.resolve() else f"{repo.resolve().relative_to(root)}/"
+        write_exclude(root, sorted(want), dry, sorted(set(extra)), prefix)
     else:
         print(f"{repo}: not a git checkout, nothing to exclude")
     if plugins:
