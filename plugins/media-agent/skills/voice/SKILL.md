@@ -50,6 +50,11 @@ music under the voice from 0.5 to about 0.16 with a ~0.35 s ramp.
 - A video model used for its voice, or a moderated TTS, can refuse a line
   that names a politician. Do not reword it to get past the filter; generate
   that line with another TTS and keep the text.
+- **Clone-reference prosody and multi-take selection** (MIT
+  `4nrry/claude-code-video-toolkit`): measure `F0` pitch spread in semitones
+  via Praat (`< 2 st` sounds flat, `3–4 st` sounds natural); expand flat clone
+  references with PSOLA pitch/tempo **before** cloning rather than stretching
+  final audio, and rank multiple takes by pitch spread plus target WPM.
 
 ## Choosing the engine
 

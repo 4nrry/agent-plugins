@@ -83,6 +83,16 @@ off.
   intro. The hook is on screen as text from that frame, not only spoken. Open
   one question in the first 3 seconds and answer it before the end; two hooks
   weaken each other. When it fits, end on the opening image so a replay flows.
+  Score candidate opening lines before production on 5 checks (MIT
+  `4nrry/instagram-agent-skill`): spoken in `< 3 s`, zero greeting/preamble,
+  a concrete marker, clear stakes, and payload up front.
+- **Visual direction by act & contact-sheet juror critique** (MIT
+  `4nrry/claude-code-video-toolkit`): change background field only on narrative
+  act turns, ensure neighbouring acts differ clearly in **lightness**
+  (light/mid/dark) so cuts do not flicker, reserve **one data accent** colour
+  for the spoken highlight, and audit the contact sheet at phone size for
+  1-second focal hierarchy, at most 5 type sizes, a `28 px` phone floor at
+  `1080p`, and zero generic gradients, glows, or identical-tile rows.
 - **Pacing.** The first visual change lands within about a second, on a strong
   word. Lists and demos cut every 1–2 s, one item per shot on its spoken word;
   an argument holds its proof (screen, report, number) as long as the voice is

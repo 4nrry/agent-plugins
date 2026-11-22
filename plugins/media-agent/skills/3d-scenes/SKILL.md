@@ -80,11 +80,19 @@ human.glb out/` renders three figures (front, profile, back) to check a new glb.
   `patch-gg/anymove`, Apache-2.0) films the creature from front and side in one
   AI video frame, triangulates each joint in 3D from the pair and fits the
   Blender 5.x rig frame by frame to export a `.glb`.
+- **Additive syllable lip-sync shape keys** (MIT
+  `4nrry/claude-code-video-toolkit`): keep `talk_*` mouth and jaw shape keys
+  separate from expression keys so speech motion adds cleanly on top of smiles
+  or reactions without overwriting them.
 - glbs often ship a Cube, Camera or Light beside the character; the kit removes
   them. Keep the model's license (CC0, CC-BY credit) with the project.
 
 ## Camera and light
 
+- **Geometric camera verification** (MIT `4nrry/claude-code-video-toolkit`):
+  check at shot start, midpoint, and end that key subject points project inside
+  the frame and a raycast from the lens hits the subject first (no occluding
+  head, lid, or prop), swinging or raising the camera if blocked.
 - The camera moves from frame 1 to the last frame of the shot. Animate the
   camera and its target empty (`TRACK_TO`), never the rotation. Use linear
   interpolation when the move must not settle.
