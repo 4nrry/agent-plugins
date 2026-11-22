@@ -31,6 +31,11 @@ mp4 and writes `report.md` and `report.json`. It needs ffmpeg, numpy and
 Pillow. The report has:
 
 - the hard cuts;
+- the shots between cuts: duration, layout (`split` when a horizontal divider
+  separates top B-roll from bottom speaker, else `full`), motion activity
+  (`active` vs `static_hold`), frozen head/tail frame count, and whether the
+  entry cut is a jump cut (high frame difference while global scene structure
+  stays near the previous shot);
 - the change zones, each with a sheet of its consecutive frames;
 - the flashes, each with its nearest low hit in frames;
 - the sound onsets, loudness and silences;

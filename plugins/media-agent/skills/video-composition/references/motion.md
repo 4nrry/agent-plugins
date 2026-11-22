@@ -125,16 +125,49 @@ Parameters as their sources give them; not yet tried in this series.
   exported as 3D data to After Effects, where a script builds a 3D camera and
   null layers with text attached, so labels follow the camera
   ([PremiumBeat](https://www.premiumbeat.com/blog/making-maps-for-johnny-harris/)).
+- **Short-form B-roll, split layouts and tactile foley** (measured across 27 top
+  Instagram Reels in [`nateherkai/herk-edit-kit`](https://github.com/nateherkai/herk-edit-kit),
+  MIT, and [`lemomo-ai/lemo-opuscar`](https://github.com/lemomo-ai/lemo-opuscar)):
+  - **Three vertical layouts (1080×1920, hard cuts):** **Split** (`y 0..880`
+    top B-roll/card, speaker or character below) for 30–42% of the reel,
+    opening Frame 0 on a split with the topic's visual on top; **Full B-roll**
+    for 50–55% (one moving visual per spoken noun phrase; never shrink a full
+    web page to phone size — crop to the phrase/element so it fills the panel);
+    **Punch-in** (`5–15%`) on the speaker for pivots, emphasis and the CTA.
+    The speaker stays on screen ~45% of the reel and is never gone longer than
+    ~3.5 s.
+  - **Phrase-boundary cutting:** speech starts within `0.1 s`; cut dead air
+    between phrases (`< 0.2 s`), never inside a breath group, and keep natural
+    comma beats (`0.2–0.4 s`).
+  - **Camera variety and 3-beat acting:** at least 4 distinct camera moves or
+    framings per short, staging foreground, midground and background; character
+    actions follow *anticipation → action → contact freeze / follow-through*.
+  - **Sound layers and silences:** three layers (ambience, tactile foley — soft
+    taps, dry clicks, paper, cloth, air rather than laser zaps — and ducked
+    music), J-cut / L-cut audio transitions across visual cuts, and 1–2 brief
+    silences before the turn or emotional peak.
 
 ## Tools
 
-Stars and licences checked with `gh api repos/<owner>/<repo>` on 2026-10-30;
-the HyperFrames, Remotion skills and Revideo rows again on 2026-11-11.
+Stars and licences checked with `gh api repos/<owner>/<repo>` on 2026-10-30,
+2026-11-11 and 2026-11-22.
 
 | Tool | What it does | Licence, stars |
 |---|---|---|
 | [HyperFrames](https://github.com/heygen-com/hyperframes) | HTML, CSS and seekable animation (GSAP, Lottie, Three.js) to deterministic MP4; how to run it is in [hyperframes.md](hyperframes.md) | Apache-2.0, ~82.9k |
-| [Remotion agent skills](https://github.com/remotion-dev/skills) | Remotion best practices as agent skills (`npx remotion skills add`) | no licence file in the repo; Remotion's own licence in [remotion.md](remotion.md), ~6.9k |
+| [Remotion agent skills](https://github.com/remotion-dev/skills) | Remotion best practices as agent skills (`npx remotion skills add`) | no licence file in the repo; Remotion's own licence in [remotion.md](remotion.md), ~7.7k |
+| [rea-video](https://github.com/JuneYaooo/rea-video) (fork [`4nrry/rea-video`](https://github.com/4nrry/rea-video)) | shot-by-shot video reverse engineering (live, AI, 3D, stop-motion, code) into `VIDEO.md`: camera moves, drawn layers, overlays, sound events and remake plan | Apache-2.0, ~11.9k |
+| [OpenMotion](https://github.com/nexu-io/openmotion) (fork [`4nrry/openmotion`](https://github.com/4nrry/openmotion)) | agentic motion-graphics studio and reference-video remake workflow over HyperFrames and Remotion | Apache-2.0, ~14.8k |
+| [pixelfx](https://github.com/patch-gg/pixelfx) (fork [`4nrry/pixelfx`](https://github.com/4nrry/pixelfx)) | 244 procedural pixel-art VFX and 12 acted moves in two buffers (`color` + additive `light`), contact-sheet loop and Aseprite `--sheet` export (`cutout-animation` skill) | MIT, ~8.7k |
+| [anymove](https://github.com/patch-gg/anymove) (fork [`4nrry/anymove`](https://github.com/4nrry/anymove)) | two-view AI video motion capture triangulated onto a 3D rig in Blender 5.x, `.glb` out (`3d-scenes` skill) | Apache-2.0, ~0.7k |
+| [herk-edit-kit](https://github.com/nateherkai/herk-edit-kit) (fork [`4nrry/herk-edit-kit`](https://github.com/4nrry/herk-edit-kit)) | 15 short-form editing skills for HyperFrames/GSAP, 406 motion-graphics cards and measured Reel layout/pacing playbook (AIS brand assets excluded from MIT) | MIT (code/skills), ~3.1k |
+| [ffmpeg-skill](https://github.com/kajisho5/ffmpeg-skill) | 42 local FFmpeg operations with machine-readable contracts, self-verification and MCP server | MIT, ~9.4k |
+| [animate](https://github.com/cth9191/animate) (fork [`4nrry/animate`](https://github.com/4nrry/animate)) | procedural single-canvas animation in pluggable styles (cut paper, crosshatch, riso, sketchbook, isometric) with beat-grid and loudness checks | MIT, ~2.2k |
+| [claude-code-video-toolkit](https://github.com/digitalsamba/claude-code-video-toolkit) | end-to-end script, voiceover, music, Blender 3D / Remotion composition and render toolkit | MIT, ~2.7k |
+| [godogen](https://github.com/htdt/godogen) | skills for Godot, Bevy, Babylon.js and Three.js headless video capture plus local GPU asset generation | MIT, ~7.4k |
+| [EffectCraft](https://github.com/storytold/effectcraft) & [FilmCraft](https://github.com/storytold/filmcraft) | open-source motion-graphics compositor (308 effects, 3D camera, MCP) and nonlinear editor in pure Rust | MIT / Apache-2.0, ~9.1k & ~18.8k |
+| [Awesome Opus 5.5 Videos](https://github.com/yihui-dev/awesome-opus5-5-videos) | 703 prompts extracted from viral code-rendered videos (Canvas, Three.js, SVG, GSAP) | MIT, ~16.1k |
+| [Lemo-Opuscar](https://github.com/lemomo-ai/lemo-opuscar) & [lemo-animi](https://github.com/lemomo-ai/lemo-animi) | 99 code-drawn film styles and 8 stop-motion puppet styles; **licence trap:** code is MIT, but docs/styles are `CC BY-NC 4.0` with permission to make your own commercial films, **not** to redistribute or sell the docs inside a product | MIT code / CC BY-NC 4.0 docs, ~19.6k & ~0.2k |
 | [LottieFiles motion-design-skill](https://github.com/LottieFiles/motion-design-skill) | timing, easing and choreography rules for UI motion, any animation system | MIT, ~2.6k |
 | [Lottie Creator MCP](https://docs.lottiefiles.com/en/creator/13_ai-tools/lottie-creator-mcp) | a local bridge that lets an agent build and edit animations in Creator; needs Node 18+ and a Creator tab open | LottieFiles service |
 | [Rive CLI](https://rive.app/docs/cli/overview) | an agent writes the scene as [RML](https://rive.app/docs/runtimes/advanced-topic/rml) (XML `.rml` files); the CLI compiles to `.riv`, previews and captures frames headless | Rive service |
