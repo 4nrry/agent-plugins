@@ -7,8 +7,10 @@ marketplace clone: `claude plugin marketplace update 4nrry` then updates every
 tool at once, and nothing is copied that could go stale.
 
   link_skills.py global                  GLOBAL plugins -> every USER_ROOTS folder
-  link_skills.py project DIR PLUGIN...   exactly these plugins -> DIR/.agents/skills,
-                                         listed in .git/info/exclude when DIR is a repo
+  link_skills.py project DIR PLUGIN...   exactly these plugins -> DIR/.agents/skills, and
+                                         their MCP servers and hooks into each tool's project
+                                         config (scripts/project_tools.py), listed in
+                                         .git/info/exclude when DIR is a repo
   link_skills.py status [REPO...]
 
 Both commands are declarative: links this script made that are no longer
@@ -25,6 +27,9 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import project_tools  # noqa: E402
 
 HOME = Path.home()
 # ~/.agents/skills: Grok, Cursor, Kimi Code, ZCode, opencode, and Hermes through
@@ -119,13 +124,13 @@ def git_exclude(repo: Path) -> Path:
     return path if path.is_absolute() else repo / path
 
 
-def write_exclude(repo: Path, names: list, dry: bool) -> None:
+def write_exclude(repo: Path, names: list, dry: bool, extra=()) -> None:
     path = git_exclude(repo)
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     text = re.sub(rf"\n?{re.escape(EXCLUDE_BEGIN)}\n.*?{re.escape(EXCLUDE_END)}\n", "\n",
                   text, flags=re.S).rstrip("\n")
-    if names:
-        block = "\n".join([EXCLUDE_BEGIN, *[f"/.agents/skills/{n}" for n in names],
+    if names or extra:
+        block = "\n".join([EXCLUDE_BEGIN, *[f"/.agents/skills/{n}" for n in names], *extra,
                            EXCLUDE_END])
         text = f"{text}\n\n{block}" if text else block
     if not dry:
@@ -152,14 +157,33 @@ def cmd_project(source, sources, repo: Path, plugins, dry) -> int:
     if not repo.is_dir():
         sys.exit(f"error: no directory {repo}")
     want = wanted(source, plugins)
+    previous = linked_plugins(repo / ".agents/skills", sources)
     conflicts = sync(repo / ".agents/skills", want, sources, dry)
+    extra = project_tools.sync_tools(repo, source, lambda p: plugin_skills(source, p),
+                                     sorted(set(plugins)), sorted(previous), dry)
     if (repo / ".git").exists():
-        write_exclude(repo, sorted(want), dry)
+        write_exclude(repo, sorted(want), dry, sorted(set(extra)))
     else:
         print(f"{repo}: not a git checkout, nothing to exclude")
+    if plugins:
+        for note in project_tools.trust_notes(repo):
+            print(f"  note: {note}")
     for c in conflicts:
         print(f"conflict: {c}", file=sys.stderr)
     return 1 if conflicts else 0
+
+
+def linked_plugins(root: Path, sources: list) -> set:
+    """Plugins this script linked into root, read from the link targets."""
+    names = set()
+    for entry in sorted(root.iterdir()) if root.is_dir() else []:
+        if not ours(entry, sources):
+            continue
+        target = os.readlink(entry)
+        for s in sources:
+            if target.startswith(f"{s}/plugins/"):
+                names.add(target[len(s) + len("/plugins/"):].split("/")[0])
+    return names
 
 
 def cmd_status(sources, roots) -> int:
@@ -169,6 +193,9 @@ def cmd_status(sources, roots) -> int:
             if entry.is_symlink() and ours(entry, sources):
                 state = "" if entry.exists() else "  DANGLING"
                 print(f"  {entry.name} -> {os.readlink(entry)}{state}")
+        if root.name == "skills" and root.parent.name == ".agents" and linked_plugins(root, sources):
+            for note in project_tools.trust_notes(root.parent.parent):
+                print(f"  note: {note}")
     return 0
 
 

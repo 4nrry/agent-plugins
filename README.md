@@ -40,6 +40,17 @@ just link-skills status ~/code/app
 | Antigravity | `~/.gemini/config/skills` | `.agents/skills` |
 | Claude Code | the plugins | the plugins, per project in `.claude/settings.local.json` |
 
+`project` also turns the plugins' MCP servers and hooks on in each tool's own
+project config (`scripts/project_tools.py`), git-excluded like the links:
+`.claude/settings.local.json` for Claude Code, `.codex/config.toml` for Codex
+(left alone when tracked), `.grok/config.toml` and `.grok/hooks/` for Grok, and
+`.agents/plugins/<plugin>/` for Antigravity, which skips symlinks that leave the
+repo and so gets a copy of the skills, refreshed on each run. Codex and Grok read
+a folder's config only once you trust it; `project` and `status` say when one
+is missing. A plugin outside `adapters/global-plugins.json` runs its hooks and
+MCP servers through the bridges and `claude_hooks.py` only in a folder whose
+`.agents/skills` links it.
+
 Hooks and MCP servers do not travel with a linked skill. For tools without
 Claude-format plugins, `adapters/<tool>/` holds a bridge that `global` links
 into the tool's own folder; it runs the global plugins' `hooks/hooks.json` and
