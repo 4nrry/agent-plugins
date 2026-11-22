@@ -97,6 +97,15 @@ off.
   slammed text with their sounds, frame by frame. A clip shorter
   than its slot holds its last frame instead of looping. Reject stock clips
   with their own captions or kinetic text: their words flash on screen.
+- **Word-anchored inserts and J-cuts.** When adapting a reference video's
+  structure, clock seconds change with the new script: bind every B-roll
+  cutaway, context card, prop pop-in and sound hit to its **spoken trigger
+  word** (from the aligned word table), not a fixed timestamp. Let a B-roll or
+  top split-screen insert enter on its trigger word near the end of one
+  speaker's turn and hold for `0.5–1.0 s` over the start of the next speaker's
+  turn (**J-cut**) before cutting to the new speaker's reaction. Give context
+  inserts a contrasting visual language (real screen capture, clean graphic
+  card, real photography) rather than repeating the host shot's look.
 - **Captions.** They carry the voice; emphasis (an accent color, a box) is rare:
   the product name or the one number, never two at once. Never over a mouth or
   chin, and never under the platform's buttons.
