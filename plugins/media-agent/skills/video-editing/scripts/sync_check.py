@@ -19,7 +19,7 @@ from pathlib import Path
 try:
     import numpy as np
 except ImportError as e:
-    if "--self-test" in sys.argv:  # the repo's CI is stdlib-only: skip, loudly, like the hook checks do
+    if "--self-test" in sys.argv and isinstance(e, ModuleNotFoundError) and e.name in ("numpy",):  # the repo's CI is stdlib-only: skip, loudly, like the hook checks do
         print(f"self-test skipped: {e.name} not installed, and without it the script does nothing")
         sys.exit(0)
     sys.exit(f"sync_check: {e.name} is not installed; it needs numpy")

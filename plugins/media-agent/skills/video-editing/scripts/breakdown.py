@@ -36,7 +36,7 @@ try:
     import numpy as np
     from PIL import Image, ImageDraw, ImageFont
 except ImportError as e:
-    if "--self-test" in sys.argv:  # the repo's CI is stdlib-only: skip, loudly, like the hook checks do
+    if "--self-test" in sys.argv and isinstance(e, ModuleNotFoundError) and e.name in ("numpy", "PIL"):  # the repo's CI is stdlib-only: skip, loudly, like the hook checks do
         print(f"self-test skipped: {e.name} not installed, and without it the script does nothing")
         sys.exit(0)
     sys.exit(f"breakdown: {e.name} is not installed; it needs numpy and Pillow (pip install numpy pillow)")
