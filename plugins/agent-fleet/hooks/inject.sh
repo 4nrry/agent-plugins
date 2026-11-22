@@ -58,8 +58,18 @@ if [[ -n "$forget" ]]; then
   exit 0
 fi
 
-prompt=$(jq -r '.prompt // empty' <<<"$input" 2>/dev/null) || exit 0
-[[ -n "$prompt" ]] || exit 0
+# Only the user's words are matched. The host puts its own blocks into the same
+# prompt field: CLAUDE.md and other <system-reminder>s, background-subagent
+# <task-notification>s, messages from other sessions. Matching them fired the
+# hook on a prompt that never mentioned an agent (2026-11-22, a CLAUDE.md that
+# says "subagent" ... "parallel"), and again on every task-notification. Blocks
+# are removed whole, tag to closing tag; an unclosed tag is left alone, so a
+# user who types the tag name is still read. A prompt that is nothing but such
+# blocks matches nothing.
+STRIP='<(?<t>system-reminder|task-notification|cross-session-message|side-sessions-event|local-command-caveat|local-command-stdout|local-command-stderr|user-prompt-submit-hook|command-name|command-message|command-args|ide_opened_file|ide_selection|ide_diagnostics)(\s[^>]*)?>[\s\S]*?</\k<t>>'
+prompt=$(jq -r --arg re "$STRIP" '(.prompt // empty) | if type == "string" then gsub($re; "") else empty end' \
+  <<<"$input" 2>/dev/null) || exit 0
+[[ "$prompt" =~ [^[:space:]] ]] || exit 0
 
 B='(^|[^[:alnum:]])'
 E='([^[:alnum:]]|$)'

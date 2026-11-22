@@ -38,7 +38,7 @@ lets Copilot, Codex and Cursor install the plugin.
 | Skill | `SKILL.md`: picking a backend and tier, `ask`, `review`, `delegate` |
 | Scripts | `scripts/crew.py`, `scripts/backends.py` with each CLI's argv, parser and tiers, and `scripts/crew_selftest.py` with crew.py's self-test |
 | References | `references/delegate.md`; per backend `agy.md`, `opencode.md`, `copilot.md`, `codex.md`, `grok.md`, `cursor.md`, `claude.md`; `clis.md` for every agent CLI's flags and folders |
-| Hook | `hooks/inject.sh`: `UserPromptSubmit`, one line pointing at the skill when the prompt names agy, opencode, copilot, codex, grok, hermes, kimi or muse as a whole word (not claude or cursor, which more often name the host or an editor) |
+| Hook | `hooks/inject.sh`: `UserPromptSubmit`, one line pointing at the skill when the prompt names agy, opencode, copilot, codex, grok, hermes, kimi or muse as a whole word in the user's own text, not inside host blocks such as `<system-reminder>` or `<task-notification>` (and not claude or cursor, which more often name the host or an editor) |
 
 Every worker carries `CREW_RUN`, and crew refuses to start a worker inside one.
 `ask` also fails when the work tree changes, and stops what the run left behind.

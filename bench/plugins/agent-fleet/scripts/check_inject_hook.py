@@ -136,6 +136,29 @@ def self_test():
                 out = "relative skill directory"
             expect(label, (p.returncode, out, bool(p.stderr.strip())), want)
 
+        # Blocks the host adds to the prompt field are not the user's words.
+        # 2026-11-22: a CLAUDE.md reminder naming subagents and "parallel"
+        # loaded the whole skill on an audit request, and every background
+        # subagent's <task-notification> re-fired the pointer.
+        reminder = ("<system-reminder>\nUse several agents at once, 5 subagents in parallel, "
+                    "a deep research per folder.\n</system-reminder>\n")
+        notice = ('<task-notification id="a1">\n<result>deep research by 3 subagents in parallel</result>\n'
+                  '</task-notification>')
+        audit = "audite tudo o que é carregado no contexto e gere uma tabela"
+        for label, text, want in [
+                ("a reminder with trigger words and a prompt that does not match", reminder + audit, "none"),
+                ("only a task-notification", notice, "none"),
+                ("a task-notification and a reminder", notice + "\n" + reminder, "none"),
+                ("a cross-session-message", "<cross-session-message>fan out agents</cross-session-message>", "none"),
+                ("a side-sessions-event", "<side-sessions-event>\nlança 5 subagentes\n</side-sessions-event>", "none"),
+                ("only whitespace after the blocks", reminder + "  \n", "none"),
+                ("a reminder and a real fan-out request", reminder + MATCH, "full"),
+                ("a notification and a real request", notice + "\nlança 5 subagentes", "full"),
+                ("fan out agents", "fan out agents over these files", "full"),
+                ("subagents in portuguese", "lança 5 subagentes", "full"),
+                ("an unclosed tag is still read", "<system-reminder> " + MATCH, "full")]:
+            expect(label, run(prompt("sx-" + label[:8].replace(" ", "_"), text), None), (0, want))
+
         # 60,000 filler lines after the trigger: a pipe into grep -q under
         # pipefail read this as "no match" before 1.9.2.
         long_prompt = MATCH + "\n" + "filler line\n" * 60000

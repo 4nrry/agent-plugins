@@ -16,8 +16,18 @@ set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../skills/crew" && pwd)"
 
 command -v jq >/dev/null || { echo "crew inject hook: jq not found, no pointer added" >&2; exit 0; }
-prompt=$(jq -r '.prompt // empty' 2>/dev/null) || exit 0
-[[ -n "$prompt" ]] || exit 0
+# Only the user's words are matched. The host puts its own blocks into the same
+# prompt field: CLAUDE.md and other <system-reminder>s, background-subagent
+# <task-notification>s, messages from other sessions. Matching them fired the
+# agent-fleet hook on prompts that never mentioned an agent (2026-11-22), and
+# a backend name inside a reminder or a task-notification would fire this one. Blocks
+# are removed whole, tag to closing tag; an unclosed tag is left alone, so a
+# user who types the tag name is still read. A prompt that is nothing but such
+# blocks matches nothing.
+STRIP='<(?<t>system-reminder|task-notification|cross-session-message|side-sessions-event|local-command-caveat|local-command-stdout|local-command-stderr|user-prompt-submit-hook|command-name|command-message|command-args|ide_opened_file|ide_selection|ide_diagnostics)(\s[^>]*)?>[\s\S]*?</\k<t>>'
+prompt=$(jq -r --arg re "$STRIP" '(.prompt // empty) | if type == "string" then gsub($re; "") else empty end' \
+  2>/dev/null) || exit 0
+[[ "$prompt" =~ [^[:space:]] ]] || exit 0
 
 matched=()
 for backend in agy opencode copilot codex grok hermes kimi muse; do
