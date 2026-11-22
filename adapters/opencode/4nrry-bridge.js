@@ -104,7 +104,9 @@ export default {
   id: "4nrry-bridge",
   async setup(ctx) {
     if (process.env.CREW_RUN) return;
-    const plugins = portablePlugins(ctx.directory || process.cwd());
+    // opencode 2 runs one plugin instance per location (ctx.location.directory);
+    // under `opencode serve` the process cwd is the service's, not the project's.
+    const plugins = portablePlugins((ctx.location && ctx.location.directory) || ctx.directory || process.cwd());
     const pending = new Map(); // sessionID -> [context text]
     const add = (sessionID, text) => {
       if (!text) return;
