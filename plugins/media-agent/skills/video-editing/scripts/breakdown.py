@@ -6,7 +6,8 @@ or a render of your own to check before it ships.
 
 Writes into DIR:
   report.md, report.json  hard cuts, shots (duration, layout, motion, frozen
-                          head/tail frames, jump-cut flag), change zones,
+                          head/tail frames, jump-cut flag), stalled motion
+                          tiles, short-form 0-2 s opening audit, change zones,
                           flashes, sound hits, loudness, silences, and each
                           word's frame
   frames/NNNNN.jpg        every frame, SIZE px wide
@@ -39,6 +40,8 @@ except ImportError as e:
 
 SR = 48000
 THUMB_W = 90          # width the frame differences are measured at
+TILE_ROWS = 4         # vertical grid for per-tile stalled motion checks
+TILE_COLS = 3         # horizontal grid for per-tile stalled motion checks
 ZONE_GAP = 3          # frames: changes closer than this join one zone
 ZONE_PAD = 3          # frames shown before and after a zone
 ZONE_MAX_TILES = 32
@@ -102,26 +105,124 @@ class Shapes:
         return float((self.z[a].astype(np.float32) * self.z[b].astype(np.float32)).mean())
 
 
-def picture_series(files):
-    """Per frame: mean absolute difference to the previous frame, mean luma,
-    whether a sharp horizontal split-screen divider sits in the middle band
-    (y 0.35..0.58), and each frame's structure."""
-    diff, luma, split_score, shapes, prev = [0.0], [], [], Shapes(), None
-    for f in files:
-        im = Image.open(f).convert("L")
-        h_thumb = max(4, round(THUMB_W * im.height / im.width))
-        a = np.asarray(im.resize((THUMB_W, h_thumb)), np.float32)
+def tile_boxes(height, width, rows=TILE_ROWS, cols=TILE_COLS):
+    """Split (height, width) into a row-major grid of (r0, r1, c0, c1) slices."""
+    ys = np.linspace(0, height, rows + 1, dtype=int)
+    xs = np.linspace(0, width, cols + 1, dtype=int)
+    return [(int(ys[r]), int(ys[r + 1]), int(xs[c]), int(xs[c + 1]))
+            for r in range(rows) for c in range(cols)]
+
+
+def measure_series(images):
+    """Per frame: mean diff, luma, horizontal split-screen divider score, Shapes, and 3x4 tile diffs."""
+    diff, luma, split_score, tile_diff, shapes, prev, boxes = [0.0], [], [], [], Shapes(), None, None
+    for im in images:
+        g = im if im.mode == "L" else im.convert("L")
+        h_thumb = max(4, round(THUMB_W * g.height / g.width))
+        a = np.asarray(g.resize((THUMB_W, h_thumb)), np.float32)
+        if boxes is None:
+            boxes = tile_boxes(a.shape[0], a.shape[1])
+            tile_diff.append([0.0] * len(boxes))
         luma.append(float(a.mean()))
-        shapes.add(im)
+        shapes.add(g)
         row_diff = np.abs(np.diff(a, axis=0)).mean(axis=1)
         y0, y1 = max(1, int(0.35 * len(row_diff))), min(len(row_diff) - 1, int(0.58 * len(row_diff)))
         med_row = float(np.median(row_diff)) + 1e-6
         band_max = float(row_diff[y0:y1].max()) if y1 > y0 else 0.0
         split_score.append(band_max / med_row)
         if prev is not None:
-            diff.append(float(np.abs(a - prev).mean()))
+            delta = np.abs(a - prev)
+            diff.append(float(delta.mean()))
+            tile_diff.append([float(delta[r0:r1, c0:c1].mean()) for r0, r1, c0, c1 in boxes])
         prev = a
-    return np.array(diff), np.array(luma), np.array(split_score), shapes
+    return (np.array(diff), np.array(luma), np.array(split_score),
+            shapes, np.array(tile_diff, dtype=np.float32))
+
+
+def picture_series(files):
+    """Per frame: mean absolute difference, mean luma, split-divider score, Shapes, and tile diffs."""
+    def iter_grey():
+        for f in files:
+            with Image.open(f) as im:
+                yield im.convert("L")
+
+    return measure_series(iter_grey())
+
+
+def find_stalled_tiles(tile_diff, fps, active_s=2.0, frozen_s=1.5, active_thr=1.5, frozen_thr=0.35):
+    """Detect tiles that moved for >= active_s then froze for >= frozen_s while other tiles kept moving."""
+    if fps <= 0 or tile_diff.ndim != 2 or len(tile_diff) < 2:
+        return []
+    n_frames, n_tiles = tile_diff.shape
+    limit = max(0, n_frames - round(2.0 * fps))
+    if limit < 2 or n_tiles < 2:
+        return []
+    active_frames = max(1, round(active_s * fps))
+    frozen_frames = max(1, round(frozen_s * fps))
+    stalled = []
+    for t_idx in range(n_tiles):
+        col = tile_diff[:limit, t_idx]
+        other_max = np.delete(tile_diff[:limit, :], t_idx, axis=1).max(axis=1)
+        active_start, active_count, i = None, 0, 1
+        while i < limit:
+            if col[i] >= active_thr:
+                if active_start is None:
+                    active_start = i
+                active_count += 1
+                i += 1
+            elif col[i] >= frozen_thr:
+                i += 1
+            else:
+                j = i
+                while j < limit and col[j] < frozen_thr:
+                    j += 1
+                if (j - i) >= frozen_frames:
+                    if active_count >= active_frames and float(np.median(other_max[i:j])) >= active_thr:
+                        stalled.append({
+                            "tile": t_idx,
+                            "active_start_s": round(active_start / fps, 2),
+                            "frozen_start_s": round(i / fps, 2),
+                            "frozen_end_s": round((j - 1) / fps, 2),
+                            "frozen_duration_s": round((j - i) / fps, 2),
+                        })
+                    active_start, active_count = None, 0
+                i = j
+    return stalled
+
+
+def audit_opening(info, d, shots, rms, fps):
+    """Audit the opening 0-2 s of vertical/square shorts (<= 180 s); return None for landscape/long."""
+    if info["height"] < info["width"] or info["duration"] > 180.0:
+        return None
+    first_2s_end = min(len(d), max(2, round(2.0 * fps) + 1))
+    motion_in_first_2s = bool(len(d) > 1 and np.any(d[1:first_2s_end] >= 0.8))
+    first_shot_s = round(float(shots[0]["duration_s"]), 3) if shots else round(float(info["duration"]), 3)
+    first_sound_s = None
+    opening_quiet_db = None
+    warnings = []
+    if not motion_in_first_2s:
+        warnings.append("no picture movement in first 2 s")
+    if first_shot_s > 5.0:
+        warnings.append(f"first shot runs {first_shot_s:.2f} s (> 5.0 s)")
+    if rms is not None and len(rms) > 0:
+        first_sound_idx = next((idx for idx, v in enumerate(rms) if v > -40.0), None)
+        if first_sound_idx is None:
+            warnings.append("no audio above -40 dBFS")
+        else:
+            first_sound_s = round(first_sound_idx / fps, 3)
+            if first_sound_s > 1.0:
+                warnings.append(f"first sound lands at {first_sound_s:.2f} s (> 1.0 s)")
+        n_2s = min(len(rms), max(1, round(2.0 * fps)))
+        opening_quiet_db = round(float(np.median(rms) - np.mean(rms[:n_2s])), 2)
+        if opening_quiet_db >= 10.0:
+            warnings.append(f"first 2 s are {opening_quiet_db:.1f} dB quieter than median")
+    return {
+        "motion_in_first_2s": motion_in_first_2s,
+        "first_shot_s": first_shot_s,
+        "first_sound_s": first_sound_s,
+        "opening_quiet_db": opening_quiet_db,
+        "warnings": warnings,
+    }
 
 
 def find_shots(n_frames, fps, d, split_score, shapes, cuts):
@@ -367,6 +468,22 @@ def write_md(r, dest):
                      f"{sh['duration_s']:.2f} | {sh['layout']} | {sh['motion']} ({sh['median_diff']}) | "
                      f"{sh['frozen_start_frames']}/{sh['frozen_end_frames']} | "
                      f"{'yes' if sh['jump_cut'] else 'no'} |")
+    if r.get("opening") is not None:
+        op = r["opening"]
+        L += ["", "## Opening check (0-2 s)", "",
+              f"- Motion in first 2 s: {'yes' if op['motion_in_first_2s'] else 'no'}",
+              f"- First shot duration: {op['first_shot_s']:.2f} s",
+              f"- First sound (> -40 dBFS): {op['first_sound_s']:.2f} s" if op["first_sound_s"] is not None else "- First sound (> -40 dBFS): none",
+              f"- Opening quiet vs median: {op['opening_quiet_db']:+.1f} dB" if op["opening_quiet_db"] is not None else "- Opening quiet vs median: n/a",
+              "- Warnings: " + ("; ".join(op["warnings"]) if op["warnings"] else "none")]
+    if "stalled_tiles" in r:
+        st = r["stalled_tiles"]
+        L += ["", "## Stalled motion (per-tile)", ""]
+        if not st:
+            L += ["None."]
+        else:
+            L += ["| Tile | Active start (s) | Frozen (s) | Dur (s) |", "|---|---|---|---|"]
+            L += [f"| {s['tile']} | {s['active_start_s']:.2f} | {s['frozen_start_s']:.2f}-{s['frozen_end_s']:.2f} | {s['frozen_duration_s']:.2f} |" for s in st]
     L += ["", "## Change zones", "", "| # | Frames | Time (s) | Kind | Peak | Sheet |", "|---|---|---|---|---|---|"]
     for k, z in enumerate(r["zones"]):
         sheet_name = z.get("sheet", "")
@@ -397,9 +514,8 @@ def write_md(r, dest):
 
 
 def self_test():
-    """Verify flash, hard cut, shot segmentation, split layout and frozen-frame
-    checks on synthetic thumbnail series."""
-    shapes = Shapes()
+    """Verify flash, hard cut, shot segmentation, split layout, frozen-frame,
+    per-tile stalled motion, and short-form opening audit checks."""
     yy, xx = np.mgrid[0:160, 0:90]
     base_a = np.clip(40 + (xx * 1.2) + (yy * 0.4), 0, 255).astype(np.uint8)
     base_b = np.zeros((160, 90), dtype=np.uint8)
@@ -418,18 +534,7 @@ def self_test():
         arr = base_b.copy()
         arr[80:, :] = np.clip(arr[80:, :].astype(np.int32) + ((i % 3) - 1) * 2, 0, 255).astype(np.uint8)
         frames.append(Image.fromarray(arr, mode="L"))
-    diff, luma, split_score, prev = [0.0], [], [], None
-    for im in frames:
-        a = np.asarray(im, np.float32)
-        luma.append(float(a.mean()))
-        shapes.add(im)
-        row_diff = np.abs(np.diff(a, axis=0)).mean(axis=1)
-        med_row = float(np.median(row_diff)) + 1e-6
-        split_score.append(float(row_diff[56:92].max()) / med_row)
-        if prev is not None:
-            diff.append(float(np.abs(a - prev).mean()))
-        prev = a
-    d_arr, l_arr, s_arr = np.array(diff), np.array(luma), np.array(split_score)
+    d_arr, l_arr, s_arr, shapes, _ = measure_series(frames)
     flashes = find_flashes(l_arr, shapes)
     cuts = find_cuts(d_arr, shapes, flashes)
     shots = find_shots(len(frames), 30.0, d_arr, s_arr, shapes, cuts)
@@ -438,7 +543,37 @@ def self_test():
     assert len(shots) == 2, f"expected 2 shots, got {len(shots)}"
     assert shots[0]["frozen_start_frames"] >= 1, f"expected frozen head frame in shot 1, got {shots[0]}"
     assert shots[1]["layout"] == "split", f"expected split layout in shot 2, got {shots[1]}"
-    print("self-test: 5 checks ok")
+
+    # Synthetic 7.0s @ 10fps clip: top-left tile moves 0..2.5s then freezes, bottom-right keeps moving
+    stall_frames = []
+    for i in range(70):
+        arr = np.full((160, 90), 80, dtype=np.uint8)
+        if i <= 25:
+            arr[:40, :30] = 40 if (i % 2 == 0) else 200
+        arr[120:, 60:] = 40 if (i % 2 == 0) else 200
+        stall_frames.append(Image.fromarray(arr, mode="L"))
+    sd_arr, _, _, _, tile_diff = measure_series(stall_frames)
+    stalled = find_stalled_tiles(tile_diff, 10.0)
+    stalled_ids = {s["tile"] for s in stalled}
+    assert 0 in stalled_ids and 11 not in stalled_ids, f"unexpected stalled tiles: {stalled}"
+
+    bad_open = audit_opening(
+        {"width": 1080, "height": 1920, "duration": 10.0},
+        np.array([0.0] * 30),
+        [{"duration_s": 6.0}],
+        np.array([-60.0] * 15 + [-18.0] * 85),
+        10.0,
+    )
+    assert len(bad_open["warnings"]) >= 3, f"expected opening warnings, got {bad_open}"
+    good_open = audit_opening(
+        {"width": 1080, "height": 1920, "duration": 10.0},
+        sd_arr,
+        [{"duration_s": 2.0}],
+        np.full(70, -18.0),
+        10.0,
+    )
+    assert good_open["warnings"] == [], f"expected 0 opening warnings, got {good_open}"
+    print("self-test: 8 checks ok")
     return 0
 
 
@@ -460,14 +595,17 @@ def main():
     info = probe(video)
     fps = info["fps"]
     files = extract_frames(video, out / "frames", a.size)
-    d, luma, split_score, shapes = picture_series(files)
+    d, luma, split_score, shapes, tile_diff = picture_series(files)
     flashes = find_flashes(luma, shapes)
     cuts = find_cuts(d, shapes, flashes)
     shots = find_shots(len(files), fps, d, split_score, shapes, cuts)
+    stalled_tiles = find_stalled_tiles(tile_diff, fps)
     zones, thr = find_zones(d, cuts, flashes)
     r = {"video": video.name, "probe": info, "frames": len(files),
          "median_diff": round(float(np.median(d[1:])), 2) if len(d) > 1 else 0.0,
-         "zone_threshold": thr, "cuts": cuts, "shots": shots, "zones": zones, "flashes": flashes}
+         "zone_threshold": thr, "cuts": cuts, "shots": shots,
+         "stalled_tiles": stalled_tiles, "zones": zones, "flashes": flashes}
+    rms = None
     if info["audio"]:
         rms, low = audio_series(video, fps)
         hits = jumps(low, 8.0)
@@ -477,6 +615,7 @@ def main():
         for fl in flashes:
             near = [h["frame"] for h in hits if abs(h["frame"] - fl["frame"]) <= SYNC_WINDOW]
             fl["low_hit"] = min(near, key=lambda h: abs(h - fl["frame"])) if near else None
+    r["opening"] = audit_opening(info, d, shots, rms, fps)
     if a.words:
         r["words"] = load_words(a.words, fps)
     for old in [*out.glob("overview_*.jpg"), *out.glob("zone_*.jpg")]:

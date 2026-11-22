@@ -43,6 +43,13 @@ the move between them.
 - Pass the subject's reference images where the model takes them
   (`omni.py --ref`, repeatable, not with `--image`, not yet run live; the
   sheet from the `image-generation` skill) and name the subject in the prompt.
+- **Isolate reference roles and continue from observed end state:** when
+  passing multiple assets to a reference-driven model, explicitly state both
+  what each asset controls and its non-transfer boundary (for example, camera
+  rhythm from a reference clip without copying its performer, room, or outfit).
+  When continuing from an accepted clip, prompt from the **observed** last
+  frame rather than assuming the script's planned end state happened. See
+  [references/prompting.md](references/prompting.md).
 - To continue a shot, extend the clip rather than generating a new one: the
   model keeps the subject, the motion and the sound.
 - To fix one thing in a clip, edit it ("change only the sky") where the model
@@ -50,6 +57,11 @@ the move between them.
 
 ## Prompts
 
+- Block and stage characters before choosing the camera (`first_frame` locks
+  spatial geometry better than text motion verbs); keep model names, aspect
+  ratios, durations, and API parameters out of the prompt string itself. See
+  [references/prompting.md](references/prompting.md) for proxemics, 3D
+  pill-pipeline camera guides, and per-model syntax.
 - Describe the motion only; the still already holds the scene.
 - One camera move per shot, with its framing: "medium shot, slow push
   forward".

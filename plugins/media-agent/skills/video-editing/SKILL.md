@@ -36,6 +36,13 @@ Pillow. The report has:
   (`active` vs `static_hold`), frozen head/tail frame count, and whether the
   entry cut is a jump cut (high frame difference while global scene structure
   stays near the previous shot);
+- stalled per-tile motion: flags any tile of the 3×4 grid that moved for
+  `>= 2 s` and then froze for `>= 1.5 s` while another region kept moving
+  (catches I2V clips or PiPs whose motion ran out mid-shot);
+- short-form opening audit (`0–2 s` on vertical/square videos `<= 180 s`):
+  checks motion in the first `2 s`, first shot length (`<= 5 s`), first sound
+  above `-40 dBFS` (`<= 1 s`), and whether the opening `2 s` sits `>= 10 dB`
+  under median volume;
 - the change zones, each with a sheet of its consecutive frames;
 - the flashes, each with its nearest low hit in frames;
 - the sound onsets, loudness and silences;
@@ -57,6 +64,20 @@ before copying what it does, and on a render before delivery.
   before it.
 - Text appearing on screen is a small change under the zone threshold: read
   it off the sheets against the word table.
+
+## Checking SFX sync against visual motion
+
+`scripts/sync_check.py` (adapted from MIT `4nrry/claude-code-video-toolkit`)
+aligns each sound effect's loudest `50 ms` peak with the corresponding visual
+event (`peak`, `impact`, or `onset` inside an ffmpeg crop region `w:h:x:y`).
+Use it before rendering to find the exact placement on a generated clip, or
+after rendering as a `±0.1 s` gate (exits `1` if off):
+
+```bash
+python3 scripts/sync_check.py --clip shot.mp4 --sfx hit.wav --window 1.5:3.5 --kind impact
+python3 scripts/sync_check.py --video final.mp4 --sfx hit.wav --at 4.20 --region 540:540:270:600
+python3 scripts/sync_check.py --video final.mp4 --cues cues.json --tolerance 0.1 --json
+```
 
 ## Kinocut, the bundled tool
 

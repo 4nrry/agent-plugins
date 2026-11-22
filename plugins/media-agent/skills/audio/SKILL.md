@@ -40,6 +40,10 @@ your own GPU; transcription alone on an Intel NPU) and
   and a TV switching off, made from a seed (same seed, same file). It needs
   numpy.
   Abstract or lo-fi pieces can use them for every effect.
+- **Align SFX to motion (`±0.1 s`):** viewers notice sound early from `~45 ms`
+  and late from `~125 ms`. Check placement against the visual `peak`, `impact`
+  or `onset` with the `video-editing` skill's `scripts/sync_check.py` before and
+  after render.
 
 ## Fixing real recordings
 
