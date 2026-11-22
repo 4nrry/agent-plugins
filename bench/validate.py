@@ -430,7 +430,9 @@ def check_self_tests() -> None:
 
     Python and Node scripts both. Node ones run when node is on PATH and are
     reported as skipped when it is not; until this covered them, page-check's
-    44-check self-test never ran here.
+    44-check self-test never ran here. A script whose self-test needs a package
+    that is not installed (numpy, for the media-agent scripts) prints
+    "self-test skipped: ..." and exits 0; that is reported as a warning.
     """
     global checks_run
     node = shutil.which("node")
@@ -459,6 +461,10 @@ def check_self_tests() -> None:
         if proc.returncode != 0:
             fail(rel(script), "--self-test failed:\n"
                  + (proc.stdout + proc.stderr).strip()[:2000])
+        elif proc.stdout.lstrip().startswith("self-test skipped"):
+            # A script that needs a third-party package this stdlib-only gate
+            # does not install says so and exits 0; surface it, never hide it.
+            warn(rel(script), proc.stdout.strip().splitlines()[0])
     if skipped:
         tools["node"] = "absent"
         warn("node", f"not installed — {skipped} Node self-test(s) skipped")
