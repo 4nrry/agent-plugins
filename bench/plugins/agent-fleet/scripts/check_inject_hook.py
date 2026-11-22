@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4] / "plugins/agent-fleet"
@@ -158,6 +159,11 @@ def self_test():
                 ("subagents in portuguese", "lança 5 subagentes", "full"),
                 ("an unclosed tag is still read", "<system-reminder> " + MATCH, "full")]:
             expect(label, run(prompt("sx-" + label[:8].replace(" ", "_"), text), None), (0, want))
+
+        # Thousands of tags that never close: the lazy match was quadratic (12 s on 8,000).
+        t0 = time.monotonic()
+        expect("8,000 unclosed tags", run(prompt("sy", "<system-reminder> x\n" * 8000 + MATCH), None), (0, "none"))
+        expect("8,000 unclosed tags finish fast", time.monotonic() - t0 < 5, True)
 
         # 60,000 filler lines after the trigger: a pipe into grep -q under
         # pipefail read this as "no match" before 1.9.2.

@@ -13,6 +13,7 @@ import json
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HOOK = Path(__file__).resolve().parents[4] / "plugins/crew/hooks/inject.sh"
@@ -47,6 +48,10 @@ def self_test():
             got = out.split("(matched: ", 1)[1].split(")", 1)[0] if "(matched: " in out else "unexpected output"
         if (code, got, err) != (0, want, ""):
             fails.append(f"{label}: got {(code, got, err)!r}, expected {(0, want, '')!r}")
+    t0 = time.monotonic()
+    code, out, err = run("<system-reminder> x\n" * 8000 + "use codex")
+    if (code, out, err) != (0, "", "") or time.monotonic() - t0 > 5:
+        fails.append(f"8,000 unclosed tags: got {(code, out[:40], err)!r} in {time.monotonic() - t0:.1f}s")
     for f in fails:
         print("FAIL:", f)
     print(f"self-test: {'ok' if not fails else str(len(fails)) + ' failed'}")

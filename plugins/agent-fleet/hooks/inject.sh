@@ -66,8 +66,14 @@ fi
 # are removed whole, tag to closing tag; an unclosed tag is left alone, so a
 # user who types the tag name is still read. A prompt that is nothing but such
 # blocks matches nothing.
-STRIP='<(?<t>system-reminder|task-notification|cross-session-message|side-sessions-event|local-command-caveat|local-command-stdout|local-command-stderr|user-prompt-submit-hook|command-name|command-message|command-args|ide_opened_file|ide_selection|ide_diagnostics)(\s[^>]*)?>[\s\S]*?</\k<t>>'
-prompt=$(jq -r --arg re "$STRIP" '(.prompt // empty) | if type == "string" then gsub($re; "") else empty end' \
+# More than 100 opening tags is not a conversation: the lazy match rescans to the
+# end for each tag that never closes, which took 12 s on 8,000 of them, so such
+# a prompt is treated as matching nothing.
+TAGS='system-reminder|task-notification|cross-session-message|side-sessions-event|local-command-caveat|local-command-stdout|local-command-stderr|user-prompt-submit-hook|command-name|command-message|command-args|ide_opened_file|ide_selection|ide_diagnostics'
+prompt=$(jq -r --arg tags "$TAGS" '
+  (.prompt // empty) | if type != "string" then empty
+  elif ([match("<(" + $tags + ")[\\s>]"; "g")] | length) > 100 then empty
+  else gsub("<(?<t>" + $tags + ")(\\s[^>]*)?>[\\s\\S]*?</\\k<t>>"; "") end' \
   <<<"$input" 2>/dev/null) || exit 0
 [[ "$prompt" =~ [^[:space:]] ]] || exit 0
 
