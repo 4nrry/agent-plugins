@@ -124,31 +124,37 @@ def hook_events(plugin_dir: Path) -> list:
     return sorted(e for e in events if e in ("PreToolUse", "PostToolUse", "UserPromptSubmit"))
 
 
-def claude(repo: Path, plugins: list, gone: list, dry: bool, log: list) -> None:
-    path = repo / ".claude/settings.local.json"
+def claude(repo: Path, plugins: list, gone: list, dry: bool, log: list) -> list:
+    """Returns the file to git-exclude: it is personal, like Claude Code's own default."""
+    rel = ".claude/settings.local.json"
+    path = repo / rel
+    excludes = [] if tracked(repo, rel) else [rel]
     try:
         data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     except ValueError:
         data = None
     if not isinstance(data, dict) or not isinstance(data.get("enabledPlugins", {}), dict):
         log.append(f"  ! claude: {path} is not a settings object with an enabledPlugins map; left alone")
-        return
+        return excludes
     enabled = dict(data.get("enabledPlugins", {}))
     before = dict(enabled)
     for p in plugins:
         enabled[f"{p}@{MARKETPLACE_NAME}"] = True
     for p in gone:
         enabled.pop(f"{p}@{MARKETPLACE_NAME}", None)
-    if enabled == before:
-        return
-    if enabled:
-        data["enabledPlugins"] = enabled
-    else:
-        data.pop("enabledPlugins", None)
-    log.append("  claude: .claude/settings.local.json")
-    if not dry:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    if enabled != before:
+        if enabled:
+            data["enabledPlugins"] = enabled
+        else:
+            data.pop("enabledPlugins", None)
+        log.append("  claude: .claude/settings.local.json" + ("" if data else " (removed, now empty)"))
+        if not dry:
+            if data:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+            elif path.exists():
+                path.unlink()
+    return excludes if data else []
 
 
 def codex(repo: Path, plugins: list, dry: bool, log: list) -> list:
@@ -286,8 +292,8 @@ def sync_tools(repo: Path, source: Path, skills_of, plugins: list, previous: lis
     skills_of(plugin) -> {skill name: skill dir}. Returns paths relative to repo to git-exclude."""
     gone = sorted(set(previous) - set(plugins))
     log = []
-    claude(repo, plugins, gone, dry, log)
-    excludes = codex(repo, plugins, dry, log)
+    excludes = claude(repo, plugins, gone, dry, log)
+    excludes += codex(repo, plugins, dry, log)
     excludes += grok(repo, source, plugins, gone, dry, log)
     excludes += antigravity(repo, source, skills_of, plugins, gone, dry, log)
     for line in log:
@@ -366,14 +372,14 @@ def self_test() -> int:
            and not (repo / ".agents/plugins/m/skills/s1").is_symlink(), "antigravity gets a real copy")
         ok(json.loads((repo / ".agents/plugins/m/mcp_config.json").read_text())["mcpServers"]["srv"]["command"]
            == "python3", "antigravity gets the MCP server")
-        ok(set(ex) == {".grok/config.toml", ".grok/hooks/4nrry-m.json", ".agents/plugins/m/"},
+        ok(set(ex) == {".claude/settings.local.json", ".grok/config.toml", ".grok/hooks/4nrry-m.json",
+                       ".agents/plugins/m/"},
            "excludes cover the files only this script wrote, not a hand-written codex file")
         before = (repo / ".grok/config.toml").read_text()
         quiet(repo, src, skills_of, ["m"], ["m"], False)
         ok((repo / ".grok/config.toml").read_text() == before, "a second run changes nothing")
         quiet(repo, src, skills_of, [], ["m"], False)
-        ok("enabledPlugins" not in json.loads((repo / ".claude/settings.local.json").read_text()),
-           "claude entry removed")
+        ok(not (repo / ".claude/settings.local.json").exists(), "claude entry removed, empty file with it")
         ok((repo / ".codex/config.toml").read_text() == '[mcp_servers.mine]\nurl = "https://x"\n',
            "codex back to the hand-written file")
         ok(not (repo / ".grok/config.toml").exists() and not (repo / ".grok/hooks/4nrry-m.json").exists(),
