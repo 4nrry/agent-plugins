@@ -16,8 +16,24 @@ set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../skills/crew" && pwd)"
 
 command -v jq >/dev/null || { echo "crew inject hook: jq not found, no pointer added" >&2; exit 0; }
-prompt=$(jq -r '.prompt // empty' 2>/dev/null) || exit 0
-[[ -n "$prompt" ]] || exit 0
+# Only the user's words are matched. The host puts its own blocks into the same
+# prompt field: CLAUDE.md and other <system-reminder>s, background-subagent
+# <task-notification>s, messages from other sessions. Matching them fired the
+# agent-fleet hook on prompts that never mentioned an agent (2026-11-22), and
+# a backend name inside a reminder or a task-notification would fire this one. Blocks
+# are removed whole, tag to closing tag; an unclosed tag is left alone, so a
+# user who types the tag name is still read. A prompt that is nothing but such
+# blocks matches nothing.
+# More than 100 opening tags is not a conversation: the lazy match rescans to the
+# end for each tag that never closes, which took 12 s on 8,000 of them, so such
+# a prompt is treated as matching nothing.
+TAGS='system-reminder|task-notification|cross-session-message|side-sessions-event|local-command-caveat|local-command-stdout|local-command-stderr|user-prompt-submit-hook|command-name|command-message|command-args|ide_opened_file|ide_selection|ide_diagnostics'
+prompt=$(jq -r --arg tags "$TAGS" '
+  (.prompt // empty) | if type != "string" then empty
+  elif ([match("<(" + $tags + ")[\\s>]"; "g")] | length) > 100 then empty
+  else gsub("<(?<t>" + $tags + ")(\\s[^>]*)?>[\\s\\S]*?</\\k<t>>"; "") end' \
+  2>/dev/null) || exit 0
+[[ "$prompt" =~ [^[:space:]] ]] || exit 0
 
 matched=()
 for backend in agy opencode copilot codex grok hermes kimi muse; do
