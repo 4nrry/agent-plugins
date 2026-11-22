@@ -155,6 +155,7 @@ Stars and licences checked with `gh api repos/<owner>/<repo>` on 2026-10-30,
 | Tool | What it does | Licence, stars |
 |---|---|---|
 | [HyperFrames](https://github.com/heygen-com/hyperframes) | HTML, CSS and seekable animation (GSAP, Lottie, Three.js) to deterministic MP4; how to run it is in [hyperframes.md](hyperframes.md) | Apache-2.0, ~82.9k |
+| [Hypit](https://github.com/hypit-ai/hypit) (fork [`4nrry/hypit`](https://github.com/4nrry/hypit)) | viral-video cloning workflow (`SVML` / `SVS` / `SVRun`), star image dependency graphs, word-anchored semantic timing and depth-stack cards; **licence trap:** internal/client production and forking allowed, multi-tenant SaaS or commercial redistribution of its code prohibited | Apache-2.0 with conditions, ~31.0k |
 | [Remotion agent skills](https://github.com/remotion-dev/skills) | Remotion best practices as agent skills (`npx remotion skills add`) | no licence file in the repo; Remotion's own licence in [remotion.md](remotion.md), ~7.7k |
 | [rea-video](https://github.com/JuneYaooo/rea-video) (fork [`4nrry/rea-video`](https://github.com/4nrry/rea-video)) | shot-by-shot video reverse engineering (live, AI, 3D, stop-motion, code) into `VIDEO.md`: camera moves, drawn layers, overlays, sound events and remake plan | Apache-2.0, ~11.9k |
 | [OpenMotion](https://github.com/nexu-io/openmotion) (fork [`4nrry/openmotion`](https://github.com/4nrry/openmotion)) | agentic motion-graphics studio and reference-video remake workflow over HyperFrames and Remotion | Apache-2.0, ~14.8k |

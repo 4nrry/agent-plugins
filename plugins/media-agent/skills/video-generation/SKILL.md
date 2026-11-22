@@ -32,6 +32,14 @@ the move between them.
 
 ## A subject across shots
 
+- **Build a star graph of first-frame stills, never a tail-frame chain.**
+  Chaining Shot 2 from the last frame of Shot 1 compounds anatomy, colour and
+  lighting drift at every cut. Instead, generate one **anchor still** (`G1`:
+  main subject and shared set) plus one still per recurring prop; derive
+  reverse angles, co-host views, split-screen openings and prop-holding shots
+  by image-editing from the anchor still and character sheet before any video
+  model runs, then animate each shot independently from its approved
+  `first_frame`.
 - Pass the subject's reference images where the model takes them
   (`omni.py --ref`, repeatable, not with `--image`, not yet run live; the
   sheet from the `image-generation` skill) and name the subject in the prompt.
