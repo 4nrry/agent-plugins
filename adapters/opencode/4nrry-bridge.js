@@ -39,20 +39,23 @@ function readJson(path) {
   try { return JSON.parse(readFileSync(path, "utf8")); } catch { return null; }
 }
 
-// Plugins whose skills are linked into .agents/skills of start or a parent.
+// Plugins whose skills are linked into .agents/skills of start or a parent
+// below the home folder (~/.agents/skills is the global root, not a project).
 function projectNames(start) {
   const names = new Set();
-  for (let dir = resolve(start); ; dir = dirname(dir)) {
+  const home = resolve(homedir());
+  for (let dir = resolve(start); dir !== home && dir.startsWith(home + sep); dir = dirname(dir)) {
     const skills = join(dir, ".agents", "skills");
     let entries = [];
     try { entries = readdirSync(skills, { withFileTypes: true }); } catch {}
     for (const e of entries) {
       if (!e.isSymbolicLink()) continue;
-      const parts = readlinkSync(join(skills, e.name)).split(sep);
+      let target = "";
+      try { target = readlinkSync(join(skills, e.name)); } catch { continue; }
+      const parts = target.split(/[\\/]/);
       const i = parts.lastIndexOf("plugins");
       if (i >= 0 && i + 1 < parts.length) names.add(parts[i + 1]);
     }
-    if (dirname(dir) === dir) break;
   }
   return names;
 }
@@ -60,9 +63,12 @@ function projectNames(start) {
 function portablePlugins(start) {
   const dir = join(MARKETPLACE, "plugins");
   if (!existsSync(dir)) return [];
-  const wanted = new Set([...(readJson(join(MARKETPLACE, "adapters", "global-plugins.json")) || []), ...projectNames(start)]);
-  return readdirSync(dir).map((name) => join(dir, name))
-    .filter((root) => existsSync(join(root, "plugin.json")) && wanted.has(basename(root)));
+  const all = readdirSync(dir).map((name) => join(dir, name)).filter((root) => existsSync(join(root, "plugin.json")));
+  // An unreadable or malformed list falls back to every plugin, as before the list existed.
+  const listed = readJson(join(MARKETPLACE, "adapters", "global-plugins.json"));
+  if (!Array.isArray(listed) || !listed.every((n) => typeof n === "string")) return all;
+  const wanted = new Set([...listed, ...projectNames(start)]);
+  return all.filter((root) => wanted.has(basename(root)));
 }
 
 function hooksOf(root, event) {

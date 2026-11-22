@@ -40,25 +40,34 @@ def _plugins() -> list:
     return sorted(p for p in root.iterdir() if (p / "plugin.json").is_file()) if root.is_dir() else []
 
 
-def _global_names() -> set:
+def _global_names():
+    """Names in adapters/global-plugins.json; None (every plugin) if unreadable."""
     try:
-        return set(json.loads((MARKETPLACE / "adapters" / "global-plugins.json").read_text(encoding="utf-8")))
+        names = json.loads((MARKETPLACE / "adapters" / "global-plugins.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return set()
+        return None
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        return None
+    return set(names)
 
 
 def _project_names(start: Path) -> set:
-    """Plugins whose skills are linked into .agents/skills of start or a parent."""
+    """Plugins whose skills are linked into .agents/skills of start or a parent
+    below the home folder (~/.agents/skills is the global root, not a project)."""
     names = set()
+    home = Path.home().resolve()
     for folder in (start, *start.parents):
+        if home not in folder.parents:
+            break
         try:
             entries = list((folder / ".agents" / "skills").iterdir())
         except OSError:
             continue
         for entry in entries:
-            if not entry.is_symlink():
+            try:
+                parts = Path(os.readlink(entry)).parts
+            except OSError:
                 continue
-            parts = Path(os.readlink(entry)).parts
             hits = [i for i, part in enumerate(parts) if part == "plugins"]
             if hits and hits[-1] + 1 < len(parts):
                 names.add(parts[hits[-1] + 1])
@@ -66,7 +75,11 @@ def _project_names(start: Path) -> set:
 
 
 def _active(plugins: list, start) -> list:
-    wanted = _global_names() | _project_names(Path(start or os.getcwd()).resolve())
+    names = _global_names()
+    if names is None:
+        return plugins
+    start = Path(os.path.expanduser(start)) if isinstance(start, str) and start else Path(os.getcwd())
+    wanted = names | _project_names(start.resolve())
     return [p for p in plugins if p.name in wanted]
 
 
