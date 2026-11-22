@@ -11,7 +11,10 @@ Mapping (Claude hook contract -> Hermes plugin hooks):
                       context is appended to that tool's result through
                       transform_tool_result.
 Other events, and matchers for tools Hermes lacks (Workflow), are skipped.
-Inside a crew worker run (CREW_RUN set) the bridge does nothing.
+A plugin runs only when it is listed in adapters/global-plugins.json, or when
+the working folder (or a parent) links one of its skills in .agents/skills, as
+`link_skills.py project` does. Inside a crew worker run (CREW_RUN set) the
+bridge does nothing.
 """
 import json
 import os
@@ -35,6 +38,49 @@ TOOLS = {
 def _plugins() -> list:
     root = MARKETPLACE / "plugins"
     return sorted(p for p in root.iterdir() if (p / "plugin.json").is_file()) if root.is_dir() else []
+
+
+def _global_names():
+    """Names in adapters/global-plugins.json; None (every plugin) if unreadable."""
+    try:
+        names = json.loads((MARKETPLACE / "adapters" / "global-plugins.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
+        return None
+    return set(names)
+
+
+def _project_names(start: Path) -> set:
+    """Plugins whose skills are linked into .agents/skills of start or a parent
+    below the home folder (~/.agents/skills is the global root, not a project)."""
+    names = set()
+    home = Path.home().resolve()
+    for folder in (start, *start.parents):
+        if home not in folder.parents:
+            break
+        try:
+            entries = list((folder / ".agents" / "skills").iterdir())
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                parts = Path(os.readlink(entry)).parts
+            except OSError:
+                continue
+            hits = [i for i, part in enumerate(parts) if part == "plugins"]
+            if hits and hits[-1] + 1 < len(parts):
+                names.add(parts[hits[-1] + 1])
+    return names
+
+
+def _active(plugins: list, start) -> list:
+    names = _global_names()
+    if names is None:
+        return plugins
+    start = Path(os.path.expanduser(start)) if isinstance(start, str) and start else Path(os.getcwd())
+    wanted = names | _project_names(start.resolve())
+    return [p for p in plugins if p.name in wanted]
 
 
 def _hooks(plugin: Path, event: str) -> list:
@@ -94,7 +140,7 @@ def register(ctx):
     def pre_llm_call(session_id="", user_message="", **_):
         texts = [_run(cmd, root, {"hook_event_name": "UserPromptSubmit", "prompt": _text(user_message),
                                   "session_id": session_id}).get("context")
-                 for plugin in plugins for _m, cmd, root in _hooks(plugin, "UserPromptSubmit")]
+                 for plugin in _active(plugins, None) for _m, cmd, root in _hooks(plugin, "UserPromptSubmit")]
         joined = "\n\n".join(t for t in texts if t)
         return {"context": joined} if joined else None
 
@@ -103,7 +149,7 @@ def register(ctx):
         if not claude_tool:
             return None
         tool_input = {keys.get(k, k): v for k, v in (args or {}).items()}
-        for plugin in plugins:
+        for plugin in _active(plugins, (args or {}).get("workdir")):
             for matcher, cmd, root in _hooks(plugin, "PreToolUse"):
                 if not _matches(matcher, claude_tool):
                     continue

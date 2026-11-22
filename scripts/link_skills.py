@@ -18,16 +18,13 @@ touched; it is reported as a conflict.
 import argparse
 import contextlib
 import io
+import json
 import os
 import re
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
-
-# The user's choice (2026-10-26): only these reach the other tools; the rest
-# stay in Claude Code for now.
-GLOBAL = ["agent-fleet", "crew", "media-agent"]
 
 HOME = Path.home()
 # ~/.agents/skills: Grok, Cursor, Kimi Code, ZCode, opencode, and Hermes through
@@ -40,6 +37,11 @@ USER_ROOTS = [HOME / ".agents/skills", HOME / ".gemini/config/skills"]
 ADAPTER_ROOTS = {"opencode": HOME / ".config/opencode/plugins", "hermes": HOME / ".hermes/plugins"}
 MARKETPLACE_CLONE = HOME / ".claude/plugins/marketplaces/4nrry"
 REPO = Path(__file__).resolve().parent.parent
+# The user's choice: only these reach the other tools everywhere; the rest stay
+# in Claude Code or come in per project (`project`). The bridges read the same
+# file, so a plugin left out here runs its hooks and MCP servers only in a
+# folder whose .agents/skills links it. (2026-10-26; media-agent left 2026-11-22.)
+GLOBAL = json.loads((REPO / "adapters/global-plugins.json").read_text(encoding="utf-8"))
 EXCLUDE_BEGIN = "# >>> link_skills.py (agent-plugins)"
 EXCLUDE_END = "# <<< link_skills.py"
 
