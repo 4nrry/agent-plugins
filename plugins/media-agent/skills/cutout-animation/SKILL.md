@@ -104,3 +104,27 @@ python3 scripts/cutout_pack.py split props-cut.png -o props --names kelp1,kelp2,
 `split` finds a prop wherever a column holds any opaque pixel, and refuses
 when the count differs from the names given: two props that touch, or overlap
 side by side, come out as one.
+
+## Procedural pixel-art VFX and sprite sheets (pixelfx)
+
+When the overlay is a visual effect (fire, explosions, water/bubbles, ice,
+lightning, impacts, coin pickup, poof, UI sparkles) rather than an AI clip,
+[`4nrry/pixelfx`](https://github.com/4nrry/pixelfx) (fork of
+`patch-gg/pixelfx`, MIT, Node 18+, no install step) ships 244 procedural pixel
+effects and 12 acted character moves in pure JavaScript (`src/fx/<category>/<name>.js`),
+each drawn into two buffers: **color** and **light** (additive glow).
+
+```bash
+node tools/list.mjs water                        # search the 244 effects
+node tools/render.mjs water/bubbles              # contact sheet -> records/water/bubbles/contact.png
+node tools/render.mjs water/bubbles --sheet      # transparent PNG grid + Aseprite JSON
+node tools/check.mjs water/bubbles               # bounds, loop seams, seeded RNG, frame time
+```
+
+- Re-skin an existing effect before writing a new one: pass `palette` (any
+  `PAL.*` ramp in `src/core/color.js` or hex array), `seed`, `flip`, `angle`
+  or `light`.
+- For a new effect, draft 3–5 variations, render their contact sheets, inspect
+  at 1× and refine for at least 3 rounds; when a character acts it out, export
+  `act` (`windup`, `freeze` hit-stop on contact, `recovery`) and verify 12 fps
+  strips with `node tools/act.mjs <id>`.

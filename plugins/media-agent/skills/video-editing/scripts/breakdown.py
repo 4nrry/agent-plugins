@@ -5,8 +5,10 @@ or a render of your own to check before it ships.
   breakdown.py VIDEO --out DIR [--words WORDS.json] [--every 0.5] [--size 360]
 
 Writes into DIR:
-  report.md, report.json  hard cuts, change zones, flashes, sound hits,
-                          loudness, silences, and each word's frame
+  report.md, report.json  hard cuts, shots (duration, layout, motion, frozen
+                          head/tail frames, jump-cut flag), change zones,
+                          flashes, sound hits, loudness, silences, and each
+                          word's frame
   frames/NNNNN.jpg        every frame, SIZE px wide
   overview_NN.jpg         a contact sheet, one tile every EVERY seconds
   zone_NN.jpg             consecutive frames around each change zone
@@ -101,18 +103,73 @@ class Shapes:
 
 
 def picture_series(files):
-    """Per frame: mean absolute difference to the previous frame and mean luma,
-    plus each frame's structure."""
-    diff, luma, shapes, prev = [0.0], [], Shapes(), None
+    """Per frame: mean absolute difference to the previous frame, mean luma,
+    whether a sharp horizontal split-screen divider sits in the middle band
+    (y 0.35..0.58), and each frame's structure."""
+    diff, luma, split_score, shapes, prev = [0.0], [], [], Shapes(), None
     for f in files:
         im = Image.open(f).convert("L")
-        a = np.asarray(im.resize((THUMB_W, max(1, round(THUMB_W * im.height / im.width)))), np.float32)
+        h_thumb = max(4, round(THUMB_W * im.height / im.width))
+        a = np.asarray(im.resize((THUMB_W, h_thumb)), np.float32)
         luma.append(float(a.mean()))
         shapes.add(im)
+        row_diff = np.abs(np.diff(a, axis=0)).mean(axis=1)
+        y0, y1 = max(1, int(0.35 * len(row_diff))), min(len(row_diff) - 1, int(0.58 * len(row_diff)))
+        med_row = float(np.median(row_diff)) + 1e-6
+        band_max = float(row_diff[y0:y1].max()) if y1 > y0 else 0.0
+        split_score.append(band_max / med_row)
         if prev is not None:
             diff.append(float(np.abs(a - prev).mean()))
         prev = a
-    return np.array(diff), np.array(luma), shapes
+    return np.array(diff), np.array(luma), np.array(split_score), shapes
+
+
+def find_shots(n_frames, fps, d, split_score, shapes, cuts):
+    """Segment the video into shots at hard cuts and measure each shot's
+    duration, layout ('split' when a horizontal divider separates top B-roll
+    from bottom speaker, else 'full'), motion activity ('static_hold' vs
+    'active'), frozen head/tail frame count, and whether its entry cut is a
+    jump cut (high local frame diff while overall scene structure stays near
+    the previous shot)."""
+    bounds = [0, *sorted(c for c in cuts if 0 < c < n_frames), n_frames]
+    shots = []
+    for idx in range(len(bounds) - 1):
+        s, e = bounds[idx], bounds[idx + 1]
+        seg_d = d[s + 1:e] if e > s + 1 else np.array([0.0])
+        med_d = float(np.median(seg_d)) if len(seg_d) else 0.0
+        frozen_start = 0
+        for val in seg_d:
+            if val < 0.35:
+                frozen_start += 1
+            else:
+                break
+        frozen_end = 0
+        for val in seg_d[::-1]:
+            if val < 0.35:
+                frozen_end += 1
+            else:
+                break
+        seg_split = float(np.median(split_score[s:e])) if e > s else 0.0
+        layout = "split" if seg_split >= 4.2 else "full"
+        motion = "static_hold" if med_d < 0.8 else "active"
+        jump_cut = False
+        if s > 0:
+            corr_across = shapes.corr(max(0, s - 2), min(n_frames - 1, s + 2))
+            jump_cut = bool(corr_across >= 0.38)
+        shots.append({
+            "shot": idx + 1,
+            "start": s,
+            "end": e - 1,
+            "frames": e - s,
+            "duration_s": round((e - s) / fps, 3),
+            "median_diff": round(med_d, 2),
+            "motion": motion,
+            "layout": layout,
+            "frozen_start_frames": frozen_start,
+            "frozen_end_frames": frozen_end,
+            "jump_cut": jump_cut,
+        })
+    return shots
 
 
 def find_flashes(luma, shapes):
@@ -301,6 +358,15 @@ def write_md(r, dest):
           "(mean absolute difference of the grey frame, 0-255).", "",
           f"## Hard cuts: {len(r['cuts'])}", ""]
     L += [f"- f{c} ({t(c)} s)" for c in r["cuts"]] or ["None: every change is a move, a blur or a fade."]
+    if r.get("shots"):
+        L += ["", "## Shots and layout", "",
+              "| Shot | Frames | Time (s) | Dur (s) | Layout | Motion | Frozen (in/out) | Jump cut |",
+              "|---|---|---|---|---|---|---|---|"]
+        for sh in r["shots"]:
+            L.append(f"| {sh['shot']} | f{sh['start']}-f{sh['end']} | {t(sh['start'])}-{t(sh['end'])} | "
+                     f"{sh['duration_s']:.2f} | {sh['layout']} | {sh['motion']} ({sh['median_diff']}) | "
+                     f"{sh['frozen_start_frames']}/{sh['frozen_end_frames']} | "
+                     f"{'yes' if sh['jump_cut'] else 'no'} |")
     L += ["", "## Change zones", "", "| # | Frames | Time (s) | Kind | Peak | Sheet |", "|---|---|---|---|---|---|"]
     for k, z in enumerate(r["zones"]):
         sheet_name = z.get("sheet", "")
@@ -330,7 +396,55 @@ def write_md(r, dest):
     dest.write_text("\n".join(L) + "\n", encoding="utf-8")
 
 
+def self_test():
+    """Verify flash, hard cut, shot segmentation, split layout and frozen-frame
+    checks on synthetic thumbnail series."""
+    shapes = Shapes()
+    yy, xx = np.mgrid[0:160, 0:90]
+    base_a = np.clip(40 + (xx * 1.2) + (yy * 0.4), 0, 255).astype(np.uint8)
+    base_b = np.zeros((160, 90), dtype=np.uint8)
+    # Put a sharp horizontal divider at y=72 in base_b to simulate a split-screen layout
+    base_b[:72, :] = np.clip(20 + (xx[:72, :] * 0.3), 0, 255).astype(np.uint8)
+    base_b[72:, :] = np.clip(210 - (yy[72:, :] * 0.2), 0, 255).astype(np.uint8)
+    frames = []
+    for i in range(20):
+        arr = base_a.copy()
+        if i >= 2:
+            arr = np.clip(arr.astype(np.int32) + ((i % 3) - 1) * 2, 0, 255).astype(np.uint8)
+        if i == 10:
+            arr = np.clip(arr.astype(np.int32) + 80, 0, 255).astype(np.uint8)
+        frames.append(Image.fromarray(arr, mode="L"))
+    for i in range(10):
+        arr = base_b.copy()
+        arr[80:, :] = np.clip(arr[80:, :].astype(np.int32) + ((i % 3) - 1) * 2, 0, 255).astype(np.uint8)
+        frames.append(Image.fromarray(arr, mode="L"))
+    diff, luma, split_score, prev = [0.0], [], [], None
+    for im in frames:
+        a = np.asarray(im, np.float32)
+        luma.append(float(a.mean()))
+        shapes.add(im)
+        row_diff = np.abs(np.diff(a, axis=0)).mean(axis=1)
+        med_row = float(np.median(row_diff)) + 1e-6
+        split_score.append(float(row_diff[56:92].max()) / med_row)
+        if prev is not None:
+            diff.append(float(np.abs(a - prev).mean()))
+        prev = a
+    d_arr, l_arr, s_arr = np.array(diff), np.array(luma), np.array(split_score)
+    flashes = find_flashes(l_arr, shapes)
+    cuts = find_cuts(d_arr, shapes, flashes)
+    shots = find_shots(len(frames), 30.0, d_arr, s_arr, shapes, cuts)
+    assert len(flashes) == 1 and flashes[0]["frame"] == 10, f"expected flash at 10, got {flashes}"
+    assert cuts == [20], f"expected cut at 20, got {cuts}"
+    assert len(shots) == 2, f"expected 2 shots, got {len(shots)}"
+    assert shots[0]["frozen_start_frames"] >= 1, f"expected frozen head frame in shot 1, got {shots[0]}"
+    assert shots[1]["layout"] == "split", f"expected split layout in shot 2, got {shots[1]}"
+    print("self-test: 5 checks ok")
+    return 0
+
+
 def main():
+    if "--self-test" in sys.argv:
+        sys.exit(self_test())
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("video")
     p.add_argument("--out", required=True)
@@ -346,13 +460,14 @@ def main():
     info = probe(video)
     fps = info["fps"]
     files = extract_frames(video, out / "frames", a.size)
-    d, luma, shapes = picture_series(files)
+    d, luma, split_score, shapes = picture_series(files)
     flashes = find_flashes(luma, shapes)
     cuts = find_cuts(d, shapes, flashes)
+    shots = find_shots(len(files), fps, d, split_score, shapes, cuts)
     zones, thr = find_zones(d, cuts, flashes)
     r = {"video": video.name, "probe": info, "frames": len(files),
          "median_diff": round(float(np.median(d[1:])), 2) if len(d) > 1 else 0.0,
-         "zone_threshold": thr, "cuts": cuts, "zones": zones, "flashes": flashes}
+         "zone_threshold": thr, "cuts": cuts, "shots": shots, "zones": zones, "flashes": flashes}
     if info["audio"]:
         rms, low = audio_series(video, fps)
         hits = jumps(low, 8.0)

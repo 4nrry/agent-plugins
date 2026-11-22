@@ -74,6 +74,12 @@ human.glb out/` renders three figures (front, profile, back) to check a new glb.
 - **Walking** is not a frozen pose plus translation: that slides. Loop the
   rig's walk action and move the root at the clip's stride speed (distance
   per cycle over cycle length), or the feet skate.
+- **Custom creature moves from one AI video:** when a rigged creature (quadruped,
+  octopod, winged) lacks a walk or action clip,
+  [`4nrry/anymove`](https://github.com/4nrry/anymove) (fork of
+  `patch-gg/anymove`, Apache-2.0) films the creature from front and side in one
+  AI video frame, triangulates each joint in 3D from the pair and fits the
+  Blender 5.x rig frame by frame to export a `.glb`.
 - glbs often ship a Cube, Camera or Light beside the character; the kit removes
   them. Keep the model's license (CC0, CC-BY credit) with the project.
 
