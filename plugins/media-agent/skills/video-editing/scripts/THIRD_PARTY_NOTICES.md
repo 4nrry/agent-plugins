@@ -11,6 +11,13 @@ full texts follow, as published by each project.
 - lemomo-ai/lemo-opuscar
 - 45ck/content-machine
 
+`render_qc.py rhythm` takes three thresholds, and no code, from
+feitangyuan/onetake `scripts/verify_promo.py` (PolyForm Noncommercial
+1.0.0): shot-length coefficient of variation of 0.25, 25% of frames still
+under 0.5 mean difference, one still stretch of 1.0 s. Numbers are not
+copyrightable expression, so no notice travels with them; the source is
+named in the code.
+
 ## vargHQ/skills (media-judge, for render_qc.py; edit-footage-with-code, for qa_cut.py)
 
 ```text

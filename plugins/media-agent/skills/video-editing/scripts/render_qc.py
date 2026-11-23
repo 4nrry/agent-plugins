@@ -15,6 +15,9 @@
 #     MIT License, Copyright (c) 2026 45ck
 #     (burned-in caption sync: 3 samples/s in a caption band, PSM 6, the OCR timeline segmentation,
 #      the fuzzy expected-to-observed matching and its thresholds, the centre-band retry)
+#   feitangyuan/onetake, scripts/verify_promo.py (commit of 2026-11-19)
+#     PolyForm Noncommercial 1.0.0: thresholds only, no code taken
+#     (rhythm: shot-length CV >= 0.25; >= 25% of frames still under 0.5 mean abs diff; a 1.0 s rest)
 # Each of those MIT licences asks that its copyright notice and permission notice
 # travel with substantial portions: the full texts are in THIRD_PARTY_NOTICES.md
 # beside this script.
@@ -30,6 +33,9 @@
   render_qc.py captions VIDEO --captions CAPS.json [--ocr-lang auto|por|eng] [--band 0.65:0.35]
                                   burned-in captions read by tesseract against CAPS.json
   render_qc.py fonts --font FILE_OR_FAMILY (--captions CAPS.json | --text TEXT)
+  render_qc.py rhythm VIDEO [--shots T0,T1,...]
+                                  shot lengths that never vary, and motion that never rests;
+                                  not part of all: it is a rule for motion made as code
   render_qc.py --self-test
 
 CAPS.json is the voice JSON ([{id, text, say, start, duration}]), a list of
@@ -130,6 +136,20 @@ SYNC_PAD_S = 0.5                # an expected caption looks for readings 500 ms 
 # changed most since the previous sample, so drift is measured to the frame, not to 333 ms.
 OCR_TEXT_LUMA = 200
 OCR_WIDTH = 1280
+# Rhythm: feitangyuan/onetake scripts/verify_promo.py (thresholds only; its licence bars commercial
+# use of its code). Equal shots read as slides: shot-length coefficient of variation under 0.25.
+# Motion that never stops reads as noise: at least 25% of frames dead still (mean abs diff under
+# 0.5 of 255, there at 320 px, here at 144 px) and one still stretch of 1.0 s.
+RHYTHM_MIN_CV = 0.25
+STILL_MAD = 0.5
+STILL_MIN_SHARE = 0.25
+REST_MIN_S = 1.0
+# Ours: a hard cut is a frame whose mean abs diff is 20 or more and 4x the median of the 25 frames
+# around it, at least twice the frame before and after it (a fade changes over several frames), and
+# the picture does not come back the frame after (that is a glitch, not a cut). Two cuts under
+# 0.2 s apart are a flash or a glitch, not a shot, and both go; so does a cut within 0.2 s of an end.
+CUT_MIN_MAD, CUT_LOCAL_X, CUT_STAYS, CUT_ALONE = 20.0, 4.0, 0.6, 0.5
+MIN_SHOT_S = 0.2
 
 # ---------------------------------------------------------------- delivery limits
 CHECKED = "2026-11-23"
@@ -534,6 +554,77 @@ def check_frames(video):
                events=glitches[:20], source=src,
                thresholds={"min_mad": GLITCH_MIN_MAD, "min_cell": GLITCH_MIN_CELL, "return": GLITCH_RETURN}),
     ]
+
+
+def detect_cuts(tr):
+    """Frame indices where a hard cut lands (the first frame of the new shot)."""
+    M, S2, n = tr["mad"], tr["skip2"], tr["n"]
+    cuts = []
+    for i in range(1, n):
+        lo, hi = max(1, i - 12), min(n, i + 13)
+        local = float(np.median(np.delete(M[lo:hi], i - lo)))
+        if M[i] < max(CUT_MIN_MAD, CUT_LOCAL_X * local):
+            continue
+        if M[i - 1] > CUT_ALONE * M[i] or (i + 1 < n and M[i + 1] > CUT_ALONE * M[i]):
+            continue                      # the change is spread over frames: a fade or a move, not a cut
+        if i + 1 < n and S2[i + 1] < CUT_STAYS * M[i]:
+            continue                      # frame i is unlike both neighbours, which match: a glitch
+        if i >= 2 and S2[i] < CUT_STAYS * M[i]:
+            continue                      # frame i is back to frame i-2: the way out of a glitch
+        cuts.append(i)
+    short = MIN_SHOT_S * tr["fps"]
+    k = 0
+    while k + 1 < len(cuts):              # in and out of a flash: neither is a shot boundary
+        if cuts[k + 1] - cuts[k] < short:
+            del cuts[k:k + 2]
+        else:
+            k += 1
+    return [c for c in cuts if short <= c <= n - short]
+
+
+def check_rhythm(video, shots=None):
+    """Shot lengths that never vary and motion that never rests (after onetake verify_promo.py)."""
+    tr = trace(video)
+    n, fps = tr["n"], tr["fps"]
+    dur = n / fps
+    if n < 3:
+        return [result("cadence", "skip", "fewer than 3 frames"), result("rest", "skip", "fewer than 3 frames")]
+    if shots is not None:
+        starts = sorted({t for t in shots if 0 < t < dur})
+        dropped = len(shots) - len(starts)
+        how = "given by --shots" + (f", {dropped} time(s) dropped as repeated or outside 0-{dur:.2f} s" if dropped else "")
+    else:
+        starts, how = [i / fps for i in detect_cuts(tr)], "hard cuts found"
+    edges = [0.0] + starts + [dur]
+    lengths = [round(b - a, 2) for a, b in zip(edges, edges[1:])]
+    src = "feitangyuan/onetake scripts/verify_promo.py (thresholds only)"
+    if len(lengths) < 3:
+        cadence = result("cadence", "skip",
+                         f"{len(lengths)} shot(s) ({how}); cadence needs 3 or more" + (
+                             "" if shots is not None else ", pass --shots for a one-take piece"),
+                         shots=lengths, source=src)
+    else:
+        L = np.array(lengths)
+        cv = float(L.std() / L.mean())
+        cadence = result("cadence", "warn" if cv < RHYTHM_MIN_CV else "pass",
+                         f"{len(lengths)} shots ({how}), lengths vary by CV {cv:.2f}" + (
+                             f" (under {RHYTHM_MIN_CV}: every shot the same length reads as slides)"
+                             if cv < RHYTHM_MIN_CV else ""),
+                         shots=lengths, measured={"cv": round(cv, 3)}, thresholds={"min_cv": RHYTHM_MIN_CV}, source=src)
+    black = (tr["luma"] < BLACK_LUMA) & (tr["std"] < BLACK_STD) & (tr["p99"] < BLACK_P99)
+    still = (tr["mad"] < STILL_MAD) & ~black
+    still[0] = False                      # frame 0 has no previous frame to differ from
+    share = float(still[1:].mean())
+    # still[i] says frame i repeats frame i-1, so a run a..b holds frames a-1..b unchanged
+    longest = max(((b - a + 2) / fps for a, b in runs(still)), default=0.0)
+    ok = share >= STILL_MIN_SHARE and longest >= REST_MIN_S
+    rest = result("rest", "pass" if ok else "warn",
+                  f"{share:.0%} of frames still, longest still stretch {longest:.2f} s" + (
+                      "" if ok else f" (wants {STILL_MIN_SHARE:.0%} and one of {REST_MIN_S} s: rests make the moves land)"),
+                  measured={"still_share": round(share, 3), "longest_still_s": round(longest, 2)},
+                  thresholds={"still_mad_under": STILL_MAD, "min_share": STILL_MIN_SHARE, "min_rest_s": REST_MIN_S},
+                  source=src)
+    return [cadence, rest]
 
 
 def has_libvmaf():
@@ -1336,6 +1427,8 @@ def run_checks(cmd, video, a):
                 else [result("captions", "skip", "no --captions given")])
     if cmd in ("all", "fonts"):
         res += guarded("fonts", _fonts_from_args, a) if a.font else [result("fonts", "skip", "no --font given")]
+    if cmd == "rhythm":                   # not in all: live footage rarely rests, and that is not a defect
+        res += guarded("rhythm", check_rhythm, video, getattr(a, "shots", None))
     return res
 
 
@@ -1347,6 +1440,16 @@ def _band(s):
     if not (0 <= y < 1 and 0 < h <= 1 - y + 1e-9):
         raise argparse.ArgumentTypeError("TOP and HEIGHT must fit in the frame (0 <= TOP < 1, TOP + HEIGHT <= 1)")
     return y, h
+
+
+def _shots(s):
+    try:
+        ts = [float(x) for x in s.split(",") if x.strip()]
+    except ValueError:
+        raise argparse.ArgumentTypeError("shot start times in seconds, joined by commas, e.g. 2.5,4,9.2") from None
+    if any(not math.isfinite(t) or t < 0 for t in ts):
+        raise argparse.ArgumentTypeError("shot start times must be finite and not negative")
+    return ts
 
 
 def _fonts_from_args(a):
@@ -1541,6 +1644,33 @@ def self_test():
         assert check_reading(caps)["status"] == "fail"
         checks += 4
 
+        # rhythm: equal still shots read as slides; varied ones pass; motion that never stops has no rest
+        seg = "color=c=gray:s={size}:r=30:d={dur},format=gray,geq=lum='{e}+30*mod(floor(X/40)+floor(Y/40),2)'"
+        slides = make("slides", seg.replace("{e}", "40+40*floor(N/30)"), dur=4)
+        varied = make("varied", seg.replace("{e}", "if(lt(N,15),40,if(lt(N,75),110,if(lt(N,90),180,70)))"), dur=4)
+        busy = make("busy", "color=c=gray:s={size}:r=30:d={dur},format=gray,geq=lum='128+90*sin(X/9+N/2)'", dur=4)
+        c, r = check_rhythm(slides)
+        assert c["status"] == "warn" and c["shots"] == [1.0, 1.0, 1.0, 1.0], c
+        assert r["status"] == "pass", r
+        c, r = check_rhythm(varied)
+        assert c["status"] == "pass" and c["shots"] == [0.5, 2.0, 0.5, 1.0], c
+        c, r = check_rhythm(busy)
+        assert c["status"] == "skip" and r["status"] == "warn" and r["measured"]["still_share"] < 0.05, (c, r)
+        c, _ = check_rhythm(busy, shots=[1.0, 2.0, 3.0])
+        assert c["status"] == "warn" and "--shots" in c["summary"], c
+        g = check_rhythm(glitch)[0]
+        assert g["status"] == "skip" and g["shots"] == [3.0], g     # a one-frame glitch is not two cuts
+        assert all(x["check"] != "cadence" for x in run_checks("all", clean, argparse.Namespace(
+            platform=None, captions=None, font=None, text=None, ocr_lang="auto", band=None, shots=None)))
+        # after review: a fast fade and a 2-frame flash are not cuts; repeated or outside --shots times go
+        fade = make("fade", seg.replace("{e}", "40+min(max(N-60,0),6)*25"), dur=4)
+        assert check_rhythm(fade)[0]["shots"] == [4.0], check_rhythm(fade)
+        flash2 = make("flash2", seg.replace("{e}", "if(between(N,60,61),220,60)"), dur=4)
+        assert check_rhythm(flash2)[0]["shots"] == [4.0], check_rhythm(flash2)
+        c = check_rhythm(slides, shots=[1, 1, 2, 3, 2500])[0]
+        assert c["shots"] == [1.0, 1.0, 1.0, 1.0] and c["status"] == "warn" and "2 time(s) dropped" in c["summary"], c
+        checks += 9
+
         # a black clip under 1 s is judged whole
         assert check_blank(make("short_blank", "color=c=black:s={size}:r=30:d={dur}", dur=0.8))["status"] == "fail"
         checks += 1
@@ -1633,6 +1763,8 @@ def main():
     common.add_argument("--text", action="append", help="extra on-screen text for the font check (repeatable)")
     common.add_argument("--ocr-lang", default="auto", help="tesseract language for captions: auto, por, eng, ...")
     common.add_argument("--band", type=_band, help="caption band as TOP:HEIGHT fractions of the frame, e.g. 0.65:0.35")
+    common.add_argument("--shots", type=_shots, help="rhythm: shot start times in seconds (T0,T1,...), "
+                        "for a one-take piece whose beats are not hard cuts")
     common.add_argument("--json", action="store_true", help="machine-readable output")
     sub = p.add_subparsers(dest="cmd", metavar="CHECK")
     for name, hlp in (("all", "every check that its inputs allow"), ("flash", "WCAG 2.3.1 flashes"),
@@ -1640,7 +1772,8 @@ def main():
                       ("banding", "CAMBI banding"), ("delivery", "platform limits (--platform)"),
                       ("reading", "reading time of each text (--captions)"),
                       ("captions", "burned-in captions read by OCR against --captions"),
-                      ("fonts", "glyph coverage (--font with --captions or --text)")):
+                      ("fonts", "glyph coverage (--font with --captions or --text)"),
+                      ("rhythm", "shot lengths that never vary, motion that never rests (not in all)")):
         sub.add_parser(name, parents=[common], help=hlp)
     a = p.parse_args()
     if not a.cmd:
@@ -1660,6 +1793,8 @@ def main():
         p.error("delivery needs --platform")
     if a.cmd in ("reading", "captions") and not a.captions:
         p.error(f"{a.cmd} needs --captions")
+    if a.shots is not None and a.cmd != "rhythm":
+        p.error("--shots is read by rhythm only")
     if a.cmd == "fonts" and not (a.font and (a.captions or a.text)):
         p.error("fonts needs --font and --captions or --text")
     return print_report(run_checks(a.cmd, video, a), a.json, str(video or a.captions or a.font))
