@@ -197,7 +197,8 @@ def cmd_status(sources, roots) -> int:
             if entry.is_symlink() and ours(entry, sources):
                 state = "" if entry.exists() else "  DANGLING"
                 print(f"  {entry.name} -> {os.readlink(entry)}{state}")
-        if root.name == "skills" and root.parent.name == ".agents" and linked_plugins(root, sources):
+        if (root.name == "skills" and root.parent.name == ".agents" and root not in USER_ROOTS
+                and linked_plugins(root, sources)):
             for note in project_tools.trust_notes(root.parent.parent):
                 print(f"  note: {note}")
     return 0
