@@ -18,15 +18,17 @@ Workbench, 64×64)**
 - JPEG: APP0 JFIF; APP1 `NeoGeo` (Blender's private block, not Exif); seven
   COM segments `Blender:File`, `Date`, `Time`, `Frame`, `Camera`, `Scene`,
   `RenderTime`; APP2 ICC profile.
-- PNG: one eXIf chunk and the same seven keys as tEXt chunks.
+- PNG: colour chunks (cICP, iCCP with the ICC profile, sRGB, gAMA, cHRM),
+  oFFs, pHYs, one eXIf chunk and the same seven keys as tEXt chunks.
 
 **What each conversion keeps of the Blender JPEG**
 - `mogrify -strip`: APP0 only.
-- `vips copy` to PNG: one eXIf chunk (resolution, orientation); no comments,
-  no `NeoGeo`.
+- `vips copy` to PNG: one eXIf chunk (resolution, orientation) and pHYs; no
+  comments, no `NeoGeo`, no ICC profile.
 - `vips copy` to JPEG: one Exif APP1.
 - Pillow 12.3.0 `save()` to JPEG: APP0 and one COM, the last Blender comment
-  (`Blender:RenderTime`); `NeoGeo` and ICC dropped. To PNG: no metadata.
+  (`Blender:RenderTime`); `NeoGeo` and ICC dropped. To PNG: the ICC profile
+  (iCCP) only; no eXIf, no text chunks.
 - ImageMagick `magick in.jpg out.png`: the `NeoGeo` bytes as a
   `Raw profile type app1` tEXt chunk, the ICC profile and the Blender comment
   as zTXt, plus dates.
@@ -34,6 +36,8 @@ Workbench, 64×64)**
 
 **Reading**
 - A Pillow re-save that kept one `Blender:` comment passed on 2026-11-18, so a
-  single comment does not explain the refusal; the `NeoGeo` APP1, the ICC
-  profile or the count of comments are the candidates. Not tested against
-  Gemini here.
+  single comment does not explain the refusal. The JPEGs that passed (Pillow,
+  ffmpeg, stripped) carry neither the `NeoGeo` APP1 nor an ICC profile; the
+  Blender PNG that passed carries the ICC profile, as iCCP, and the seven keys
+  as tEXt. In the JPEG the candidates are the `NeoGeo` APP1, the ICC profile
+  as APP2, or the count of COM segments. Not tested against Gemini here.
