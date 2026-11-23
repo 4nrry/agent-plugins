@@ -8,7 +8,8 @@ when a row matters.
 ## What to rely on
 
 - Every harness below runs a child with a fresh context and a model set per
-  agent definition, defaulting to "inherit".
+  agent definition, defaulting to "inherit" unless the user's setup sets a
+  default (Claude Code: `CLAUDE_CODE_SUBAGENT_MODEL`).
 - Do not rely on choosing the model at spawn time, on nesting beyond one
   level, on more than about ten parallel children, or on structured output
   from a child. Parse the child's last JSON object and validate it yourself.
