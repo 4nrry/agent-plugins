@@ -61,7 +61,10 @@ the move between them.
   spatial geometry better than text motion verbs); keep model names, aspect
   ratios, durations, and API parameters out of the prompt string itself. See
   [references/prompting.md](references/prompting.md) for proxemics, 3D
-  pill-pipeline camera guides, and per-model syntax.
+  pill-pipeline camera guides, and per-model syntax;
+  [references/camera-templates.md](references/camera-templates.md) renders a
+  pill reference clip from 137 camera-move templates when a model ignores a
+  written move.
 - Describe the motion only; the still already holds the scene.
 - One camera move per shot, with its framing: "medium shot, slow push
   forward".

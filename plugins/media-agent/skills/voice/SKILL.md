@@ -56,6 +56,46 @@ music under the voice from 0.5 to about 0.16 with a ~0.35 s ramp.
   references with PSOLA pitch/tempo **before** cloning rather than stretching
   final audio, and rank multiple takes by pitch spread plus target WPM.
 
+## Lint the script, then time the takes
+
+Both scripts are Python 3 with the standard library; `pacing.py` reads audio
+through ffmpeg. From this skill's directory:
+
+```bash
+python3 scripts/copy_lint.py voice.json                     # before the TTS; --lang en for English
+python3 scripts/pacing.py voice.json --audio-dir vo-norm     # after vo-normalize.sh
+```
+
+- `copy_lint.py` flags stock, AI-sounding phrasing in `say` and `text`:
+  clichéd openers ("Você sabia que", "Neste vídeo"), "não é apenas X, é Y",
+  Portuguese translations of the English stock phrases, more than two dashes
+  in one sentence. The pt-BR list is a house list, not measured; the English
+  list is upstream's as it is. A style lint never blocks: it warns and exits
+  0, and `--strict` makes any finding exit 1.
+- `pacing.py` times each line over its voiced span (the file minus leading and
+  trailing silence). Brazilian Portuguese is judged in syllables per second
+  against 3.2–5.5, the range the literature gives for fluent speakers;
+  English (`--lang en`) in words per minute against upstream's 110–170 house
+  band. Words per minute do not carry over to Portuguese, whose words are
+  longer. Lines under six words are not judged.
+- TV reporters' narration measured 4.8–5.55 syllables per second, so a
+  news-style read can warn near the top of the band: listen before
+  regenerating. Pace and pauses only warn.
+- It also warns on more than 0.5 s of silence at either end (the caption
+  shows that much early or late), a pause over 1 s inside a line (a dropped
+  word or a stall), and a line more than 25% off the voice-over's own median
+  rate. These are house rules.
+- It fails (exit 1) only when a line's `duration` in the JSON disagrees with
+  its file by more than 0.05 s; exit 2 means a line could not be checked.
+- Fix a rushed line by regenerating it slower (the engine's speed setting).
+  If you stretch the file with ffmpeg `atempo` instead, stay at 0.85 or above
+  (upstream's floor, past which it sounds processed), then normalize again
+  and copy the new durations.
+
+Sources sit beside each threshold in the scripts; both adapt MIT code from
+`4nrry/claude-code-video-toolkit`, whose licence is in
+[scripts/THIRD_PARTY_NOTICES.md](scripts/THIRD_PARTY_NOTICES.md).
+
 ## Choosing the engine
 
 - Language first: a model can read Portuguese with an English or European

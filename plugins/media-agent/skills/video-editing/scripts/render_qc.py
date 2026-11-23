@@ -10,6 +10,11 @@
 #   lemomo-ai/lemo-opuscar, core/render/readcheck.mjs
 #     MIT License (REUSE.toml: "2026 Lemomo (LemoLab)")
 #     (reading-time rule: CJK / 4.5 + other / 15 + 1.5 s, never under 1.5 s; pass: true is listed, not timed)
+#   45ck/content-machine, src/validate/caption-sync.ts, src/score/burned-in-caption-quality.ts
+#     and src/core/ocr/tesseract.ts (commit 46cfe45)
+#     MIT License, Copyright (c) 2026 45ck
+#     (burned-in caption sync: 3 samples/s in a caption band, PSM 6, the OCR timeline segmentation,
+#      the fuzzy expected-to-observed matching and its thresholds, the centre-band retry)
 # Each of those MIT licences asks that its copyright notice and permission notice
 # travel with substantial portions: the full texts are in THIRD_PARTY_NOTICES.md
 # beside this script.
@@ -22,6 +27,8 @@
   render_qc.py banding VIDEO      CAMBI banding (needs ffmpeg built with libvmaf)
   render_qc.py delivery VIDEO --platform reels,tiktok,shorts
   render_qc.py reading [VIDEO] --captions CAPS.json
+  render_qc.py captions VIDEO --captions CAPS.json [--ocr-lang auto|por|eng] [--band 0.65:0.35]
+                                  burned-in captions read by tesseract against CAPS.json
   render_qc.py fonts --font FILE_OR_FAMILY (--captions CAPS.json | --text TEXT)
   render_qc.py --self-test
 
@@ -30,6 +37,15 @@ CAPS.json is the voice JSON ([{id, text, say, start, duration}]), a list of
 word-level list ({word, start, end}) is not judged: one word is not a text a
 viewer reads. An item with "pass": true is listed and not timed; an item
 without readable start and end times is counted and reported, not timed.
+
+captions samples 3 frames a second inside a band (top at 65% of the height,
+35% tall, unless --band), keeps the light pixels (caption fill) and reads them
+with tesseract; it retries in a centre band (42%, 16% tall) when the first
+pass fails. It is skipped without tesseract on PATH. --ocr-lang auto reads
+with por when the captions have Portuguese accents and por.traineddata is
+installed, else eng; a language that is not installed falls back to eng, and
+the result says which ran. Light captions only: dark text on a light box is
+not read.
 
 Exit 0 when every check that ran passed or warned. Exit 1 when any check
 failed. Exit 2 when nothing failed but a check could not run (status
@@ -49,6 +65,7 @@ reported as missing glyphs it has.
 
 import argparse
 import json
+import math
 import re
 import shutil
 import struct
@@ -96,6 +113,23 @@ BLANK_EDGE_S = 1.5        # ... unless it touches the start or end and is a fade
 CAMBI_VISIBLE, CAMBI_BRIGHT_FACTOR, DARK_LUMA = 5.0, 1.5, 60.0
 # Reading time: lemo-opuscar readcheck.mjs defaults.
 LATIN_CPS, CJK_CPS, READ_PAD, READ_MIN = 15.0, 4.5, 1.5, 1.5
+# Burned-in caption sync: 45ck/content-machine caption-sync.ts DEFAULT_RENDERED_CAPTION_SYNC_THRESHOLDS
+# and analyzeRenderedCaptionSync defaults (fps 3, captionRegion {yRatio 0.65, heightRatio 0.35},
+# SPLIT_SEAM_CAPTION_REGION {0.42, 0.16}); tesseract.ts runs PSM 6, the band as one block of text.
+OCR_FPS = 3
+OCR_BAND, OCR_SEAM_BAND = (0.65, 0.35), (0.42, 0.16)
+SYNC_MIN_SEGMENT_MATCH = 0.65   # matched share of expected captions (error)
+SYNC_MIN_DURATION_MATCH = 0.55  # matched share of expected caption time (error)
+SYNC_MAX_MEDIAN_S = 0.350       # median |start drift| (error)
+SYNC_MAX_P95_S = 0.900          # p95 |start drift| (error)
+SYNC_MIN_COVERAGE = 0.35        # captioned share of the video: an error there, a warning here
+SYNC_MIN_CONFIDENCE = 0.45      # mean OCR confidence (warning there and here)
+SYNC_PAD_S = 0.5                # an expected caption looks for readings 500 ms either side
+# Ours: keep pixels of luma 200 or more (white and yellow fill) as black on white, which reads far
+# better than the raw band over a busy picture; and move each start to the frame where the band
+# changed most since the previous sample, so drift is measured to the frame, not to 333 ms.
+OCR_TEXT_LUMA = 200
+OCR_WIDTH = 1280
 
 # ---------------------------------------------------------------- delivery limits
 CHECKED = "2026-11-23"
@@ -733,6 +767,352 @@ def check_reading(captions, video=None):
                   source="lemomo-ai/lemo-opuscar core/render/readcheck.mjs")
 
 
+# ---------------------------------------------------------------- burned-in captions (OCR)
+TESSERACT = shutil.which("tesseract")
+PT_MARKS = set("ãõçáéíóúâêôàÃÕÇÁÉÍÓÚÂÊÔÀ")
+
+
+def _cap_norm(text):
+    """content-machine normalizeCaptionText, with accents folded first so Portuguese matches."""
+    t = "".join(c for c in unicodedata.normalize("NFKD", str(text or "")) if not unicodedata.combining(c))
+    return " ".join(re.sub(r"[^a-z0-9'\s]", " ", t.lower()).split())
+
+
+def _cap_tokens(text):
+    n = _cap_norm(text)
+    return n.split() if n else []
+
+
+def _lev(a, b, maxd):
+    """Levenshtein distance, or maxd + 1 once it is sure to exceed maxd."""
+    if a == b:
+        return 0
+    if not a or not b:
+        return len(a) or len(b)
+    if abs(len(a) - len(b)) > maxd:
+        return maxd + 1
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a):
+        cur = [i + 1] + [0] * len(b)
+        for j, cb in enumerate(b):
+            cur[j + 1] = min(cur[j] + 1, prev[j + 1] + 1, prev[j] + (ca != cb))
+        if min(cur) > maxd:
+            return maxd + 1
+        prev = cur
+    return prev[-1]
+
+
+def text_similarity(a, b):
+    """computeTextSimilarity: 1 when equal, 0.92 when one holds the other, else token F1."""
+    an, bn = _cap_norm(a), _cap_norm(b)
+    if not an or not bn:
+        return 0.0
+    if an == bn:
+        return 1.0
+    if an in bn or bn in an:
+        return 0.92
+    at, bt = an.split(), bn.split()
+    left, inter = {}, 0
+    for t in bt:
+        left[t] = left.get(t, 0) + 1
+    for t in at:
+        if left.get(t, 0) > 0:
+            inter += 1
+            left[t] -= 1
+    if not inter:
+        return 0.0
+    p, r = inter / len(at), inter / len(bt)
+    return 2 * p * r / (p + r)
+
+
+def _loose(e, o):
+    """tokensLooselyMatch: equal, the same first four letters, or a few edits apart. The source allows
+    two edits at any length, which lets "le" match "ate" and "fim" match "mil"; here two edits need
+    five letters, one edit three, and shorter words must be equal."""
+    if e == o or (len(e) >= 4 and o.startswith(e[:4])) or (len(o) >= 4 and e.startswith(o[:4])):
+        return True
+    n = min(len(e), len(o))
+    maxd = 2 if n >= 5 else 1 if n >= 3 else 0
+    return maxd > 0 and _lev(e, o, maxd) <= maxd
+
+
+def token_evidence(expected, observed_texts):
+    """computeTokenEvidenceRatio: the share of expected words of 2+ letters loosely found in the readings."""
+    ex = [t for t in _cap_tokens(expected) if len(t) >= 2]
+    ob = [t for o in observed_texts for t in _cap_tokens(o) if len(t) >= 2]
+    if not ex or not ob:
+        return 0.0
+    return sum(any(_loose(e, o) for o in ob) for e in ex) / len(ex)
+
+
+def _same_caption(a, b):
+    """areSimilarCaptions: one reading of the same caption, frame to frame."""
+    a, b = " ".join(a.lower().split()), " ".join(b.lower().split())
+    if a == b:
+        return True
+    if not a or not b:
+        return False
+    at, bt = a.split(), b.split()
+    bs = set(bt)
+    if sum(t in bs for t in at) / max(len(at), len(bt)) >= 0.8:
+        return True
+    d = _lev(a, b, 6)
+    if d <= 2:
+        return True
+    return d <= 6 and 1 - d / max(len(a), len(b), 1) >= 0.88
+
+
+def ocr_timeline(frames, step):
+    """segmentOcrCaptionTimeline: runs of similar readings; each ends one sample after its last frame.
+    frames: [(k, t, text, conf)] in time order. Returns non-empty segments."""
+    segs, cur = [], None
+    for k, t, text, conf in frames:
+        n = _cap_norm(text)
+        if cur is not None and (n == cur["norm"] or _same_caption(n, cur["norm"])):
+            cur["last"], cur["confs"] = t, cur["confs"] + [conf]
+            if conf > cur["best"]:
+                cur.update(best=conf, text=text, norm=n)
+            continue
+        if cur is not None and cur["norm"]:
+            segs.append(cur)
+        cur = {"k": k, "start": t, "last": t, "text": text, "norm": n, "best": conf, "confs": [conf]}
+    if cur is not None and cur["norm"]:
+        segs.append(cur)
+    for s in segs:
+        s["end"] = s["last"] + step
+        s["conf"] = sum(s["confs"]) / len(s["confs"])
+    return segs
+
+
+def tesseract_langs():
+    p = subprocess.run([TESSERACT, "--list-langs"], capture_output=True, text=True)
+    return {ln.strip() for ln in (p.stdout + p.stderr).splitlines()[1:] if ln.strip() and " " not in ln.strip()}
+
+
+def pick_ocr_lang(requested, texts):
+    have = tesseract_langs()
+    want = requested
+    if requested == "auto":
+        want = "por" if any(ch in PT_MARKS for t in texts for ch in t) else "eng"
+    missing = [x for x in want.split("+") if x not in have]
+    if not missing:
+        return want, None
+    if "eng" not in have:
+        raise CheckError(f"tesseract has neither {want} nor eng traineddata (has: {', '.join(sorted(have)) or 'none'})")
+    return "eng", f"{'+'.join(missing)} traineddata not installed, read with eng"
+
+
+def ocr_band(video, band, lang):
+    """Sample OCR_FPS frames a second inside the band, keep the light pixels, read them with tesseract."""
+    y, h = band
+    with tempfile.TemporaryDirectory() as tmp:
+        t = Path(tmp)
+        run(["ffmpeg", "-v", "error", "-i", str(video), "-map", "0:v:0", "-vf",
+             f"fps={OCR_FPS},crop=iw:trunc(ih*{h}/2)*2:0:trunc(ih*{y}/2)*2,scale={OCR_WIDTH}:-2,format=gray,"
+             f"lut=y='if(gte(val,{OCR_TEXT_LUMA}),0,255)'", str(t / "f%06d.png")])
+        pngs = sorted(t.glob("f*.png"))
+        if not pngs:
+            raise CheckError(f"no frame of {Path(video).name} could be sampled")
+        (t / "list.txt").write_text("\n".join(str(p) for p in pngs) + "\n")
+        p = subprocess.run([TESSERACT, str(t / "list.txt"), "-", "--psm", "6", "-l", lang, "tsv"],
+                           capture_output=True, text=True)
+        if p.returncode:
+            raise CheckError(f"tesseract exited {p.returncode}: {_tail(p.stderr)}")
+    pages = {}
+    for line in p.stdout.splitlines()[1:]:
+        c = line.split("\t")
+        if len(c) < 12 or c[0] != "5" or not c[11].strip():
+            continue
+        try:
+            conf = float(c[10])
+        except ValueError:
+            continue
+        if conf < 0:
+            continue
+        pages.setdefault(int(c[1]), []).append(((int(c[2]), int(c[3]), int(c[4])), c[11].strip(), conf / 100))
+    frames = []
+    for k in range(len(pngs)):
+        words = pages.get(k + 1, [])
+        lines = {}
+        for key, w, _ in words:
+            lines.setdefault(key, []).append(w)
+        text = "\n".join(" ".join(v) for _, v in sorted(lines.items()))
+        frames.append((k, k / OCR_FPS, text, sum(c for *_, c in words) / len(words) if words else 0.0))
+    return frames
+
+
+def band_changes(video, band, fps):
+    """Mean grey difference of the band from each frame to the next, at every frame."""
+    y, h = band
+    raw = run(["ffmpeg", "-v", "error", "-i", str(video), "-map", "0:v:0", "-vf",
+               f"crop=iw:trunc(ih*{h}/2)*2:0:trunc(ih*{y}/2)*2,scale=160:48,format=gray",
+               "-f", "rawvideo", "-"]).stdout
+    f = np.frombuffer(raw[: len(raw) - len(raw) % (160 * 48)], np.uint8).reshape(-1, 48, 160).astype(np.float32)
+    mad = np.zeros(len(f), np.float32)
+    if len(f) > 1:
+        mad[1:] = np.abs(np.diff(f, axis=0)).mean(axis=(1, 2))
+    return mad
+
+
+def refine_start(seg, mad, fps):
+    """The frame between the previous sample and this one where the band changed most, when that change stands out."""
+    k = seg["k"]
+    if k == 0 or not len(mad):
+        return seg["start"]
+    lo, hi = round((k - 1) / OCR_FPS * fps) + 1, min(len(mad) - 1, round(k / OCR_FPS * fps))
+    if hi < lo:
+        return seg["start"]
+    win = mad[lo:hi + 1]
+    j = int(np.argmax(win))
+    if win[j] >= 1.0 and win[j] >= 2 * float(np.median(win)):
+        return (lo + j) / fps
+    return seg["start"]
+
+
+def _p95(vals):
+    """percentile(values, 95) with linear interpolation, as caption-sync.ts computes it."""
+    s = sorted(vals)
+    if not s:
+        return 0.0
+    i = 0.95 * (len(s) - 1)
+    lo, hi = math.floor(i), math.ceil(i)
+    return s[lo] + (s[hi] - s[lo]) * (i - lo)
+
+
+def compare_captions(expected, observed, duration):
+    """compareRenderedCaptions: match each expected caption to its readings and measure start drift."""
+    matches = []
+    for ei, ex in enumerate(expected):
+        lo, hi = max(0.0, ex["start"] - SYNC_PAD_S), ex["end"] + SYNC_PAD_S
+        cands = [(oi, ob) for oi, ob in enumerate(observed) if ob["end"] >= lo and ob["start"] <= hi]
+        if not cands:
+            continue
+        evidence = token_evidence(ex["text"], [ob["text"] for _, ob in cands])
+        span = max(1e-3, ex["end"] - ex["start"])
+
+        def ovl(ob):
+            return max(0.0, min(ex["end"], ob["end"]) - max(ex["start"], ob["start"])) / span
+        first = last = best = None
+        for oi, ob in cands:
+            sim, tr = text_similarity(ex["text"], ob["text"]), token_evidence(ex["text"], [ob["text"]])
+            drift, ov = ob["start"] - ex["start"], ovl(ob)
+            score = tr * 0.6 + sim * 0.25 + max(ov, max(0.0, 1 - abs(drift) / 2.0)) * 0.15
+            if tr >= 0.45 or sim >= 0.55:
+                first = ob["start"] if first is None else min(first, ob["start"])
+                last = ob["end"] if last is None else max(last, ob["end"])
+            if max(evidence, tr) < 0.55 and sim < 0.5 and not (sim >= 0.4 and ov >= 0.5):
+                continue
+            if best is not None:
+                b_ob = observed[best["observed"]]
+                b_score = (max(token_evidence(ex["text"], [b_ob["text"]]), best["similarity"]) * 0.85
+                           + max(ovl(b_ob), max(0.0, 1 - abs(best["drift_s"]) / 2.0)) * 0.15)
+            if best is None or score > b_score:
+                best = {"expected": ei, "observed": oi, "text": ex["text"][:60], "read": " ".join(ob["text"].split())[:60],
+                        "expected_start": round(ex["start"], 3), "seen_start": round(ob["start"], 3),
+                        "seen_end": round(ob["end"], 3), "drift_s": drift, "similarity": round(max(sim, tr), 2)}
+        if best is not None and evidence >= 0.55:
+            if first is not None:
+                best["seen_start"], best["drift_s"] = round(first, 3), first - ex["start"]
+            if last is not None:
+                best["seen_end"] = round(last, 3)
+            best["drift_s"] = round(best["drift_s"], 3)
+            best["_dur"] = ex["end"] - ex["start"]
+            matches.append(best)
+    drifts = [abs(m["drift_s"]) for m in matches]
+    total = sum(max(0.0, e["end"] - e["start"]) for e in expected)
+    confs = [s["conf"] for s in observed]
+    out = {
+        "expected": len(expected), "observed": len(observed), "matched": len(matches),
+        "segment_match": len(matches) / len(expected) if expected else 0.0,
+        "duration_match": sum(m.pop("_dur") for m in matches) / total if total else 0.0,
+        "median_drift_s": float(np.median(drifts)) if drifts else 0.0, "p95_drift_s": _p95(drifts),
+        "max_drift_s": max(drifts) if drifts else 0.0,
+        "median_signed_drift_s": float(np.median([m["drift_s"] for m in matches])) if matches else 0.0,
+        "coverage": min(duration, sum(s["end"] - s["start"] for s in observed)) / duration if duration else 0.0,
+        "mean_confidence": sum(confs) / len(confs) if confs else 0.0, "matches": matches}
+    errors, warns = [], []
+    if not observed:
+        errors.append("no caption could be read in the band")
+    if out["segment_match"] < SYNC_MIN_SEGMENT_MATCH:
+        errors.append(f"{out['matched']} of {len(expected)} caption(s) found on screen, needs {SYNC_MIN_SEGMENT_MATCH:.0%}")
+    if out["duration_match"] < SYNC_MIN_DURATION_MATCH:
+        errors.append(f"matched captions cover {out['duration_match']:.0%} of the caption time, needs {SYNC_MIN_DURATION_MATCH:.0%}")
+    if out["median_drift_s"] > SYNC_MAX_MEDIAN_S:
+        errors.append(f"median start drift {out['median_drift_s'] * 1000:.0f} ms, over {SYNC_MAX_MEDIAN_S * 1000:.0f}")
+    if out["p95_drift_s"] > SYNC_MAX_P95_S:
+        errors.append(f"p95 start drift {out['p95_drift_s'] * 1000:.0f} ms, over {SYNC_MAX_P95_S * 1000:.0f}")
+    if observed and out["coverage"] < SYNC_MIN_COVERAGE:
+        warns.append(f"captions read on {out['coverage']:.0%} of the video, under {SYNC_MIN_COVERAGE:.0%}")
+    if observed and out["mean_confidence"] < SYNC_MIN_CONFIDENCE:
+        warns.append(f"mean OCR confidence {out['mean_confidence']:.2f}, under {SYNC_MIN_CONFIDENCE}")
+    out["errors"], out["warnings"] = errors, warns
+    return out
+
+
+def _retry(m):
+    """shouldRetryCaptionSyncInCenterBand, minus the quality score this port does not compute."""
+    return bool(m["errors"]) and (m["mean_confidence"] < SYNC_MIN_CONFIDENCE or m["matched"] == 0
+                                  or m["segment_match"] < SYNC_MIN_SEGMENT_MATCH)
+
+
+def _better(a, b):
+    """chooseBetterCaptionSyncReport."""
+    for key, high in (("errors", None), ("matched", True), ("segment_match", True), ("mean_confidence", True),
+                      ("median_drift_s", False), ("p95_drift_s", False)):
+        x, y = a[key], b[key]
+        if key == "errors":
+            x, y, high = not x, not y, True
+        if x != y:
+            return a if (x > y) == high else b
+    return a
+
+
+def check_captions(video, captions, lang="auto", band=None):
+    if not TESSERACT:
+        return result("captions", "skip", "tesseract is not on PATH, so burned-in captions cannot be read "
+                                          "(apt install tesseract-ocr, plus tesseract-ocr-por for Portuguese)")
+    items, reason, dropped = load_captions(captions)
+    if reason:
+        return result("captions", "skip", reason)
+    items.sort(key=lambda x: x["start"])
+    info = probe(video)
+    lang, note = pick_ocr_lang(lang, [i["text"] for i in items])
+    tried = []
+    for b in ([band] if band else [OCR_BAND, OCR_SEAM_BAND]):
+        observed = ocr_timeline(ocr_band(video, b, lang), 1 / OCR_FPS)
+        if observed:
+            mad = band_changes(video, b, info["fps"])
+            for s in observed:
+                s["start_sampled"], s["start"] = s["start"], refine_start(s, mad, info["fps"])
+        m = compare_captions(items, observed, info["duration"])
+        m["band"] = {"top": b[0], "height": b[1]}
+        tried.append(m)
+        if band or not _retry(m):
+            break
+    m = tried[0] if len(tried) == 1 else _better(*tried)
+    status = "fail" if m["errors"] else "warn" if m["warnings"] or dropped else "pass"
+    head = (f"{m['matched']}/{m['expected']} caption(s) matched, start drift median "
+            f"{m['median_drift_s'] * 1000:.0f} ms (signed {m['median_signed_drift_s'] * 1000:+.0f}), "
+            f"p95 {m['p95_drift_s'] * 1000:.0f} ms")
+    summary = "; ".join([head] + m["errors"] + m["warnings"])
+    summary += f"; OCR {lang}" + (f" ({note})" if note else "") + f", band {m['band']['top']:.2f}+{m['band']['height']:.2f}"
+    if len(tried) > 1:
+        summary += " (after a retry in the centre band)" if m is tried[1] else " (centre band retried, no better)"
+    if dropped:
+        summary += f"; {len(dropped)} caption(s) without readable times not checked"
+    return result("captions", status, summary, lang=lang, lang_note=note, band=m["band"],
+                  measured={k: (round(m[k], 3) if isinstance(m[k], float) else m[k])
+                            for k in ("expected", "observed", "matched", "segment_match", "duration_match",
+                                      "median_drift_s", "p95_drift_s", "max_drift_s", "median_signed_drift_s",
+                                      "coverage", "mean_confidence")},
+                  matches=m["matches"][:40],
+                  thresholds={"segment_match": SYNC_MIN_SEGMENT_MATCH, "duration_match": SYNC_MIN_DURATION_MATCH,
+                              "median_drift_s": SYNC_MAX_MEDIAN_S, "p95_drift_s": SYNC_MAX_P95_S,
+                              "coverage_warn": SYNC_MIN_COVERAGE, "confidence_warn": SYNC_MIN_CONFIDENCE,
+                              "samples_per_s": OCR_FPS},
+                  source="45ck/content-machine src/validate/caption-sync.ts (DEFAULT_RENDERED_CAPTION_SYNC_THRESHOLDS)")
+
+
 # ---------------------------------------------------------------- fonts
 def _u16(b, o):
     return struct.unpack_from(">H", b, o)[0]
@@ -931,9 +1311,22 @@ def run_checks(cmd, video, a):
     if cmd in ("all", "reading"):
         res += (guarded("reading", check_reading, a.captions, video) if a.captions
                 else [result("reading", "skip", "no --captions given")])
+    if cmd in ("all", "captions"):
+        res += (guarded("captions", check_captions, video, a.captions, a.ocr_lang, a.band) if a.captions
+                else [result("captions", "skip", "no --captions given")])
     if cmd in ("all", "fonts"):
         res += guarded("fonts", _fonts_from_args, a) if a.font else [result("fonts", "skip", "no --font given")]
     return res
+
+
+def _band(s):
+    try:
+        y, h = (float(x) for x in s.split(":"))
+    except ValueError:
+        raise argparse.ArgumentTypeError("TOP:HEIGHT, two fractions such as 0.65:0.35") from None
+    if not (0 <= y < 1 and 0 < h <= 1 - y + 1e-9):
+        raise argparse.ArgumentTypeError("TOP and HEIGHT must fit in the frame (0 <= TOP < 1, TOP + HEIGHT <= 1)")
+    return y, h
 
 
 def _fonts_from_args(a):
@@ -1091,7 +1484,7 @@ def self_test():
         trunc = t / "trunc.mp4"
         trunc.write_bytes(raw[:4096])
         caps.write_text(json.dumps([{"text": "Olá", "start": 0, "end": 3}]))
-        ns = argparse.Namespace(platform="tiktok", captions=str(caps), font=str(font), text=None)
+        ns = argparse.Namespace(platform="tiktok", captions=str(caps), font=str(font), text=None, ocr_lang="auto", band=None)
         res = run_checks("all", trunc, ns)
         st = {x["check"]: x["status"] for x in res}
         assert st["flash"] == st["blank"] == st["frames"] == st["delivery"] == st["reading"] == "error", st
@@ -1141,8 +1534,63 @@ def self_test():
         run(["ffmpeg", "-v", "error", "-y", "-i", str(clean), "-c", "copy", "-f", "mov", str(mov)])
         assert probe(mov)["container"] == "mov" and probe(clean)["container"] == "mp4"
         checks += 2
+
+        # captions: no tesseract is a skip, never a pass
+        global TESSERACT
+        had, TESSERACT = TESSERACT, None
+        caps.write_text(json.dumps([{"text": "Olá", "start": 0, "end": 2}]))
+        sk = run_checks("captions", clean, argparse.Namespace(platform=None, captions=str(caps), font=None, text=None,
+                                                              ocr_lang="auto", band=None))
+        TESSERACT = had
+        assert sk[0]["status"] == "skip" and "tesseract" in sk[0]["summary"] and verdict(sk)[1] == 2, sk
+        checks += 1
+        font_file = run(["fc-match", "-f", "%{file}", "DejaVu Sans:bold"], text=True).stdout if shutil.which("fc-match") else ""
+        if TESSERACT and font_file:
+            checks += _self_test_captions(make, t, font_file)
+        else:
+            print("self-test: captions not tested, " + ("tesseract" if not TESSERACT else "fc-match") + " missing")
     print(f"self-test: {checks} checks ok")
     return 0
+
+
+def _self_test_captions(make, t, font_file):
+    """Burned-in captions drawn with drawtext over a busy picture: on time, late, one late, wrong, none, mid-frame."""
+    expected = [("Cada relatório custa caro", 0.5, 2.5), ("até vinte mil reais", 3.0, 5.0),
+                ("e ninguém lê o fim", 5.5, 7.5), ("nem o resumo final", 8.0, 10.0)]
+    caps = t / "burned.json"
+    caps.write_text(json.dumps([{"id": f"s{i}", "text": x, "start": a, "end": b} for i, (x, a, b) in enumerate(expected)],
+                               ensure_ascii=False))
+    ff = font_file.replace("\\", "/").replace(":", "\\:")
+
+    def burn(name, lines, y="h*0.78", src="testsrc2=s={size}:r=30:d={dur}"):
+        vf = ",".join(f"drawtext=fontfile='{ff}':text='{x}':fontsize=44:fontcolor=white:borderw=4:bordercolor=black:"
+                      f"x=(w-tw)/2:y={y}:enable='between(t,{a},{b})'" for x, a, b in lines) or "null"
+        return make(name, src, ["-vf", vf], size="540x960", dur=11)
+
+    def cap(clip, **kw):
+        r = check_captions(clip, caps, **kw)
+        return r, r["measured"]
+    r, m = cap(burn("cap_ok", expected))
+    assert r["status"] == "pass" and m["matched"] == 4 and m["median_drift_s"] <= 0.05 and m["p95_drift_s"] <= 0.1, r
+    assert r["lang"] == ("por" if "por" in tesseract_langs() else "eng"), r
+    r, m = cap(burn("cap_late", [(x, a + 0.6, b + 0.6) for x, a, b in expected]))
+    assert r["status"] == "fail" and 0.5 <= m["median_drift_s"] <= 0.7 and "median start drift" in r["summary"], r
+    r, m = cap(burn("cap_one", [(x, a + 1.2 if k == 2 else a, b) for k, (x, a, b) in enumerate(expected)]))
+    assert r["status"] == "fail" and m["median_drift_s"] <= 0.1 and m["p95_drift_s"] > SYNC_MAX_P95_S, r
+    assert "p95 start drift" in r["summary"] and "median start drift" not in r["summary"], r
+    wrong = [("o gato subiu no telhado", 0.5, 2.5), ("e a chuva caiu forte", 3.0, 5.0),
+             ("depois veio o sol", 5.5, 7.5), ("fim da história", 8.0, 10.0)]
+    r, m = cap(burn("cap_wrong", wrong))
+    assert r["status"] == "fail" and m["segment_match"] < SYNC_MIN_SEGMENT_MATCH, r
+    r, m = cap(burn("cap_none", []))
+    assert r["status"] == "fail" and m["matched"] == 0, r          # testsrc2's own digits read as text
+    r, m = cap(burn("cap_blank", [], src="color=c=0x203040:s={size}:r=30:d={dur}"))
+    assert r["status"] == "fail" and "no caption could be read" in r["summary"], r
+    r, m = cap(burn("cap_mid", expected, y="h*0.45"))
+    assert r["status"] == "pass" and r["band"]["top"] == OCR_SEAM_BAND[0] and "retry" in r["summary"], r
+    r, m = cap(t / "cap_ok.mp4", lang="xyz")
+    assert r["lang"] == "eng" and "xyz" in r["lang_note"] and r["status"] == "pass", r
+    return 8
 
 
 # ---------------------------------------------------------------- main
@@ -1157,12 +1605,15 @@ def main():
     common.add_argument("--captions", help="voice JSON, [{text,start,end}] or WhisperX JSON")
     common.add_argument("--font", help="font file (ttf/otf/ttc/woff; woff2 via fc-query) or an installed family name")
     common.add_argument("--text", action="append", help="extra on-screen text for the font check (repeatable)")
+    common.add_argument("--ocr-lang", default="auto", help="tesseract language for captions: auto, por, eng, ...")
+    common.add_argument("--band", type=_band, help="caption band as TOP:HEIGHT fractions of the frame, e.g. 0.65:0.35")
     common.add_argument("--json", action="store_true", help="machine-readable output")
     sub = p.add_subparsers(dest="cmd", metavar="CHECK")
     for name, hlp in (("all", "every check that its inputs allow"), ("flash", "WCAG 2.3.1 flashes"),
                       ("blank", "flat, empty stretches"), ("frames", "black seams and glitch frames"),
                       ("banding", "CAMBI banding"), ("delivery", "platform limits (--platform)"),
                       ("reading", "reading time of each text (--captions)"),
+                      ("captions", "burned-in captions read by OCR against --captions"),
                       ("fonts", "glyph coverage (--font with --captions or --text)")):
         sub.add_parser(name, parents=[common], help=hlp)
     a = p.parse_args()
@@ -1181,8 +1632,8 @@ def main():
         p.error(f"{a.cmd} needs a VIDEO")
     if a.cmd == "delivery" and not a.platform:
         p.error("delivery needs --platform")
-    if a.cmd == "reading" and not a.captions:
-        p.error("reading needs --captions")
+    if a.cmd in ("reading", "captions") and not a.captions:
+        p.error(f"{a.cmd} needs --captions")
     if a.cmd == "fonts" and not (a.font and (a.captions or a.text)):
         p.error("fonts needs --font and --captions or --text")
     return print_report(run_checks(a.cmd, video, a), a.json, str(video or a.captions or a.font))

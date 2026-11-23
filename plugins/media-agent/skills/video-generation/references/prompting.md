@@ -56,6 +56,7 @@ When a video model ignores complex text camera directions (orbits, crane sweeps,
 
 - A reference video carries two signals: **camera/framing/timing** and **surface appearance**. Striped pills give the model exact scale, facing, position, and camera path while keeping looks coarse so text prompts and character image refs paint the real world cleanly.
 - Useful for `reference_to_video` models that accept a motion/camera reference video alongside character image references.
+- To render a pill clip locally from 137 camera-move templates, see [camera-templates.md](camera-templates.md).
 
 ## Model syntax cheatsheet
 
