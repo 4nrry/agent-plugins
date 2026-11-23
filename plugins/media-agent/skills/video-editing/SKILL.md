@@ -1,6 +1,6 @@
 ---
 name: video-editing
-description: Edits a finished video file when only the rendered mp4 exists, with typed operations that return structured results; text or scene changes go back to the source. Use to trim, cut a teaser, merge, resize or crop an existing file, burn in an .srt or subtitles, normalize a finished mp4's audio or extract a frame, to break a video down frame by frame (cuts, flashes against their sound, when each word lands), to check a render before anyone watches it (flash safety, blank frames, platform limits, caption reading time, missing glyphs), or when Kinocut or ffmpeg is named.
+description: Edits a finished video file when only the rendered mp4 exists, with typed operations that return structured results; text or scene changes go back to the source. Use to trim, cut a teaser, merge, resize or crop an existing file, burn in an .srt or subtitles, normalize a finished mp4's audio or extract a frame, to break a video down frame by frame (cuts, flashes against their sound, when each word lands), to check a render before anyone watches it (flash safety, blank frames, platform limits, caption reading time, burned-in captions out of sync, missing glyphs), to cut dead air and retakes out of a recording by its word times without clipping a word, or when Kinocut or ffmpeg is named.
 ---
 
 # Editing finished video
@@ -16,6 +16,7 @@ description: Edits a finished video file when only the rendered mp4 exists, with
 | A filter neither has | raw ffmpeg |
 | Learn from a reference video, or check a render's timing | `scripts/breakdown.py` (below) |
 | Check a render before anyone watches it | `scripts/render_qc.py` (below) |
+| Cut dead air and retakes out of a recording, by its word times | `scripts/qa_cut.py` (below) |
 
 Whatever the tool: check the output with `ffprobe` (duration, fps, streams)
 and watch the cut points.
@@ -31,7 +32,8 @@ find fonts by name.
 `scripts/render_qc.py all VIDEO --platform reels --captions VOICE.json --font FONT`
 runs every mechanical check, exits 1 when one fails and 2 when a check could not run. Each check also runs
 alone (`flash`, `blank`, `frames`, `banding`, `delivery`, `reading`,
-`fonts`); `--json` gives machine output. It needs ffmpeg, ffprobe and numpy.
+`captions`, `fonts`); `--json` gives machine output. It needs ffmpeg, ffprobe
+and numpy; `captions` also needs tesseract.
 
 | Check | Fails when | Source |
 |---|---|---|
@@ -41,18 +43,73 @@ alone (`flash`, `blank`, `frames`, `banding`, `delivery`, `reading`,
 | `banding` | warns at CAMBI 5 in dark frames, 7.5 in bright ones; skipped without an ffmpeg built with libvmaf | Netflix CAMBI; split after vargHQ |
 | `delivery` | a platform's official hard limit is broken (length and size everywhere; container on Reels; codec, frame rate and resolution on TikTok; shape on Shorts); recommendations, unconfirmed numbers and a silent track only warn | each platform's own pages, cited in the code |
 | `reading` | a caption leaves the screen sooner than characters ÷ 15 + 1.5 s | after lemo-opuscar `readcheck.mjs` |
+| `captions` | no caption is read on screen; under 65% of the file's captions, or of their time under 55%, are matched by OCR; or starts sit a median of 350 ms or a p95 of 900 ms from the file's times | 45ck/content-machine `caption-sync.ts` |
 | `fonts` | the font has no glyph for a character in the text, such as an accent | reads the font file, no network |
 
 - The captions file can be the voice JSON, a `{text, start, end}` list or
   WhisperX segments; a word-by-word list is skipped.
 - Instagram publishes no organic Reels spec: its numbers come from Meta's
   Reels ads guide, and its pages give both 3 and 20 minutes as the limit.
+- `captions` samples 3 frames a second in the bottom 35% of the frame (or
+  `--band TOP:HEIGHT`), retries in a centre band when too few captions match
+  or the OCR confidence is low (not on drift alone), and moves
+  each start to the frame where the band changed, so drift is measured to the
+  frame. It reads light text only, not dark text on a light box. Without
+  tesseract it is skipped. `--ocr-lang auto` reads with `por` when the
+  captions have Portuguese accents and that language is installed, else
+  `eng`; the summary says which ran.
 - The ⅓-frame field is WCAG's desktop approximation; on a phone the check is
   stricter than needed. A flash failure is a frame range to look at, not a
   verdict: two real renders failed on bursts that a person should judge.
-- Licences of the adapted code are in `scripts/THIRD_PARTY_NOTICES.md`.
+- Licences of the adapted code (here and in `qa_cut.py`) are in
+  `scripts/THIRD_PARTY_NOTICES.md`.
+
+## Cutting a recording by its words
+
+`scripts/qa_cut.py` (after vargHQ `edit-footage-with-code`, MIT) cuts the dead
+air and the retakes out of a talking-head or voice recording, renders the cut
+and checks that no word was cut. It needs ffmpeg and ffprobe, nothing else:
+the word times come from the `audio` skill (WhisperX or Scribe JSON, or a
+`{word, start, end}` list).
+
+```bash
+python3 scripts/qa_cut.py plan take.mp4 --words words.json --out edit   # edl.json, intended.json, review.md
+python3 scripts/qa_cut.py render edit/edl.json [--fcpxml]                # edit/cut.mp4, then its checks
+python3 scripts/qa_cut.py qa edit/cut.mp4 --edl edit/edl.json --heard heard.json
+```
+
+- Show `review.md` to the person and render only after a yes. Change only
+  `in` and `out` in `edl.json`; `render` recomputes the rest.
+- Pauses come from the take's own audio, not from gaps between words: an ASR
+  stretches words across pauses. A pause is held at 0.22 s, or 0.36 s after a
+  sentence, and only when that removes 0.2 s or more: so only pauses of
+  0.42 s or more are cut, or 0.56 s after a sentence. A retake is cut only
+  when the repeat covers most of the attempt; stutters are listed, never cut;
+  fillers only with `--cut-fillers`.
+- A quiet word the take's level calls silence still counts when its own
+  audio is over -50 dBFS. A word with no sound at its times, or past the end
+  of the media, is listed in `review.md` and left out of the check.
+- `render` refuses a variable-frame-rate take: conform it first
+  (`ffmpeg -i take.mov -vf fps=30,format=yuv420p -fps_mode cfr -c:a copy take.mp4`),
+  then plan again.
+- `qa` fails on a join that cuts through sound, a kept word the edit list
+  clips (sound over -50 dBFS at the edge) or leaves out, a pause over 0.6 s, an opening on silence, black or
+  flash frames, and loudness off -16 LUFS (`--lufs -14` for vargHQ's
+  target). `render` reports loudness without judging it: a rough cut is mixed
+  later. With `--heard`, a fresh transcript of the cut, under 95% of the
+  intended words heard or a phrase said twice fails.
+- A join with no silence to cut in stays flagged until a person has heard it:
+  then pass `--accept-join SECONDS`.
+- Look at `joins.jpg` and `contact.jpg`, and listen to every join: a pass
+  means nothing measurable is broken, not that the cut is good.
+- `--fcpxml` writes `cut.fcpxml` for a hand trim in Resolve or Final Cut when
+  joins keep sounding wrong; each clip keeps its handles. It is checked as
+  XML here, not yet opened in either editor.
 
 ## Breaking a video down frame by frame
+
+To label how each shot of a reference was made (filmed, AI, 3D, code) and
+route a remake, see [references/production-types.md](references/production-types.md).
 
 `scripts/breakdown.py VIDEO --out DIR [--words WORDS.json]` reads a finished
 mp4 and writes `report.md` and `report.json`. It needs ffmpeg, numpy and

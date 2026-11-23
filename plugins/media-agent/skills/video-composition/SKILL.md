@@ -128,6 +128,8 @@ off.
   per chunk split on phrase boundaries, hard swaps that appear 2 frames before
   the first word, one boxed look for the whole reel, and the first 2.5 s
   checked frame by frame for anything over the mouth.
+  Seventeen caption looks as numbers, with chunking, timing, size and
+  contrast rules: [references/caption-styles.md](references/caption-styles.md).
 - **Call to action.** The written call lands with the spoken one. In a
   25 s ad broken down frame by frame, it came 2.4 s after the words, and the
   end card ran 3.3 s with no voice.
