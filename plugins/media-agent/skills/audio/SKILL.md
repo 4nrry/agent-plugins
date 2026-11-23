@@ -28,6 +28,13 @@ your own GPU; transcription alone on an Intel NPU) and
   loop with a 2 s crossfade: long generations degrade toward the end.
 - For institutional pieces: instrumental, no drums, slow, minimal.
 - Music at 0.5 alone, about 0.16 under the voice, with a ~0.35 s ramp.
+- **A score without a generator:** `core/audio/sampler.py` in
+  [`4nrry/lemo-opuscar`](https://github.com/4nrry/lemo-opuscar) (pinned at
+  `f9e2042`; MIT for everything under `core/`) renders a written score offline
+  from CC0 and CC-BY sample libraries. The libraries it downloads keep their
+  own licences (credit the CC-BY ones), `pluck.py` needs numba, and the
+  repo's `.md` files are CC BY-NC: use the code, not the prose. Not yet run
+  here.
 
 ## Sound effects
 
@@ -40,6 +47,12 @@ your own GPU; transcription alone on an Intel NPU) and
   and a TV switching off, made from a seed (same seed, same file). It needs
   numpy.
   Abstract or lo-fi pieces can use them for every effect.
+- **Measure the whole mix** before export with `qa.py` from
+  [`Leonxlnx/earshot`](https://github.com/Leonxlnx/earshot) (MIT, pin commit
+  `7a7f7c5`, in `skills/real-sound/scripts/`): clicks, each cue masked
+  by the music bed, harshness, sync per cue class and loudness gates.
+  `sync_check.py` below checks one cue at a time; `qa.py` checks the mix.
+  Read its `SKILL.md` before running it; not yet run here.
 - **Align SFX to motion (`±0.1 s`):** viewers notice sound early from `~45 ms`
   and late from `~125 ms`. Check placement against the visual `peak`, `impact`
   or `onset` with the `video-editing` skill's `scripts/sync_check.py` before and

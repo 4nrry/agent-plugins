@@ -47,7 +47,8 @@ each one's commands, license and traps are in its reference.
   follow the voice word by word, come from aligning that text to the audio
   (`audio` skill).
 - **Audio levels:** each sentence at -16 LUFS before assembly, music ducked
-  under the voice and back up when it ends, and `loudnorm` at -16 LUFS on the
+  under the voice (about 11 dB under it, 9 to 14 dB, in the `herk-edit-kit`
+  playbook) and back up when it ends, and `loudnorm` at -16 LUFS on the
   final file; the render does not normalize.
 - **Footage:** stock b-roll and photos need a license per item
   (`stock-media` skill for the rule; its `scripts/media-search.py` searches
@@ -83,9 +84,13 @@ off.
   intro. The hook is on screen as text from that frame, not only spoken. Open
   one question in the first 3 seconds and answer it before the end; two hooks
   weaken each other. When it fits, end on the opening image so a replay flows.
-  Score candidate opening lines before production on 5 checks (MIT
-  `4nrry/instagram-agent-skill`): spoken in `< 3 s`, zero greeting/preamble,
-  a concrete marker, clear stakes, and payload up front.
+  Score candidate opening lines before production on the 5 checks of
+  `hookscore.py` (MIT `4nrry/instagram-agent-skill`): sayable in under 3 s, a
+  concrete marker, something at stake, the payload at the front, and a viewer
+  to aim it at; a greeting or preamble costs points. The script's word lists
+  are English, so for pt-BR apply the checks by hand; upstream it separated
+  good hooks from bad well (AUC 0.83) but one creator's hits from misses
+  barely (0.56).
 - **Visual direction by act & contact-sheet juror critique** (MIT
   `4nrry/claude-code-video-toolkit`): change background field only on narrative
   act turns, ensure neighbouring acts differ clearly in **lightness**
@@ -118,7 +123,11 @@ off.
   card, real photography) rather than repeating the host shot's look.
 - **Captions.** They carry the voice; emphasis (an accent color, a box) is rare:
   the product name or the one number, never two at once. Never over a mouth or
-  chin, and never under the platform's buttons.
+  chin, and never under the platform's buttons. For a talking-head short, the
+  `herk-edit-kit` playbook (MIT) measured on its author's reels: 1 to 3 words
+  per chunk split on phrase boundaries, hard swaps that appear 2 frames before
+  the first word, one boxed look for the whole reel, and the first 2.5 s
+  checked frame by frame for anything over the mouth.
 - **Call to action.** The written call lands with the spoken one. In a
   25 s ad broken down frame by frame, it came 2.4 s after the words, and the
   end card ran 3.3 s with no voice.

@@ -11,7 +11,13 @@ description: Finds ready-made footage, photos, music and sound effects in stock 
   service shows the media for free and keeps the condition in its terms: check
   commercial use, the platforms allowed, and credit.
 - CC-BY needs credit per item, visible in the piece or its description. Keep a
-  `CREDITS.json` beside the files with id, author, license and URL.
+  `CREDITS.json` beside the files with id, author, license and URL. Add, per
+  item, the file's `sha256`, `retrieved_at` (the date you downloaded it), how
+  it is used (`usage`: b-roll, background, sound bed) and what you changed
+  (`modifications`: crop, grade, speed), and list generated and synthesized
+  assets too, with the tool and its terms: a dispute months later is settled
+  by the file you shipped, not the page as it is then. After the asset ledger
+  in `45ck/content-machine` (MIT).
 - A license filter in a search API trusts what uploaders declared: open the
   item's page before using it.
 

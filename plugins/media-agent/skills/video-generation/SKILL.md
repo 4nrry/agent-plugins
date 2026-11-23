@@ -87,6 +87,10 @@ the move between them.
   between shots. Regenerate a failed shot; do not ship the almost.
 - `scripts/contact-sheet.sh` puts 4 frames of each video on one sheet beside
   the still.
+- **Diagnose before regenerating** ([references/failures.md](references/failures.md),
+  after DirectorSKILL's failure taxonomy, MIT): name the failure, climb the
+  cheapest rung that fixes it, and after three failed generations of one shot
+  change the shot, not the prompt.
 
 ## Fitting it into the piece
 

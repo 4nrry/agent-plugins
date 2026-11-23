@@ -125,9 +125,14 @@ Parameters as their sources give them; not yet tried in this series.
   exported as 3D data to After Effects, where a script builds a 3D camera and
   null layers with text attached, so labels follow the camera
   ([PremiumBeat](https://www.premiumbeat.com/blog/making-maps-for-johnny-harris/)).
-- **Short-form B-roll, split layouts and tactile foley** (measured across 27 top
-  Instagram Reels in [`nateherkai/herk-edit-kit`](https://github.com/nateherkai/herk-edit-kit),
-  MIT, and [`lemomo-ai/lemo-opuscar`](https://github.com/lemomo-ai/lemo-opuscar)):
+- **Short-form B-roll, split layouts and tactile foley.** The layouts and the
+  cutting were measured on Nate Herk's own 27 top Instagram Reels, March to
+  September 2026 (`docs/EDITING-PLAYBOOK.md` in
+  [`nateherkai/herk-edit-kit`](https://github.com/nateherkai/herk-edit-kit), MIT);
+  a starting point, not a law. The camera and sound rules after them are
+  paraphrased from `DIRECTOR.md` in
+  [`lemomo-ai/lemo-opuscar`](https://github.com/lemomo-ai/lemo-opuscar), whose
+  text is CC BY-NC 4.0: take the rule, never copy the text.
   - **Three vertical layouts (1080×1920, hard cuts):** **Split** (`y 0..880`
     top B-roll/card, speaker or character below) for 30–42% of the reel,
     opening Frame 0 on a split with the topic's visual on top; **Full B-roll**
@@ -139,42 +144,44 @@ Parameters as their sources give them; not yet tried in this series.
   - **Phrase-boundary cutting:** speech starts within `0.1 s`; cut dead air
     between phrases (`< 0.2 s`), never inside a breath group, and keep natural
     comma beats (`0.2–0.4 s`).
-  - **Camera variety and 3-beat acting:** at least 4 distinct camera moves or
-    framings per short, staging foreground, midground and background; character
+  - **Camera variety and 3-beat acting:** at least 4 different camera moves and
+    real changes of framing per short (2D has a camera too: push, pull,
+    parallax), staging foreground, midground and background; character
     actions follow *anticipation → action → contact freeze / follow-through*.
   - **Sound layers and silences:** three layers (ambience, tactile foley — soft
     taps, dry clicks, paper, cloth, air rather than laser zaps — and ducked
-    music), J-cut / L-cut audio transitions across visual cuts, and 1–2 brief
-    silences before the turn or emotional peak.
+    music), J-cut / L-cut audio transitions across visual cuts, and at least two
+    real silences or near-silences before the turn or emotional peak; the first
+    sound after one is among the film's most important.
 
 ## Tools
 
 Stars and licences checked with `gh api repos/<owner>/<repo>` on 2026-10-30,
-2026-11-11 and 2026-11-22.
+2026-11-11, 2026-11-22 and 2026-11-23.
 
 | Tool | What it does | Licence, stars |
 |---|---|---|
 | [HyperFrames](https://github.com/heygen-com/hyperframes) | HTML, CSS and seekable animation (GSAP, Lottie, Three.js) to deterministic MP4; how to run it is in [hyperframes.md](hyperframes.md) | Apache-2.0, ~82.9k |
-| [Hypit](https://github.com/hypit-ai/hypit) (fork [`4nrry/hypit`](https://github.com/4nrry/hypit)) | viral-video cloning workflow (`SVML` / `SVS` / `SVRun`), star image dependency graphs, word-anchored semantic timing and depth-stack cards; **licence trap:** internal/client production and forking allowed, multi-tenant SaaS or commercial redistribution of its code prohibited | Apache-2.0 with conditions, ~31.0k |
+| [Hypit](https://github.com/hypit-ai/hypit) (fork [`4nrry/hypit`](https://github.com/4nrry/hypit)) | viral-video cloning workflow (`SVML` / `SVS` / `SVRun`), star image dependency graphs, word-anchored semantic timing and depth-stack cards; **licence trap:** internal/client production and forking allowed, multi-tenant SaaS or commercial redistribution of its code prohibited, a published fork must keep the same licence, and the Hypit name, logo and copyright must stay on its CLI and reports; its output is yours without conditions | Apache-2.0 with conditions, ~31.1k |
 | [Remotion agent skills](https://github.com/remotion-dev/skills) | Remotion best practices as agent skills (`npx remotion skills add`) | no licence file in the repo; Remotion's own licence in [remotion.md](remotion.md), ~7.7k |
-| [rea-video](https://github.com/JuneYaooo/rea-video) (fork [`4nrry/rea-video`](https://github.com/4nrry/rea-video)) | shot-by-shot video reverse engineering (live, AI, 3D, stop-motion, code) into `VIDEO.md`: camera moves, drawn layers, overlays, sound events and remake plan | Apache-2.0, ~11.9k |
-| [OpenMotion](https://github.com/nexu-io/openmotion) (fork [`4nrry/openmotion`](https://github.com/4nrry/openmotion)) | agentic motion-graphics studio and reference-video remake workflow over HyperFrames and Remotion | Apache-2.0, ~14.8k |
+| [rea-video](https://github.com/JuneYaooo/rea-video) (fork [`4nrry/rea-video`](https://github.com/4nrry/rea-video)) | shot-by-shot video reverse engineering (live, AI, 3D, stop-motion, code) into `VIDEO.md`: camera moves, drawn layers, overlays, sound events and remake plan; it classifies how each shot was made (filmed, AI, 3D, code) from measurable evidence, and `rea_video/capabilities/` routes a remake by model | Apache-2.0, ~12.3k |
+| [OpenMotion](https://github.com/nexu-io/openmotion) (fork [`4nrry/openmotion`](https://github.com/4nrry/openmotion)) | agentic motion-graphics studio and reference-video remake workflow over HyperFrames; its `openmotion-recreate` scripts measure and register a reference's motion; templates and brand kits imitate real brands, so mind trademarks | Apache-2.0, ~15.4k |
 | [pixelfx](https://github.com/patch-gg/pixelfx) (fork [`4nrry/pixelfx`](https://github.com/4nrry/pixelfx)) | 244 procedural pixel-art VFX and 12 acted moves in two buffers (`color` + additive `light`), contact-sheet loop and Aseprite `--sheet` export (`cutout-animation` skill) | MIT, ~8.7k |
 | [anymove](https://github.com/patch-gg/anymove) (fork [`4nrry/anymove`](https://github.com/4nrry/anymove)) | two-view AI video motion capture triangulated onto a 3D rig in Blender 5.x, `.glb` out (`3d-scenes` skill) | Apache-2.0, ~0.7k |
-| [herk-edit-kit](https://github.com/nateherkai/herk-edit-kit) (fork [`4nrry/herk-edit-kit`](https://github.com/4nrry/herk-edit-kit)) | 15 short-form editing skills for HyperFrames/GSAP, 406 motion-graphics cards and measured Reel layout/pacing playbook (AIS brand assets excluded from MIT) | MIT (code/skills), ~3.1k |
-| [ffmpeg-skill](https://github.com/kajisho5/ffmpeg-skill) | 42 local FFmpeg operations with machine-readable contracts, self-verification and MCP server | MIT, ~9.4k |
+| [herk-edit-kit](https://github.com/nateherkai/herk-edit-kit) (fork [`4nrry/herk-edit-kit`](https://github.com/4nrry/herk-edit-kit)) | 15 short-form editing skills for HyperFrames/GSAP, 406 draft motion-graphics cards (2 styles, placeholder numbers) and a Reel layout/pacing/caption playbook measured on the author's own reels | MIT for code and skills; its bundled HyperFrames/GSAP skills are HeyGen's Apache-2.0; pipeline resources under `licenses/PIPELINE-USE-PERMISSION.txt` (keep the notice); AIS brand assets and example media not licensed, ~3.1k |
+| [ffmpeg-skill](https://github.com/kajisho5/ffmpeg-skill) (fork [`4nrry/ffmpeg-skill`](https://github.com/4nrry/ffmpeg-skill), pinned at `v4.7.0`) | 42 local FFmpeg operations with machine-readable contracts, self-verification and MCP server; the operations Kinocut lacks are listed in the `video-editing` skill | MIT, ~9.8k |
 | [animate](https://github.com/cth9191/animate) (fork [`4nrry/animate`](https://github.com/4nrry/animate)) | procedural single-canvas animation in pluggable styles (cut paper, crosshatch, riso, sketchbook, isometric) with beat-grid and loudness checks | MIT, ~2.2k |
 | [claude-code-video-toolkit](https://github.com/digitalsamba/claude-code-video-toolkit) (fork [`4nrry/claude-code-video-toolkit`](https://github.com/4nrry/claude-code-video-toolkit)) | end-to-end script, voiceover, music, Blender 3D / Remotion composition, `sync_check`, prosody and `qc` checks | MIT, ~2.7k |
-| [seedance-2.0](https://github.com/Emily2040/seedance-2.0) (fork [`4nrry/seedance-2.0`](https://github.com/4nrry/seedance-2.0)) | sequence prompt compiler (`v6.7.0`), `r2v-role-isolation`, observed-end-state continuation and stress evals | MIT, ~8.3k |
+| [seedance-2.0](https://github.com/Emily2040/seedance-2.0) (fork [`4nrry/seedance-2.0`](https://github.com/4nrry/seedance-2.0)) | sequence prompt compiler (`v6.7.0`), `r2v-role-isolation`, observed-end-state continuation and a structural stress gate (live model scores still pending upstream) | MIT, ~8.3k |
 | [video-prompting-skill](https://github.com/Square-Zero-Labs/video-prompting-skill) (fork [`4nrry/video-prompting-skill`](https://github.com/4nrry/video-prompting-skill)) | per-model prompting guides (`Veo 3`, `Seedance 2.0/2.5`, `LTX-2.x`, `MiniMax H3`, `Wan 2.2`) and character-sheet handoffs | Apache-2.0, ~0.2k |
-| [instagram-agent-skill](https://github.com/Jakeschincariol/instagram-agent-skill) (fork [`4nrry/instagram-agent-skill`](https://github.com/4nrry/instagram-agent-skill)) | 13 Instagram skills with `hookscore.py` (26 scored hook formulas), `beats.py`, `swipe.py` and `ig-human` slop detector | MIT, ~8.0k |
-| [ViralForge](https://github.com/fendouai/ViralForge) (fork [`4nrry/ViralForge`](https://github.com/4nrry/ViralForge)) | viral video deconstruction into Viral DNA reports and costed script/shot variants (Skill + MCP + CLI, clean commercial licence) | Apache-2.0, ~0.5k |
+| [instagram-agent-skill](https://github.com/Jakeschincariol/instagram-agent-skill) (fork [`4nrry/instagram-agent-skill`](https://github.com/4nrry/instagram-agent-skill)) | 13 Instagram skills with `hookscore.py` (26 scored hook formulas), `beats.py`, `swipe.py` and `ig-human` slop detector; its word lists are English only | MIT, ~8.3k |
+| [ViralForge](https://github.com/fendouai/ViralForge) (fork [`4nrry/ViralForge`](https://github.com/4nrry/ViralForge)) | viral video deconstruction into Viral DNA reports (hook, word anchors, beat grid, emotional curve) and script/shot variants; v0.1.0, its costs are demo estimates and its metrics fixtures (Skill + MCP + CLI) | Apache-2.0, ~0.5k |
 | [DirectorSKILL](https://github.com/wuwangzhang1216/DirectorSKILL) (fork [`4nrry/DirectorSKILL`](https://github.com/4nrry/DirectorSKILL)) | blocking/proxemics staging, shot-function grammar, continuity bible and keyframe vs. I2V motion templates | MIT, ~0.4k |
 | [ai-filmmaking-camera-control-seedance-2-5](https://github.com/sirioberati/ai-filmmaking-camera-control-seedance-2-5) (fork [`4nrry/ai-filmmaking-camera-control-seedance-2-5`](https://github.com/4nrry/ai-filmmaking-camera-control-seedance-2-5)) | 137 code-driven 3D Three.js pill-pipeline camera reference clips for deterministic camera control in video models | MIT, ~0.14k |
-| [godogen](https://github.com/htdt/godogen) | skills for Godot, Bevy, Babylon.js and Three.js headless video capture plus local GPU asset generation | MIT, ~7.4k |
-| [EffectCraft](https://github.com/storytold/effectcraft) & [FilmCraft](https://github.com/storytold/filmcraft) | open-source motion-graphics compositor (308 effects, 3D camera, MCP) and nonlinear editor in pure Rust | MIT / Apache-2.0, ~9.1k & ~18.8k |
-| [Awesome Opus 5.5 Videos](https://github.com/yihui-dev/awesome-opus5-5-videos) | 703 prompts extracted from viral code-rendered videos (Canvas, Three.js, SVG, GSAP) | MIT, ~16.1k |
-| [Lemo-Opuscar](https://github.com/lemomo-ai/lemo-opuscar) & [lemo-animi](https://github.com/lemomo-ai/lemo-animi) | 99 code-drawn film styles and 8 stop-motion puppet styles; **licence trap:** code is MIT, but docs/styles are `CC BY-NC 4.0` with permission to make your own commercial films, **not** to redistribute or sell the docs inside a product | MIT code / CC BY-NC 4.0 docs, ~19.6k & ~0.2k |
+| [godogen](https://github.com/htdt/godogen) | skills for Godot, Bevy, Babylon.js and Three.js headless video capture plus local GPU asset generation (paid keys and about 130 GB for that part); its headless-GPU and three.js traps are in [threejs.md](threejs.md) | MIT, ~7.4k |
+| [EffectCraft](https://github.com/storytold/effectcraft) & [FilmCraft](https://github.com/storytold/filmcraft) | open-source motion-graphics compositor (308 effects, 3D camera, MCP, Lottie and alpha export) and nonlinear editor in pure Rust; both alpha (about 45% and 56% ready by their own count, not for client work yet), with Linux builds of the EffectCraft CLI since v0.24.1; the ArtCraft names and logos are trademarks a fork must drop | MIT or Apache-2.0 at your option, ~9.1k & ~18.9k |
+| [Awesome Opus 5.5 Videos](https://github.com/yihui-dev/awesome-opus5-5-videos) | 703 prompts extracted from viral code-rendered videos (Canvas, Three.js, SVG, GSAP); read as a corpus, do not copy: each prompt belongs to its creator, so the repo's MIT does not cover them | MIT for the repo only, ~16.2k |
+| [Lemo-Opuscar](https://github.com/lemomo-ai/lemo-opuscar) & [lemo-animi](https://github.com/lemomo-ai/lemo-animi) | 99 code-drawn film styles and 8 stop-motion puppet styles; **licence trap:** code is MIT, but docs/styles are `CC BY-NC 4.0` with permission to make your own commercial films, **not** to redistribute or sell the docs inside a product (licence reworded on 2026-11-20; fork [`4nrry/lemo-opuscar`](https://github.com/4nrry/lemo-opuscar), pinned at `f9e2042`). lemo-animi is CC BY-NC 4.0 throughout, code included, and excludes client work | MIT code / CC BY-NC 4.0 docs; lemo-animi all CC BY-NC 4.0, ~20.0k & ~0.2k |
 | [LottieFiles motion-design-skill](https://github.com/LottieFiles/motion-design-skill) | timing, easing and choreography rules for UI motion, any animation system | MIT, ~2.6k |
 | [Lottie Creator MCP](https://docs.lottiefiles.com/en/creator/13_ai-tools/lottie-creator-mcp) | a local bridge that lets an agent build and edit animations in Creator; needs Node 18+ and a Creator tab open | LottieFiles service |
 | [Rive CLI](https://rive.app/docs/cli/overview) | an agent writes the scene as [RML](https://rive.app/docs/runtimes/advanced-topic/rml) (XML `.rml` files); the CLI compiles to `.riv`, previews and captures frames headless | Rive service |

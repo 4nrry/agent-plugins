@@ -12,8 +12,10 @@ description: Edits a finished video file when only the rendered mp4 exists, with
 | Change text, scenes, order or format | re-render the source (`video-composition` skill): editing the source beats patching the mp4 |
 | Cut, merge, resize, crop, extract a frame, burn in an `.srt` | a typed operation on the mp4 (Kinocut, below) |
 | Normalize each voice-over sentence | before assembly (`voice` skill); it lands closer to -16 LUFS than normalizing the mixed file |
-| A filter the typed tool lacks | raw ffmpeg |
+| An operation Kinocut lacks (table below) | a pinned `ffmpeg-skill` script |
+| A filter neither has | raw ffmpeg |
 | Learn from a reference video, or check a render's timing | `scripts/breakdown.py` (below) |
+| Check a render before anyone watches it | `scripts/render_qc.py` (below) |
 
 Whatever the tool: check the output with `ffprobe` (duration, fps, streams)
 and watch the cut points.
@@ -23,6 +25,32 @@ With raw ffmpeg, give `drawtext` a font file
 by name and stop with `impossible to find font information`, with or without
 `font=`. Subtitles burned through libass still
 find fonts by name.
+
+## Checking a render before anyone watches it
+
+`scripts/render_qc.py all VIDEO --platform reels --captions VOICE.json --font FONT`
+runs every mechanical check and exits 1 when one fails. Each check also runs
+alone (`flash`, `blank`, `frames`, `banding`, `delivery`, `reading`,
+`fonts`); `--json` gives machine output. It needs ffmpeg, ffprobe and numpy.
+
+| Check | Fails when | Source |
+|---|---|---|
+| `flash` | more than 3 general or red flashes in any second over a quarter of a central ⅓×⅓ field | WCAG 2.2 SC 2.3.1; counter after vargHQ `media-judge` |
+| `blank` | the frame is one flat colour for 1 s or more, fades at the ends aside | after Content-Agent-Kit `blank-check.mjs` |
+| `frames` | black frames of 0.25 s or less cut into the picture; a one-frame glitch only warns | after vargHQ `media-judge` |
+| `banding` | warns at CAMBI 5 in dark frames, 7.5 in bright ones; skipped without an ffmpeg built with libvmaf | Netflix CAMBI; split after vargHQ |
+| `delivery` | a platform's official hard limit (length, container, codec, size, frame rate) is broken; recommendations and unconfirmed numbers only warn | each platform's own pages, cited in the code |
+| `reading` | a caption leaves the screen sooner than characters ÷ 15 + 1.5 s | after lemo-opuscar `readcheck.mjs` |
+| `fonts` | the font has no glyph for a character in the text, such as an accent | reads the font file, no network |
+
+- The captions file can be the voice JSON, a `{text, start, end}` list or
+  WhisperX segments; a word-by-word list is skipped.
+- Instagram publishes no organic Reels spec: its numbers come from Meta's
+  Reels ads guide, and its pages give both 3 and 20 minutes as the limit.
+- The ⅓-frame field is WCAG's desktop approximation; on a phone the check is
+  stricter than needed. A flash failure is a frame range to look at, not a
+  verdict: two real renders failed on bursts that a person should judge.
+- Licences of the adapted code are in `scripts/THIRD_PARTY_NOTICES.md`.
 
 ## Breaking a video down frame by frame
 
@@ -78,6 +106,34 @@ python3 scripts/sync_check.py --clip shot.mp4 --sfx hit.wav --window 1.5:3.5 --k
 python3 scripts/sync_check.py --video final.mp4 --sfx hit.wav --at 4.20 --region 540:540:270:600
 python3 scripts/sync_check.py --video final.mp4 --cues cues.json --tolerance 0.1 --json
 ```
+
+## What Kinocut lacks
+
+Kinocut 2.0.1 has no operation for these; `4nrry/ffmpeg-skill` (fork of
+`kajisho5/ffmpeg-skill`, MIT, stdlib Python) does, compared against Kinocut
+2.0.1's source. The scripts were read, not yet run here.
+
+| Need | Script |
+|---|---|
+| Different speed per segment (a ramp) | `scripts/speedramp.py` (Kinocut's `video_speed` takes one factor) |
+| Line up two cameras or a separate audio take by cross-correlation, fix drift | `scripts/sync.py`; `scripts/multicam.py` to cut between them |
+| HDR to SDR tone mapping | `scripts/color.py` |
+| Find and crop black borders; straighten a tilted horizon | `scripts/cropdetect.py`, `scripts/straighten.py` |
+| Freeze a frame; loop or boomerang the picture | `scripts/freeze.py`, `scripts/loop.py` |
+| Frame-exact cut that re-encodes only the partial GOPs | `scripts/cut.py --smart` |
+
+Clone it pinned, run the script directly, and leave the rest alone:
+
+```bash
+git clone --depth 1 --branch v4.7.0 https://github.com/4nrry/ffmpeg-skill.git
+python3 ffmpeg-skill/scripts/speedramp.py --help
+```
+
+The scripts import `scripts/_common/`, so copy that folder with any script
+you move. Never run `npx ffmpeg-skill setup`: it may run
+`sudo apt-get install` and installs itself into every agent's skills folder.
+The repo's `.claude/settings.json` turns on six outside plugins; do not open
+an agent session inside the clone.
 
 ## Kinocut, the bundled tool
 

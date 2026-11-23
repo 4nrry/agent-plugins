@@ -1,6 +1,6 @@
 # Video prompting patterns across models
 
-Model-specific syntax, blocking before camera, and reference role isolation for AI video generation. Distilled from `4nrry/video-prompting-skill` (Apache-2.0), `4nrry/seedance-2.0` (MIT), `4nrry/DirectorSKILL` (MIT), and `4nrry/ai-filmmaking-camera-control-seedance-2-5` (MIT).
+Model-specific syntax, blocking before camera, and reference role isolation for AI video generation. Distilled from `4nrry/video-prompting-skill` (Apache-2.0), `4nrry/seedance-2.0` (MIT), `4nrry/DirectorSKILL` (MIT), and `4nrry/ai-filmmaking-camera-control-seedance-2-5` (MIT), except the three cheatsheet rows marked *unsourced*, which none of them contains.
 
 ## Contents
 
@@ -61,9 +61,14 @@ When a video model ignores complex text camera directions (orbits, crane sweeps,
 
 | Model | Dialogue & audio syntax | Key parameters & quirks |
 |---|---|---|
-| **Grok Imagine** | Colon without quotes (`Character speaks in <voice>: line`) so words do not render in scene; join internal clauses with commas to avoid ~0.7 s dead pauses | `4096`-char prompt limit; pass `first_frame` (`9:16` / `16:9`, up to `10 s` ref-to-video); avoid quoted speech and multi-panel sheets |
+| **Grok Imagine** (*unsourced*) | Colon without quotes (`Character speaks in <voice>: line`) so words do not render in scene; join internal clauses with commas to avoid ~0.7 s dead pauses | `4096`-char prompt limit; pass `first_frame` (`9:16` / `16:9`, up to `10 s` ref-to-video); avoid quoted speech and multi-panel sheets |
 | **Veo 3 / 3.1** | `[Cinematography] + [Subject] + [Action] + [Context] + [Style]`; explicit `SFX:` and `Ambient noise:` lines | Native joint audio-video; keep one clear move and 2–4 action beats per clip |
 | **Seedance 2.0 / 2.5** | Indexed `@Image1`, `@Video1`, `@Audio1` with explicit role isolation; supports `4–30 s` continuous or phased shots | Strong camera/motion adherence with 3D pill clips or first/last frame constraints |
-| **LTX-2.3 / 2.5** | Chronological prose (`camera + subject + action + lighting + audio`); supports `first/last` frame and LoRA styles | Keep prompt duration aligned externally (`(frames-1) % 8 == 0`, 24 fps default) |
+| **LTX-2.3 / 2.5** (frame rule *unsourced*) | Chronological prose (`camera + subject + action + lighting + audio`); supports `first/last` frame and LoRA styles | Keep prompt duration aligned externally (`(frames-1) % 8 == 0`, 24 fps default) |
 | **MiniMax H3** | `I2VA` / `FL2VA` / `T2VA` headers with explicit `0.00s` frame binding; `integrated_multimodal_description` | Supports timestamped multi-beat action and separate `overall_soundscape` |
-| **Kling 4.0** | `[REFERENCE ROLES]` + `[TIMED SHOTS]` (`0-3s`, `3-6s`) for match cuts and multi-reference dialogue | Lock object screen coordinates (`% width/height`) across cuts for clean match cuts |
+| **Kling 4.0** (*unsourced*) | `[REFERENCE ROLES]` + `[TIMED SHOTS]` (`0-3s`, `3-6s`) for match cuts and multi-reference dialogue | Lock object screen coordinates (`% width/height`) across cuts for clean match cuts |
+
+*Unsourced* rows were not found in the four sources above and were not run
+here; test one generation before relying on them. DirectorSKILL's
+`references/ai-video-tool-adapters.md` has a sourced Kling section: Chinese
+prompts, the negative field, and staged action with a named end pose.
