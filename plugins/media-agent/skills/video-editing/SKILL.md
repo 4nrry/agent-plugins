@@ -1,6 +1,6 @@
 ---
 name: video-editing
-description: Edits a finished video file when only the rendered mp4 exists, with typed operations that return structured results; text or scene changes go back to the source. Use to trim, cut a teaser, merge, resize or crop an existing file, burn in an .srt or subtitles, normalize a finished mp4's audio or extract a frame, to break a video down frame by frame (cuts, flashes against their sound, when each word lands), or when Kinocut or ffmpeg is named.
+description: Edits a finished video file when only the rendered mp4 exists, with typed operations that return structured results; text or scene changes go back to the source. Use to trim, cut a teaser, merge, resize or crop an existing file, burn in an .srt or subtitles, normalize a finished mp4's audio or extract a frame, to break a video down frame by frame (cuts, flashes against their sound, when each word lands), to check a render before anyone watches it (flash safety, blank frames, platform limits, caption reading time, missing glyphs), or when Kinocut or ffmpeg is named.
 ---
 
 # Editing finished video
@@ -29,17 +29,17 @@ find fonts by name.
 ## Checking a render before anyone watches it
 
 `scripts/render_qc.py all VIDEO --platform reels --captions VOICE.json --font FONT`
-runs every mechanical check and exits 1 when one fails. Each check also runs
+runs every mechanical check, exits 1 when one fails and 2 when a check could not run. Each check also runs
 alone (`flash`, `blank`, `frames`, `banding`, `delivery`, `reading`,
 `fonts`); `--json` gives machine output. It needs ffmpeg, ffprobe and numpy.
 
 | Check | Fails when | Source |
 |---|---|---|
-| `flash` | more than 3 general or red flashes in any second over a quarter of a central ⅓×⅓ field | WCAG 2.2 SC 2.3.1; counter after vargHQ `media-judge` |
+| `flash` | more than 3 general or red flashes in any second over a quarter of any ⅓×⅓ field | WCAG 2.2 SC 2.3.1; counter after vargHQ `media-judge` |
 | `blank` | the frame is one flat colour for 1 s or more, fades at the ends aside | after Content-Agent-Kit `blank-check.mjs` |
 | `frames` | black frames of 0.25 s or less cut into the picture; a one-frame glitch only warns | after vargHQ `media-judge` |
 | `banding` | warns at CAMBI 5 in dark frames, 7.5 in bright ones; skipped without an ffmpeg built with libvmaf | Netflix CAMBI; split after vargHQ |
-| `delivery` | a platform's official hard limit (length, container, codec, size, frame rate) is broken; recommendations and unconfirmed numbers only warn | each platform's own pages, cited in the code |
+| `delivery` | a platform's official hard limit is broken (length and size everywhere; container on Reels; codec, frame rate and resolution on TikTok; shape on Shorts); recommendations, unconfirmed numbers and a silent track only warn | each platform's own pages, cited in the code |
 | `reading` | a caption leaves the screen sooner than characters ÷ 15 + 1.5 s | after lemo-opuscar `readcheck.mjs` |
 | `fonts` | the font has no glyph for a character in the text, such as an accent | reads the font file, no network |
 

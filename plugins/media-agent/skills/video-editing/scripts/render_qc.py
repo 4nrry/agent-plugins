@@ -28,12 +28,23 @@
 CAPS.json is the voice JSON ([{id, text, say, start, duration}]), a list of
 {text, start, end} (t0/t1 also read), or WhisperX JSON (its segments). A
 word-level list ({word, start, end}) is not judged: one word is not a text a
-viewer reads. An item with "pass": true is listed and not timed.
+viewer reads. An item with "pass": true is listed and not timed; an item
+without readable start and end times is counted and reported, not timed.
 
-Exit 1 when any check fails; warnings and skipped checks do not fail. Every
-threshold and platform number carries its source in the code; platform
-numbers checked 2026-11-23. Needs ffmpeg and ffprobe on PATH and numpy;
-fonts falls back to fc-query for WOFF2.
+Exit 0 when every check that ran passed or warned. Exit 1 when any check
+failed. Exit 2 when nothing failed but a check could not run (status
+"error": an unreadable or partly undecodable file, a font that cannot be
+read, an ffmpeg call that failed) or nothing was checked at all; skipped
+checks (an input not given, libvmaf missing) do not count as errors. A
+file that fails to decode is reported as an error, never as a pass.
+
+Every threshold and platform number carries its source in the code;
+platform numbers checked 2026-11-23. Needs ffmpeg and ffprobe on PATH and
+numpy; fonts falls back to fc-query for WOFF2.
+
+Known limits: a .ttc collection is read at face 0 only, and cmap format 2
+(legacy double-byte CJK encodings) is not parsed, so such a font can be
+reported as missing glyphs it has.
 """
 
 import argparse
@@ -54,7 +65,8 @@ except ImportError as e:
     if "--self-test" in sys.argv and isinstance(e, ModuleNotFoundError) and e.name in ("numpy",):  # the repo's CI is stdlib-only: skip, loudly, like the hook checks do
         print(f"self-test skipped: {e.name} not installed, and without it the script does nothing")
         sys.exit(0)
-    sys.exit(f"render_qc: {e.name} is not installed; it needs numpy")
+    print(f"render_qc: {e.name} is not installed; it needs numpy", file=sys.stderr)
+    sys.exit(2)
 
 # ---------------------------------------------------------------- thresholds
 # Flash: WCAG 2.2 SC 2.3.1 and its glossary entry "general flash and red flash
@@ -78,7 +90,9 @@ BLANK_RATE = 4            # samples per second
 BLANK_MIN_S = 1.0         # a flat stretch this long fails ...
 BLANK_EDGE_S = 1.5        # ... unless it touches the start or end and is a fade this short
 # Banding: CAMBI 5 "starts to annoy", 24 worst seen (Netflix vmaf resource/doc/cambi.md);
-# dark under median luma 60 and the 1.5x bright factor are vargHQ fixtures.
+# the 1.5x bright factor and the dark limit of luma 60 are vargHQ fixtures. vargHQ
+# compares a shot's median luma with 60; this file has no shots, so it compares
+# each sampled frame's mean luma (0-255) with 60.
 CAMBI_VISIBLE, CAMBI_BRIGHT_FACTOR, DARK_LUMA = 5.0, 1.5, 60.0
 # Reading time: lemo-opuscar readcheck.mjs defaults.
 LATIN_CPS, CJK_CPS, READ_PAD, READ_MIN = 15.0, 4.5, 1.5, 1.5
@@ -139,8 +153,21 @@ PLATFORMS = ("reels", "tiktok", "shorts")
 
 
 # ---------------------------------------------------------------- helpers
+class CheckError(Exception):
+    """The check could not run on this input; reported as status "error", exit 2."""
+
+
+DECODE_MIN_SHARE = 0.9    # fewer decoded frames than this share of duration x fps is a decode failure
+
+
 def run(cmd, **kw):
     return subprocess.run(cmd, check=True, capture_output=True, **kw)
+
+
+def _tail(text, n=300):
+    if isinstance(text, bytes):
+        text = text.decode("utf-8", "replace")
+    return " ".join((text or "").strip().split())[-n:]
 
 
 def result(check, status, summary, **extra):
@@ -158,15 +185,32 @@ def frac(s):
 _PROBES = {}
 
 
+def container_of(fmt, v, a):
+    """The real container, from ffprobe, not the file name. ffprobe names the ISO
+    family "mov,mp4,m4a,3gp,3g2,mj2" and Matroska "matroska,webm", so the brand
+    and the codecs settle which one."""
+    names = fmt.get("format_name", "").split(",")
+    if "mp4" in names or "mov" in names:
+        return "mov" if fmt.get("tags", {}).get("major_brand", "").strip() == "qt" else "mp4"
+    if "matroska" in names or "webm" in names:
+        webm = v["codec_name"] in ("vp8", "vp9", "av1") and (a is None or a["codec_name"] in ("opus", "vorbis"))
+        return "webm" if webm else "mkv"
+    return names[0] or "unknown"
+
+
 def probe(video):
     """ffprobe facts, rotation-aware (XuHo delivery-check.mjs probeFile)."""
     key = str(video)
     if key in _PROBES:
         return _PROBES[key]
-    j = json.loads(run(["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", key], text=True).stdout)
-    v = next((s for s in j["streams"] if s["codec_type"] == "video"), None)
+    p = subprocess.run(["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", key],
+                       capture_output=True, text=True)
+    if p.returncode:
+        raise CheckError(f"ffprobe cannot read {Path(key).name}: {_tail(p.stderr)}")
+    j = json.loads(p.stdout)
+    v = next((s for s in j.get("streams", []) if s["codec_type"] == "video"), None)
     if v is None:
-        sys.exit(f"render_qc: no video stream in {video}")
+        raise CheckError(f"no video stream in {Path(key).name}")
     a = next((s for s in j["streams"] if s["codec_type"] == "audio"), None)
     rot = v.get("tags", {}).get("rotate") or next(
         (sd.get("rotation") for sd in v.get("side_data_list", []) if "rotation" in sd), 0)
@@ -174,9 +218,8 @@ def probe(video):
     avg, r = v.get("avg_frame_rate", "0/0"), v.get("r_frame_rate", "0/0")
     rate = avg if frac(avg) > 0 else r
     if frac(rate) <= 0:
-        sys.exit(f"render_qc: {video} reports no frame rate")
+        raise CheckError(f"{Path(key).name} reports no frame rate")
     fmt = j["format"]
-    ext = Path(key).suffix.lower().lstrip(".")
     info = {
         "width": v["height"] if turned else v["width"], "height": v["width"] if turned else v["height"],
         "fps": frac(rate), "fps_fraction": rate, "r_fps": frac(r), "avg_fps": frac(avg),
@@ -185,7 +228,7 @@ def probe(video):
         "video_duration": float(v.get("duration") or fmt.get("duration") or 0),
         "bytes": int(fmt.get("size") or Path(key).stat().st_size),
         "kbps": (int(fmt["bit_rate"]) / 1000) if fmt.get("bit_rate") else None,
-        "container": "mp4" if ext == "m4v" else ext, "format_name": fmt.get("format_name", ""),
+        "container": container_of(fmt, v, a), "format_name": fmt.get("format_name", ""),
         "audio": None if a is None else {
             "codec": a["codec_name"], "sample_rate": int(a.get("sample_rate") or 0),
             "channels": a.get("channels"), "kbps": (int(a["bit_rate"]) / 1000) if a.get("bit_rate") else None,
@@ -207,7 +250,9 @@ def loudness(video):
     def num(k):
         x = float(j[k])
         return x if np.isfinite(x) else None
-    return {"integrated_lufs": num("input_i"), "true_peak_dbtp": num("input_tp")}
+    i = num("input_i")
+    # digital silence measures -inf; loudnorm's absolute gate sits at -70 LUFS
+    return {"integrated_lufs": i, "true_peak_dbtp": num("input_tp"), "silent": i is None or i <= -70.0}
 
 
 # ---------------------------------------------------------------- one decode pass
@@ -222,12 +267,23 @@ def trace(video):
     """Decode every frame once at SIDExSIDE. Keeps per-cell flash transitions and
     per-frame grey statistics; the flash state machine runs as frames stream in."""
     key = str(video)
-    if key in _TRACES:
-        return _TRACES[key]
+    if key not in _TRACES:
+        try:
+            _TRACES[key] = _trace(video)
+        except CheckError as e:
+            _TRACES[key] = e          # every check that needs the frames reports the same error
+    if isinstance(_TRACES[key], CheckError):
+        raise _TRACES[key]
+    return _TRACES[key]
+
+
+def _trace(video):
+    key = str(video)
     info = probe(video)
     cmd = ["ffmpeg", "-v", "error", "-i", key, "-map", "0:v:0", "-vf",
            f"fps={info['fps_fraction']},scale={SIDE}:{SIDE}:flags=area,format=rgb24", "-f", "rawvideo", "-"]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    errfile = tempfile.TemporaryFile()   # a file, not a pipe: a chatty decoder cannot block the read loop
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errfile)
     size, c = SIDE * SIDE * 3, SIDE // GRID
     g8 = SIDE // 8
     gen_t, red_t, luma, std, p99, mad, cmax, skip2, cell_l = [], [], [], [], [], [], [], [], []
@@ -281,11 +337,28 @@ def trace(video):
             cmax.append(float(dd.reshape(8, g8, 8, g8).mean(axis=(1, 3)).max()))
             skip2.append(float(np.abs(g - prev2).mean()) if prev2 is not None else 0.0)
         prev2, prev = prev, g
-    proc.wait()
-    tr = {"fps": info["fps"], "n": len(luma), "gen": np.array(gen_t), "red": np.array(red_t),
+    proc.stdout.close()
+    rc = proc.wait()
+    errfile.seek(0)
+    err = errfile.read().decode("utf-8", "replace")
+    errfile.close()
+    n = len(luma)
+    lines = [ln for ln in err.splitlines() if ln.strip()]
+    expected = info["video_duration"] * info["fps"]
+    name = Path(key).name
+    if rc:
+        raise CheckError(f"ffmpeg could not decode {name} (exit {rc}): {_tail(err)}")
+    if n == 0:
+        raise CheckError(f"no frame of {name} decoded: {_tail(err) or 'empty output'}")
+    if expected >= 2 and n < DECODE_MIN_SHARE * expected:
+        raise CheckError(f"decoded {n} of about {expected:.0f} frames of {name}: {_tail(err) or 'stream ends early'}")
+    if lines:
+        # ffmpeg conceals damaged frames and the fps filter pads gaps, so the count alone can look whole
+        raise CheckError(f"{len(lines)} decode error line(s) in {name}; the frames measured would be "
+                         f"concealment, not the picture: {_tail(lines[0], 200)}")
+    tr = {"fps": info["fps"], "n": n, "gen": np.array(gen_t), "red": np.array(red_t),
           "luma": np.array(luma), "std": np.array(std), "p99": np.array(p99), "mad": np.array(mad),
           "cmax": np.array(cmax), "skip2": np.array(skip2)}
-    _TRACES[key] = tr
     return tr
 
 
@@ -351,6 +424,7 @@ def check_flash(video):
 
 def check_blank(video):
     """Luma range of sampled frames (XuHo blank-check.mjs), run over the whole video."""
+    probe(video)          # an unreadable file says so plainly before ffmpeg is run on it
     out = run(["ffmpeg", "-v", "error", "-i", str(video), "-map", "0:v:0", "-vf",
                f"fps={BLANK_RATE},signalstats,metadata=print:file=-", "-f", "null", "-"], text=True).stdout
     ranges, ymin = [], None
@@ -362,7 +436,7 @@ def check_blank(video):
             ranges.append(float(m.group(2)) - ymin)
             ymin = None
     if not ranges:
-        return result("blank", "skip", "signalstats returned nothing; not checked")
+        raise CheckError(f"signalstats returned no frame of {Path(video).name}")
     flat = np.array(ranges) < FLAT_RANGE
     n, events, edges = len(flat), [], []
     for a, b in runs(flat):
@@ -370,7 +444,8 @@ def check_blank(video):
         e = {"t": round(a / BLANK_RATE, 2), "t_end": round((b + 1) / BLANK_RATE, 2), "duration_s": dur,
              "luma_range": round(float(max(ranges[a:b + 1])), 1)}
         at_edge = a == 0 or b == n - 1
-        if dur >= BLANK_MIN_S and not (at_edge and dur <= BLANK_EDGE_S and (b - a + 1) < n):
+        whole = (b - a + 1) == n          # a clip flat from end to end fails at any length, even under 1 s
+        if whole or (dur >= BLANK_MIN_S and not (at_edge and dur <= BLANK_EDGE_S)):
             events.append(e)
         else:
             edges.append(e)
@@ -444,7 +519,7 @@ def check_banding(video):
                             f"[0:v][1:v]libvmaf=feature=name=cambi:log_fmt=json:log_path={log}:n_subsample={sub}:n_threads=4",
                             "-f", "null", "-"], capture_output=True, text=True)
         if p.returncode or not log.exists():
-            return result("banding", "skip", "libvmaf/CAMBI did not run: " + p.stderr.strip()[-200:])
+            raise CheckError("libvmaf/CAMBI did not run: " + _tail(p.stderr, 200))
         frames = json.loads(log.read_text())["frames"]
     events, worst = [], 0.0
     for fr in frames:
@@ -494,7 +569,7 @@ def check_delivery(video, platforms):
             elif limit == "recommend_max_s" and dur > val + 0.05:
                 hit(level, src, f"{dur:.1f} s, over {val} s", note)
             elif limit == "containers" and info["container"] not in val:
-                hit(level, src, f"container .{info['container']}, needs {'/'.join(val)}", note)
+                hit(level, src, f"container {info['container']} (ffprobe: {info['format_name']}), needs {'/'.join(val)}", note)
             elif limit == "video_codecs" and info["video_codec"] not in val:
                 hit(level, src, f"video codec {info['video_codec']}, expected {'/'.join(val)}", note)
             elif limit == "constant_fps" and info["r_fps"] and info["avg_fps"] and abs(info["r_fps"] - info["avg_fps"]) > 0.01 * info["r_fps"]:
@@ -520,6 +595,8 @@ def check_delivery(video, platforms):
                 hit(level, src, f"{w}x{h} is landscape; a Short is square or vertical", note)
             elif limit == "audio_present" and not a:
                 hit(level, src, "no audio track", note)
+            elif limit == "audio_present" and loud and loud["silent"]:
+                hit(level, src, "audio track is silent (integrated loudness -inf or under -70 LUFS)", note)
             elif limit == "note":
                 hit(level, src, val, note)
             elif not a:
@@ -550,32 +627,59 @@ def check_delivery(video, platforms):
 
 
 # ---------------------------------------------------------------- captions
+def _seconds(x):
+    """A finite number of seconds, or None (null, "0:01", NaN and booleans are not times)."""
+    if isinstance(x, bool):
+        return None
+    try:
+        v = float(x)
+    except (TypeError, ValueError):
+        return None
+    return v if np.isfinite(v) else None
+
+
+def _first(it, *keys):
+    return next((it[k] for k in keys if it.get(k) is not None), None)
+
+
 def load_captions(path):
-    """Return (items, reason): items are {text, start, end, pass}; reason is set when they cannot be judged."""
+    """Return (items, reason, dropped): items are {id, text, start, end, pass}; reason is set when
+    nothing can be judged; dropped lists the texts whose times could not be read."""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     if isinstance(data, dict):
         data = data.get("segments") or data.get("captions") or data.get("texts") or []
-    items, words = [], 0
-    for it in data if isinstance(data, list) else []:
+    if not isinstance(data, list):
+        raise CheckError(f"{Path(path).name}: expected a list of captions or WhisperX segments")
+    items, dropped, words = [], [], 0
+    for k, it in enumerate(data):
         if not isinstance(it, dict):
+            dropped.append({"index": k, "why": "not an object"})
             continue
         if "text" not in it and "word" in it:
             words += 1
             continue
-        text = str(it.get("text", "")).strip()
-        start = it.get("start", it.get("t0"))
-        end = it.get("end", it.get("t1"))
-        if end is None and start is not None and it.get("duration") is not None:
-            end = float(start) + float(it["duration"])
-        if not text or start is None or end is None:
+        text = str(it.get("text") or "").strip()
+        if not text:
             continue
-        items.append({"text": text, "start": float(start), "end": float(end), "pass": bool(it.get("pass")),
-                      "id": str(it.get("id", len(items)))})
-    if not items and words:
-        return [], "a word-level list: one word on screen is not a text to time; pass the sentence-level JSON"
+        start, end = _seconds(_first(it, "start", "t0")), _seconds(_first(it, "end", "t1"))
+        dur = _seconds(it.get("duration"))
+        if end is None and start is not None and dur is not None:
+            end = start + dur
+        why = ("no readable start" if start is None else "no readable end or duration" if end is None
+               else "ends before it starts" if end < start else None)
+        if why:
+            dropped.append({"index": k, "id": it.get("id"), "why": why, "text": text[:40]})
+            continue
+        items.append({"text": text, "start": start, "end": end, "pass": bool(it.get("pass")),
+                      "id": None if it.get("id") is None else str(it["id"]), "index": k})
+    if not items and words and not dropped:
+        return [], "a word-level list: one word on screen is not a text to time; pass the sentence-level JSON", []
+    if not items and dropped:
+        raise CheckError(f"no caption in {Path(path).name} has readable times ({len(dropped)} dropped, "
+                         f"first: {dropped[0]['why']})")
     if not items:
-        return [], "no {text, start, end} items found"
-    return items, None
+        return [], "no {text, start, end} items found", []
+    return items, None, dropped
 
 
 def _is_cjk(ch):
@@ -591,13 +695,16 @@ def need_seconds(text):
 
 
 def check_reading(captions, video=None):
-    items, reason = load_captions(captions)
+    items, reason, dropped = load_captions(captions)
     if reason:
         return result("reading", "skip", reason)
     items.sort(key=lambda x: x["start"])
-    merged = []   # the same text shown again right away is one piece (lemo: id + text is the key)
+    # One piece of text is its id plus its text (lemo readcheck.mjs): the same text under the same
+    # id (or both without an id) shown again within 50 ms is one piece; a new id is a new piece.
+    merged = []
     for it in items:
-        if merged and merged[-1]["text"] == it["text"] and it["start"] - merged[-1]["end"] <= 0.05:
+        if (merged and merged[-1]["id"] == it["id"] and merged[-1]["text"] == it["text"]
+                and it["start"] - merged[-1]["end"] <= 0.05):
             merged[-1]["end"] = max(merged[-1]["end"], it["end"])
         else:
             merged.append(dict(it))
@@ -606,17 +713,22 @@ def check_reading(captions, video=None):
     for it in merged:
         shown = (min(it["end"], end_cap) if end_cap else it["end"]) - it["start"]
         need = need_seconds(it["text"])
-        row = {"id": it["id"], "t": round(it["start"], 2), "chars": sum(1 for ch in it["text"] if not ch.isspace()),
+        row = {"id": it["id"] if it["id"] is not None else f"#{it['index']}", "t": round(it["start"], 2),
+               "chars": sum(1 for ch in it["text"] if not ch.isspace()),
                "need_s": round(need, 2), "shown_s": round(shown, 2), "text": it["text"][:40]}
         if it["pass"]:
             row["passing"] = True
         elif shown + 1e-6 < need:
             bad.append(row)
         rows.append(row)
-    summary = (f"{len(bad)} of {len(rows)} text(s) leave before they can be read; first at {bad[0]['t']:.2f} s "
+    summary = (f"{len(bad)} of {len(rows)} timed text(s) leave before they can be read; first at {bad[0]['t']:.2f} s "
                f"({bad[0]['shown_s']} s shown, {bad[0]['need_s']} s needed)" if bad
-               else f"all {len(rows)} text(s) stay long enough")
-    return result("reading", "fail" if bad else "pass", summary, events=bad[:30],
+               else f"all {len(rows)} timed text(s) stay long enough")
+    if dropped:
+        summary += (f"; {len(dropped)} item(s) not timed, their times unreadable "
+                    f"(first: item {dropped[0]['index']}, {dropped[0]['why']})")
+    status = "fail" if bad else "warn" if dropped else "pass"
+    return result("reading", status, summary, events=bad[:30], dropped=dropped[:30],
                   thresholds={"latin_cps": LATIN_CPS, "cjk_cps": CJK_CPS, "pad_s": READ_PAD, "min_s": READ_MIN},
                   source="lemomo-ai/lemo-opuscar core/render/readcheck.mjs")
 
@@ -700,7 +812,10 @@ def covered_by_cmap(data, cps):
 
 
 def covered_by_fcquery(path, cps):
-    out = run(["fc-query", "--format=%{charset}\n", str(path)], text=True).stdout.split("\n")[0]
+    p = subprocess.run(["fc-query", "--format=%{charset}\n", str(path)], capture_output=True, text=True)
+    out = p.stdout.split("\n")[0]
+    if p.returncode or not out.strip():
+        raise CheckError(f"fc-query cannot read {Path(path).name}: {_tail(p.stderr) or 'no charset'}")
     got = set()
     for part in out.split():
         a, _, b = part.partition("-")
@@ -715,7 +830,7 @@ def resolve_font(spec):
     if p.is_file():
         return p, None
     if not shutil.which("fc-match"):
-        return None, f"{spec} is not a file and fc-match is not on PATH"
+        raise CheckError(f"{spec} is not a file and fc-match is not on PATH")
     fam = run(["fc-match", "-f", "%{family}", spec], text=True).stdout
     path = run(["fc-match", "-f", "%{file}", spec], text=True).stdout
     if spec.lower() not in [x.strip().lower() for x in fam.split(",")]:
@@ -738,7 +853,7 @@ def check_fonts(font, texts):
         got, how = covered_by_cmap(data, cps), "cmap"
     except (ValueError, struct.error, zlib.error, IndexError) as e:
         if not shutil.which("fc-query"):
-            return result("fonts", "skip", f"cannot read {path.name} ({e}) and fc-query is not on PATH")
+            raise CheckError(f"cannot read {path.name} ({e}) and fc-query is not on PATH") from None
         got, how = covered_by_fcquery(path, cps), "fc-query"
     missing = [c for c in chars if ord(c) not in got]
     summary = (f"{path.name} has no glyph for {len(missing)} character(s): {''.join(missing)[:40]} "
@@ -750,21 +865,47 @@ def check_fonts(font, texts):
 
 
 # ---------------------------------------------------------------- report
-ORDER = {"fail": 0, "warn": 1, "skip": 2, "pass": 3}
+ORDER = {"fail": 0, "error": 1, "warn": 2, "skip": 3, "pass": 4}
+
+
+def verdict(results):
+    """(ok, exit code, checks that ran): 1 on any fail, else 2 on any error or nothing checked, else 0."""
+    checked = sum(r["status"] in ("pass", "warn", "fail") for r in results)
+    if any(r["status"] == "fail" for r in results):
+        return False, 1, checked
+    if any(r["status"] == "error" for r in results) or checked == 0:
+        return False, 2, checked
+    return True, 0, checked
 
 
 def print_report(results, as_json, target):
-    ok = not any(r["status"] == "fail" for r in results)
+    ok, code, checked = verdict(results)
     if as_json:
-        print(json.dumps({"target": target, "ok": ok, "checks": results}, indent=2, ensure_ascii=False))
-        return ok
+        print(json.dumps({"target": target, "ok": ok, "checked": checked, "checks": results},
+                         indent=2, ensure_ascii=False))
+        return code
     for r in results:
-        print(f"{r['status'].upper():<5}{r['check']:<17}{r['summary']}")
+        print(f"{r['status'].upper():<6}{r['check']:<17}{r['summary']}")
         for f in r.get("findings", []):
-            print(f"       {f['level']:<5}{f['message']}  [{f['source']}]{'  ' + f['note'] if f['note'] else ''}")
+            print(f"        {f['level']:<5}{f['message']}  [{f['source']}]{'  ' + f['note'] if f['note'] else ''}")
     counts = {s: sum(r["status"] == s for r in results) for s in ORDER}
-    print(f"render_qc: {counts['fail']} fail, {counts['warn']} warn, {counts['skip']} skipped, {counts['pass']} pass")
-    return ok
+    print(f"render_qc: {counts['fail']} fail, {counts['error']} error, {counts['warn']} warn, "
+          f"{counts['skip']} skipped, {counts['pass']} pass" + ("; nothing was checked" if not checked else ""))
+    return code
+
+
+def guarded(name, fn, *args):
+    """Run one check; whatever stops it becomes an "error" result, so the other checks still run."""
+    try:
+        r = fn(*args)
+        return r if isinstance(r, list) else [r]
+    except CheckError as e:
+        return [result(name, "error", str(e))]
+    except subprocess.CalledProcessError as e:
+        tool = Path(str(e.cmd[0])).name if e.cmd else "a tool"
+        return [result(name, "error", f"{tool} exited {e.returncode}: {_tail(e.stderr) or 'no message'}")]
+    except (OSError, ValueError, KeyError, IndexError, TypeError, struct.error, zlib.error) as e:
+        return [result(name, "error", f"{type(e).__name__}: {e}")]
 
 
 def run_checks(cmd, video, a):
@@ -772,29 +913,34 @@ def run_checks(cmd, video, a):
     platforms = [p.strip() for p in (a.platform or "").split(",") if p.strip()]
     for p in platforms:
         if p not in PLATFORMS:
-            sys.exit(f"render_qc: unknown platform {p!r}; one of {', '.join(PLATFORMS)}")
-    texts = list(a.text or [])
-    if a.captions:
-        items, _ = load_captions(a.captions)
-        texts += [i["text"] for i in items]
+            print(f"render_qc: unknown platform {p!r}; one of {', '.join(PLATFORMS)}", file=sys.stderr)
+            sys.exit(2)
     if cmd in ("all", "flash"):
-        res.append(check_flash(video))
+        res += guarded("flash", check_flash, video)
     if cmd in ("all", "blank"):
-        res.append(check_blank(video))
+        res += guarded("blank", check_blank, video)
     if cmd in ("all", "frames"):
-        res += check_frames(video)
+        res += guarded("frames", check_frames, video)
     if cmd in ("all", "banding"):
-        res.append(check_banding(video))
+        res += guarded("banding", check_banding, video)
     if cmd in ("all", "delivery"):
         if platforms:
-            res += check_delivery(video, platforms)
+            res += guarded("delivery", check_delivery, video, platforms)
         else:
             res.append(result("delivery", "skip", "no --platform given"))
     if cmd in ("all", "reading"):
-        res.append(check_reading(a.captions, video) if a.captions else result("reading", "skip", "no --captions given"))
+        res += (guarded("reading", check_reading, a.captions, video) if a.captions
+                else [result("reading", "skip", "no --captions given")])
     if cmd in ("all", "fonts"):
-        res.append(check_fonts(a.font, texts) if a.font else result("fonts", "skip", "no --font given"))
+        res += guarded("fonts", _fonts_from_args, a) if a.font else [result("fonts", "skip", "no --font given")]
     return res
+
+
+def _fonts_from_args(a):
+    texts = list(a.text or [])
+    if a.captions:
+        texts += [i["text"] for i in load_captions(a.captions)[0]]
+    return check_fonts(a.font, texts)
 
 
 # ---------------------------------------------------------------- self-test
@@ -832,11 +978,11 @@ def self_test():
     with tempfile.TemporaryDirectory() as tmp:
         t = Path(tmp)
 
-        def make(name, src, extra=(), size="360x640", dur=3, audio=True):
+        def make(name, src, extra=(), size="360x640", dur=3, audio="sine=f=440:d={dur}:sample_rate=48000"):
             out = t / f"{name}.mp4"
             cmd = ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", src.format(size=size, dur=dur)]
             if audio:
-                cmd += ["-f", "lavfi", "-i", f"sine=f=440:d={dur}:sample_rate=48000", "-ac", "2", "-c:a", "aac", "-b:a", "128k"]
+                cmd += ["-f", "lavfi", "-i", audio.format(dur=dur), "-ac", "2", "-c:a", "aac", "-b:a", "128k"]
             run(cmd + ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"] + list(extra) + ["-t", str(dur), str(out)])
             return out
 
@@ -894,7 +1040,7 @@ def self_test():
         dl = {x["check"]: x for x in check_delivery(land, ["shorts", "tiktok"])}
         assert dl["delivery:shorts"]["status"] == "fail", dl
         assert any("ratio" in m["message"] for m in dl["delivery:tiktok"]["findings"]), dl
-        tiny = make("tiny", "testsrc2=s={size}:r=30:d={dur}", size="180x320", audio=False)
+        tiny = make("tiny", "testsrc2=s={size}:r=30:d={dur}", size="180x320", audio=None)
         dt = check_delivery(tiny, ["tiktok"])[0]
         assert dt["status"] == "fail" and any("no audio" in m["message"] for m in dt["findings"]), dt
         checks += 3
@@ -923,6 +1069,78 @@ def self_test():
         woff.write_bytes(_woff(font.read_bytes()))
         assert check_fonts(str(woff), ["ação"])["missing"] == ["U+00E7 ç"]
         checks += 3
+
+        # --- fixes after review: each defect it found gets a case
+        # a damaged stream is an error, never a pass: zeroed mdat (concealed frames), a cut file
+        raw = clean.read_bytes()
+        m = len(raw)
+        corrupt = t / "corrupt.mp4"
+        corrupt.write_bytes(raw[:int(m * 0.3)] + bytes(int(m * 0.7) - int(m * 0.3)) + raw[int(m * 0.7):])
+        for name, fn in (("flash", check_flash), ("frames", check_frames)):
+            g = guarded(name, fn, corrupt)
+            assert [x["status"] for x in g] == ["error"], g
+        fast = t / "fast.mp4"
+        run(["ffmpeg", "-v", "error", "-y", "-i", str(clean), "-c", "copy", "-movflags", "+faststart", str(fast)])
+        short = t / "short.mp4"
+        short.write_bytes(fast.read_bytes()[:int(fast.stat().st_size * 0.5)])   # moov intact, half the frames gone
+        g = guarded("flash", check_flash, short)
+        assert g[0]["status"] == "error", g
+        checks += 2
+
+        # a file without moov, a font that is not a font: every check still reports, exit 2
+        trunc = t / "trunc.mp4"
+        trunc.write_bytes(raw[:4096])
+        caps.write_text(json.dumps([{"text": "Olá", "start": 0, "end": 3}]))
+        ns = argparse.Namespace(platform="tiktok", captions=str(caps), font=str(font), text=None)
+        res = run_checks("all", trunc, ns)
+        st = {x["check"]: x["status"] for x in res}
+        assert st["flash"] == st["blank"] == st["frames"] == st["delivery"] == st["reading"] == "error", st
+        assert st["fonts"] == "pass" and verdict(res)[1] == 2, (st, verdict(res))
+        bad_font = t / "bad.ttf"
+        bad_font.write_bytes(b"not a font at all")
+        assert guarded("fonts", check_fonts, str(bad_font), ["abc"])[0]["status"] == "error"
+        assert verdict([result("reading", "skip", "x")]) == (False, 2, 0)          # nothing checked is not ok
+        assert verdict([result("flash", "pass", "x"), result("fonts", "warn", "x")]) == (True, 0, 2)
+        checks += 4
+
+        # silent audio warns
+        silent = make("silent", "testsrc2=s={size}:r=30:d={dur}", audio="anullsrc=r=48000:cl=stereo:d={dur}")
+        ds = check_delivery(silent, ["tiktok"])[0]
+        assert any("silent" in m["message"] for m in ds["findings"]), ds
+        checks += 1
+
+        # captions: null start falls back to t0; unreadable times are counted, never a crash
+        caps.write_text(json.dumps([
+            {"text": "Null start, t0 given", "start": None, "t0": 0.0, "end": 3.0},
+            {"text": "Clock time", "start": "0:01", "end": 3.0},
+            {"text": "No end at all", "start": 4.0}]))
+        rc = check_reading(caps)
+        assert rc["status"] == "warn" and len(rc["dropped"]) == 2 and "2 item(s) not timed" in rc["summary"], rc
+        caps.write_text(json.dumps([{"text": "Only bad", "start": "x", "end": "y"}]))
+        assert guarded("reading", check_reading, caps)[0]["status"] == "error"
+        # one piece is id + text: the same text split under one id merges, under two ids it does not
+        same = [{"id": "a", "text": "Hello there friend", "start": 0, "end": 1.0},
+                {"id": "a", "text": "Hello there friend", "start": 1.0, "end": 2.8}]
+        caps.write_text(json.dumps(same))
+        assert check_reading(caps)["status"] == "pass"
+        same[1]["id"] = "b"
+        caps.write_text(json.dumps(same))
+        assert check_reading(caps)["status"] == "fail"
+        checks += 4
+
+        # a black clip under 1 s is judged whole
+        assert check_blank(make("short_blank", "color=c=black:s={size}:r=30:d={dur}", dur=0.8))["status"] == "fail"
+        checks += 1
+
+        # the container comes from ffprobe, not the extension
+        mkv = t / "mkv.mp4"
+        run(["ffmpeg", "-v", "error", "-y", "-i", str(clean), "-c", "copy", "-f", "matroska", str(mkv)])
+        dm = check_delivery(mkv, ["tiktok"])[0]
+        assert dm["status"] == "fail" and any("container mkv" in m["message"] for m in dm["findings"]), dm
+        mov = t / "mov.mp4"
+        run(["ffmpeg", "-v", "error", "-y", "-i", str(clean), "-c", "copy", "-f", "mov", str(mov)])
+        assert probe(mov)["container"] == "mov" and probe(clean)["container"] == "mp4"
+        checks += 2
     print(f"self-test: {checks} checks ok")
     return 0
 
@@ -952,7 +1170,8 @@ def main():
         p.error("name a check, or all")
     for tool in ("ffmpeg", "ffprobe"):
         if not shutil.which(tool):
-            sys.exit(f"render_qc: {tool} is not on PATH")
+            print(f"render_qc: {tool} is not on PATH", file=sys.stderr)
+            return 2
     video = None
     if a.video:
         video = Path(a.video).resolve()
@@ -966,8 +1185,7 @@ def main():
         p.error("reading needs --captions")
     if a.cmd == "fonts" and not (a.font and (a.captions or a.text)):
         p.error("fonts needs --font and --captions or --text")
-    ok = print_report(run_checks(a.cmd, video, a), a.json, str(video or a.captions or a.font))
-    return 0 if ok else 1
+    return print_report(run_checks(a.cmd, video, a), a.json, str(video or a.captions or a.font))
 
 
 if __name__ == "__main__":
