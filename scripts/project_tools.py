@@ -24,6 +24,7 @@ plugin name and a marker. Stdlib only.
 """
 import hashlib
 import json
+import re
 import shlex
 import shutil
 import subprocess
@@ -109,21 +110,38 @@ def parses(text: str) -> bool:
 
 
 def hand_written_headers(path: Path) -> set:
-    """Table headers outside the managed block, normalised to their dotted parts."""
+    """Table paths defined outside the managed block, as tuples of keys.
+    Read with tomllib when the rest parses (comments, quoted dotted keys),
+    else line by line."""
     if not path.exists():
         return set()
-    parts = split_block(path.read_text(encoding="utf-8"))
-    rest = parts[0] if parts else path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8")
+    parts = split_block(text)
+    rest = parts[0] if parts else text
+    try:
+        import tomllib
+        data = tomllib.loads(rest)
+    except (ImportError, ValueError):
+        data = None
     out = set()
+    if data is not None:
+        def walk(node, prefix):
+            for k, v in node.items():
+                if isinstance(v, dict):
+                    out.add(prefix + (k,))
+                    walk(v, prefix + (k,))
+        walk(data, ())
+        return out
     for line in rest.split("\n"):
-        s = line.strip()
+        s = line.split("#", 1)[0].strip()
         if s.startswith("[") and not s.startswith("[[") and s.endswith("]"):
             out.add(tuple(x.strip().strip('"') for x in s[1:-1].split(".")))
     return out
 
 
 def q(s: str) -> str:
-    return json.dumps(s)
+    """A TOML basic string. ensure_ascii=False: a surrogate-pair escape is not valid TOML."""
+    return json.dumps(s, ensure_ascii=False)
 
 
 def mcp_servers(plugin_dir: Path) -> dict:
@@ -344,8 +362,12 @@ def trust_notes(repo: Path) -> list:
             notes.append("Codex: not trusted, so .codex/config.toml is ignored "
                          f"(add [projects.\"{repo}\"] trust_level = \"trusted\" to ~/.codex/config.toml)")
         project = tomllib.loads((repo / ".codex/config.toml").read_text(encoding="utf-8"))
-        key = f"{repo / '.codex/config.toml'}:"
-        if project.get("hooks") and not any(k.startswith(key) for k in user.get("hooks", {}).get("state", {})):
+        state = user.get("hooks", {}).get("state", {})
+        snake = lambda e: re.sub(r"(?<!^)(?=[A-Z])", "_", e).lower()  # noqa: E731
+        keys = [f"{repo / '.codex/config.toml'}:{snake(e)}:{i}:{j}"
+                for e, groups in (project.get("hooks") or {}).items() if e != "state" and isinstance(groups, list)
+                for i, g in enumerate(groups) for j, _ in enumerate(g.get("hooks", []))]
+        if any("trusted_hash" not in state.get(k, {}) for k in keys):
             notes.append("Codex: the project hooks run only once reviewed (open Codex there and trust them in /hooks)")
     except (OSError, ValueError):
         pass
@@ -440,6 +462,12 @@ def self_test() -> int:
         g.write_text('[mcp_servers.srv]\ncommand = "own"\n')
         quiet(repo, src, skills_of, ["m"], ["m"], False)
         ok(tomllib.loads(g.read_text())["mcp_servers"]["srv"]["command"] == "own", "a hand-written server is kept")
+        g.write_text('[mcp_servers."srv"]   # mine\ncommand = "own"\n')
+        quiet(repo, src, skills_of, ["m"], ["m"], False)
+        ok(tomllib.loads(g.read_text())["mcp_servers"]["srv"]["command"] == "own"
+           and BEGIN not in g.read_text(), "a hand-written header with a comment is seen")
+        ok(q("/x/\U0001f600") == '"/x/\U0001f600"' and tomllib.loads(f"a = {q(chr(0x1f600))}")["a"] == chr(0x1f600),
+           "a non-BMP path stays valid TOML")
         g.write_text("[mcp_servers]\nsrv = 1\n")
         quiet(repo, src, skills_of, ["m"], ["m"], False)
         ok(g.read_text() == "[mcp_servers]\nsrv = 1\n", "a block that would not parse beside the file is not written")
