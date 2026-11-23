@@ -45,7 +45,7 @@ and numpy; `captions` also needs tesseract.
 | `reading` | a caption leaves the screen sooner than characters ÷ 15 + 1.5 s | after lemo-opuscar `readcheck.mjs` |
 | `captions` | no caption is read on screen; under 65% of the file's captions, or of their time under 55%, are matched by OCR; or starts sit a median of 350 ms or a p95 of 900 ms from the file's times | 45ck/content-machine `caption-sync.ts` |
 | `fonts` | the font has no glyph for a character in the text, such as an accent | reads the font file, no network |
-| `rhythm` | only warns, and only when asked (not in `all`): shot lengths vary by a coefficient of variation under 0.25 (every shot the same length reads as slides), or under 25% of frames are still with no still stretch of 1 s (motion that never rests) | thresholds from feitangyuan/onetake `verify_promo.py`, no code |
+| `rhythm` | only warns, and only when asked (not in `all`): shot lengths vary by a coefficient of variation under 0.25 (every shot the same length reads as slides), or under 25% of frames are still, or no still stretch reaches 1 s (motion that never rests) | thresholds from feitangyuan/onetake `verify_promo.py`, no code |
 
 - The captions file can be the voice JSON, a `{text, start, end}` list or
   WhisperX segments; a word-by-word list is skipped.
@@ -64,7 +64,9 @@ and numpy; `captions` also needs tesseract.
   hard cuts it finds; a one-take piece has none, so pass its beat times with
   `--shots 2.5,4,9.2`. Cadence needs 3 shots or more, else it is skipped. A
   still frame is one under 0.5 of 255 mean difference from the frame before,
-  black frames aside.
+  black frames aside. A cut is a one-frame jump: fades, flashes under 0.2 s
+  and a cut inside fast motion all go unseen, so for a busy piece pass
+  `--shots`.
 - The ⅓-frame field is WCAG's desktop approximation; on a phone the check is
   stricter than needed. A flash failure is a frame range to look at, not a
   verdict: two real renders failed on bursts that a person should judge.

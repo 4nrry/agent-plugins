@@ -145,8 +145,11 @@ STILL_MAD = 0.5
 STILL_MIN_SHARE = 0.25
 REST_MIN_S = 1.0
 # Ours: a hard cut is a frame whose mean abs diff is 20 or more and 4x the median of the 25 frames
-# around it, and the picture does not come back the frame after (that is a glitch, not a cut).
-CUT_MIN_MAD, CUT_LOCAL_X, CUT_STAYS = 20.0, 4.0, 0.6
+# around it, at least twice the frame before and after it (a fade changes over several frames), and
+# the picture does not come back the frame after (that is a glitch, not a cut). Two cuts under
+# 0.2 s apart are a flash or a glitch, not a shot, and both go; so does a cut within 0.2 s of an end.
+CUT_MIN_MAD, CUT_LOCAL_X, CUT_STAYS, CUT_ALONE = 20.0, 4.0, 0.6, 0.5
+MIN_SHOT_S = 0.2
 
 # ---------------------------------------------------------------- delivery limits
 CHECKED = "2026-11-23"
@@ -562,14 +565,21 @@ def detect_cuts(tr):
         local = float(np.median(np.delete(M[lo:hi], i - lo)))
         if M[i] < max(CUT_MIN_MAD, CUT_LOCAL_X * local):
             continue
+        if M[i - 1] > CUT_ALONE * M[i] or (i + 1 < n and M[i + 1] > CUT_ALONE * M[i]):
+            continue                      # the change is spread over frames: a fade or a move, not a cut
         if i + 1 < n and S2[i + 1] < CUT_STAYS * M[i]:
             continue                      # frame i is unlike both neighbours, which match: a glitch
         if i >= 2 and S2[i] < CUT_STAYS * M[i]:
             continue                      # frame i is back to frame i-2: the way out of a glitch
-        if cuts and i - cuts[-1] < 2:
-            continue
         cuts.append(i)
-    return cuts
+    short = MIN_SHOT_S * tr["fps"]
+    k = 0
+    while k + 1 < len(cuts):              # in and out of a flash: neither is a shot boundary
+        if cuts[k + 1] - cuts[k] < short:
+            del cuts[k:k + 2]
+        else:
+            k += 1
+    return [c for c in cuts if short <= c <= n - short]
 
 
 def check_rhythm(video, shots=None):
@@ -580,7 +590,9 @@ def check_rhythm(video, shots=None):
     if n < 3:
         return [result("cadence", "skip", "fewer than 3 frames"), result("rest", "skip", "fewer than 3 frames")]
     if shots is not None:
-        starts, how = sorted(t for t in shots if 0 < t < dur), "given by --shots"
+        starts = sorted({t for t in shots if 0 < t < dur})
+        dropped = len(shots) - len(starts)
+        how = "given by --shots" + (f", {dropped} time(s) dropped as repeated or outside 0-{dur:.2f} s" if dropped else "")
     else:
         starts, how = [i / fps for i in detect_cuts(tr)], "hard cuts found"
     edges = [0.0] + starts + [dur]
@@ -588,7 +600,8 @@ def check_rhythm(video, shots=None):
     src = "feitangyuan/onetake scripts/verify_promo.py (thresholds only)"
     if len(lengths) < 3:
         cadence = result("cadence", "skip",
-                         f"{len(lengths)} shot(s) ({how}); cadence needs 3 or more, pass --shots for a one-take piece",
+                         f"{len(lengths)} shot(s) ({how}); cadence needs 3 or more" + (
+                             "" if shots is not None else ", pass --shots for a one-take piece"),
                          shots=lengths, source=src)
     else:
         L = np.array(lengths)
@@ -1649,7 +1662,14 @@ def self_test():
         assert g["status"] == "skip" and g["shots"] == [3.0], g     # a one-frame glitch is not two cuts
         assert all(x["check"] != "cadence" for x in run_checks("all", clean, argparse.Namespace(
             platform=None, captions=None, font=None, text=None, ocr_lang="auto", band=None, shots=None)))
-        checks += 6
+        # after review: a fast fade and a 2-frame flash are not cuts; repeated or outside --shots times go
+        fade = make("fade", seg.replace("{e}", "40+min(max(N-60,0),6)*25"), dur=4)
+        assert check_rhythm(fade)[0]["shots"] == [4.0], check_rhythm(fade)
+        flash2 = make("flash2", seg.replace("{e}", "if(between(N,60,61),220,60)"), dur=4)
+        assert check_rhythm(flash2)[0]["shots"] == [4.0], check_rhythm(flash2)
+        c = check_rhythm(slides, shots=[1, 1, 2, 3, 2500])[0]
+        assert c["shots"] == [1.0, 1.0, 1.0, 1.0] and c["status"] == "warn" and "2 time(s) dropped" in c["summary"], c
+        checks += 9
 
         # a black clip under 1 s is judged whole
         assert check_blank(make("short_blank", "color=c=black:s={size}:r=30:d={dur}", dur=0.8))["status"] == "fail"
@@ -1773,6 +1793,8 @@ def main():
         p.error("delivery needs --platform")
     if a.cmd in ("reading", "captions") and not a.captions:
         p.error(f"{a.cmd} needs --captions")
+    if a.shots is not None and a.cmd != "rhythm":
+        p.error("--shots is read by rhythm only")
     if a.cmd == "fonts" and not (a.font and (a.captions or a.text)):
         p.error("fonts needs --font and --captions or --text")
     return print_report(run_checks(a.cmd, video, a), a.json, str(video or a.captions or a.font))
