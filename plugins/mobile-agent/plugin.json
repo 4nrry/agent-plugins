@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "mobile-agent",
+  "version": "0.5.1",
+  "description": "What fails silently when an agent works on a mobile app: device layer (adb, emulator, UI dumps, mirroring a phone) and bundler layer (Expo, Metro, prebuild). Narrow PreToolUse guards that warn and never block, and the Maestro MCP server for driving UI flows on a device.",
+  "author": {
+    "name": "4nrry",
+    "url": "https://github.com/4nrry"
+  },
+  "homepage": "https://github.com/4nrry/agent-plugins/tree/main/plugins/mobile-agent",
+  "repository": "https://github.com/4nrry/agent-plugins",
+  "license": "MIT"
+}

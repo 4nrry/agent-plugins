@@ -45,9 +45,12 @@ project config (`scripts/project_tools.py`), git-excluded like the links:
 `.claude/settings.local.json` for Claude Code, `.codex/config.toml` for Codex
 (left alone when tracked), `.grok/config.toml` and `.grok/hooks/` for Grok, and
 `.agents/plugins/<plugin>/` for Antigravity, which skips symlinks that leave the
-repo and so gets a copy of the skills, refreshed on each run. Codex and Grok read
-a folder's config only once you trust it; `project` and `status` say when one
-is missing. A plugin outside `adapters/global-plugins.json` runs its hooks and
+repo and so gets a copy of the skills, refreshed on each run. Codex gets the MCP
+servers and the hooks inline, not the plugin: the plugin's skills would be listed
+beside the same `.agents/skills` links, twice, and Codex honours a
+`skills.config` switch only in the user file. Codex and Grok read a folder's
+config only once you trust it, and Codex runs a project hook only once reviewed;
+`project` and `status` say when one is missing. A plugin outside `adapters/global-plugins.json` runs its hooks and
 MCP servers through the bridges and `claude_hooks.py` only in a folder whose
 `.agents/skills` links it.
 

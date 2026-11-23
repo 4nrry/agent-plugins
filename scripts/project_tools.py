@@ -7,7 +7,10 @@ The rest of a plugin, its MCP servers and hooks, goes where each tool reads a
 project's own config:
 
   Claude Code  .claude/settings.local.json  enabledPlugins["<plugin>@4nrry"]
-  Codex        .codex/config.toml           [plugins."<plugin>@4nrry"]   (skipped when the file is tracked)
+  Codex        .codex/config.toml           [mcp_servers.<server>] and [[hooks.<event>]], as for Grok
+                                            (skipped when the file is tracked). Not the plugin: Codex
+                                            lists its skills beside the same .agents/skills links,
+                                            twice, and honours skills.config only in the user file
   Grok         .grok/config.toml            [mcp_servers.<server>]        (via adapters/mcp_launch.py)
                .grok/hooks/4nrry-<plugin>.json                            (via adapters/claude_hooks.py)
   Antigravity  .agents/plugins/<plugin>/    plugin.json, mcp_config.json and a copy of the
@@ -21,6 +24,8 @@ plugin name and a marker. Stdlib only.
 """
 import hashlib
 import json
+import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -73,9 +78,12 @@ def toml_block(path: Path, body: str, dry: bool, log: list, tool: str):
     rest, _ = parts
     if body:
         sep = "" if not rest.strip() else ("\n" if rest.endswith("\n") else "\n\n")
-        new = (rest if rest.strip() else "") + sep + f"{BEGIN}\n{body.strip()}\n{END}\n"
+        new = (rest.lstrip("\n") if rest.strip() else "") + sep + f"{BEGIN}\n{body.strip()}\n{END}\n"
     else:
         new = rest
+    if new != text and not parses(new) and parses(text):
+        log.append(f"  ! {tool}: the new block would not parse beside {path}'s own tables; left alone")
+        return None
     if new != text:
         log.append(f"  {tool}: {path.name}" + ("" if body else " (block removed)"))
         if not dry:
@@ -89,22 +97,51 @@ def toml_block(path: Path, body: str, dry: bool, log: list, tool: str):
     return "shared" if rest.strip() else "only"
 
 
+def parses(text: str) -> bool:
+    try:
+        import tomllib
+    except ImportError:  # Python < 3.11: no check
+        return True
+    try:
+        tomllib.loads(text)
+    except ValueError:
+        return False
+    return True
+
+
 def hand_written_headers(path: Path) -> set:
-    """Table headers outside the managed block, normalised to their dotted parts."""
+    """Table paths defined outside the managed block, as tuples of keys.
+    Read with tomllib when the rest parses (comments, quoted dotted keys),
+    else line by line."""
     if not path.exists():
         return set()
-    parts = split_block(path.read_text(encoding="utf-8"))
-    rest = parts[0] if parts else path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8")
+    parts = split_block(text)
+    rest = parts[0] if parts else text
+    try:
+        import tomllib
+        data = tomllib.loads(rest)
+    except (ImportError, ValueError):
+        data = None
     out = set()
+    if data is not None:
+        def walk(node, prefix):
+            for k, v in node.items():
+                if isinstance(v, dict):
+                    out.add(prefix + (k,))
+                    walk(v, prefix + (k,))
+        walk(data, ())
+        return out
     for line in rest.split("\n"):
-        s = line.strip()
+        s = line.split("#", 1)[0].strip()
         if s.startswith("[") and not s.startswith("[[") and s.endswith("]"):
             out.add(tuple(x.strip().strip('"') for x in s[1:-1].split(".")))
     return out
 
 
 def q(s: str) -> str:
-    return json.dumps(s)
+    """A TOML basic string. ensure_ascii=False: a surrogate-pair escape is not valid TOML."""
+    return json.dumps(s, ensure_ascii=False)
 
 
 def mcp_servers(plugin_dir: Path) -> dict:
@@ -157,7 +194,28 @@ def claude(repo: Path, plugins: list, gone: list, dry: bool, log: list) -> list:
     return excludes if data else []
 
 
-def codex(repo: Path, plugins: list, dry: bool, log: list) -> list:
+def mcp_tables(source: Path, plugins: list, have: set, tool: str, rel: str, log: list) -> list:
+    """[mcp_servers.<server>] tables that start each plugin's servers through adapters/mcp_launch.py."""
+    launch = source / "adapters/mcp_launch.py"
+    body, seen = [], {}
+    for p in plugins:
+        for server in sorted(mcp_servers(source / "plugins" / p)):
+            if ("mcp_servers", server) in have:
+                log.append(f"  ! {tool}: {rel} already has [mcp_servers.{server}] by hand; kept as is")
+                continue
+            if server in seen:
+                log.append(f"  ! {tool}: MCP server {server!r} is in both {seen[server]} and {p}; kept {seen[server]}'s")
+                continue
+            seen[server] = p
+            body.append(f"[mcp_servers.{q(server)}]\ncommand = \"python3\"\n"
+                        f"args = [{q(str(launch))}, {q(p)}, {q(server)}]")
+    return body
+
+
+def codex(repo: Path, source: Path, plugins: list, dry: bool, log: list) -> list:
+    """Skills come from the .agents/skills links; this adds the MCP servers and,
+    inline, the hooks (Codex reads a project's [hooks] once the folder is trusted
+    and each hook is reviewed)."""
     rel = ".codex/config.toml"
     path = repo / rel
     if tracked(repo, rel):
@@ -165,34 +223,23 @@ def codex(repo: Path, plugins: list, dry: bool, log: list) -> list:
             log.append(f"  ! codex: {rel} is tracked by git; not changed (Codex gets the skills only)")
         return []
     have = hand_written_headers(path)
-    body = []
+    body = mcp_tables(source, plugins, have, "codex", rel, log)
+    hooks_py = source / "adapters/claude_hooks.py"
     for p in plugins:
-        if ("plugins", f"{p}@{MARKETPLACE_NAME}") in have:
-            log.append(f"  ! codex: {rel} already has [plugins.\"{p}@{MARKETPLACE_NAME}\"] by hand; kept as is")
-            continue
-        body.append(f'[plugins."{p}@{MARKETPLACE_NAME}"]\nenabled = true')
+        for e in hook_events(source / "plugins" / p):
+            cmd = " ".join(shlex.quote(a) for a in ["python3", str(hooks_py), e, "--plugin", p, "--json"])
+            body.append(f"[[hooks.{e}]]\n\n[[hooks.{e}.hooks]]\ntype = \"command\"\ncommand = {q(cmd)}")
     state = toml_block(path, "\n\n".join(body), dry, log, "codex")
     return [rel] if state == "only" else []
 
 
 def grok(repo: Path, source: Path, plugins: list, gone: list, dry: bool, log: list) -> list:
     rel = ".grok/config.toml"
-    launch = source / "adapters/mcp_launch.py"
     hooks_py = source / "adapters/claude_hooks.py"
-    body, excludes, seen = [], [], {}
-    have = hand_written_headers(repo / rel)
+    excludes = []
+    body = mcp_tables(source, plugins, hand_written_headers(repo / rel), "grok", rel, log)
     for p in plugins:
         pdir = source / "plugins" / p
-        for server in sorted(mcp_servers(pdir)):
-            if ("mcp_servers", server) in have:
-                log.append(f"  ! grok: {rel} already has [mcp_servers.{server}] by hand; kept as is")
-                continue
-            if server in seen:
-                log.append(f"  ! grok: MCP server {server!r} is in both {seen[server]} and {p}; kept {seen[server]}'s")
-                continue
-            seen[server] = p
-            body.append(f"[mcp_servers.{q(server)}]\ncommand = \"python3\"\n"
-                        f"args = [{q(str(launch))}, {q(p)}, {q(server)}]")
         events = hook_events(pdir)
         hook_file = repo / f".grok/hooks/4nrry-{p}.json"
         if events:
@@ -293,7 +340,7 @@ def sync_tools(repo: Path, source: Path, skills_of, plugins: list, previous: lis
     gone = sorted(set(previous) - set(plugins))
     log = []
     excludes = claude(repo, plugins, gone, dry, log)
-    excludes += codex(repo, plugins, dry, log)
+    excludes += codex(repo, source, plugins, dry, log)
     excludes += grok(repo, source, plugins, gone, dry, log)
     excludes += antigravity(repo, source, skills_of, plugins, gone, dry, log)
     for line in log:
@@ -310,10 +357,18 @@ def trust_notes(repo: Path) -> list:
         return notes
     home = Path.home()
     try:
-        projects = tomllib.loads((home / ".codex/config.toml").read_text(encoding="utf-8")).get("projects", {})
-        if projects.get(str(repo), {}).get("trust_level") != "trusted":
+        user = tomllib.loads((home / ".codex/config.toml").read_text(encoding="utf-8"))
+        if user.get("projects", {}).get(str(repo), {}).get("trust_level") != "trusted":
             notes.append("Codex: not trusted, so .codex/config.toml is ignored "
                          f"(add [projects.\"{repo}\"] trust_level = \"trusted\" to ~/.codex/config.toml)")
+        project = tomllib.loads((repo / ".codex/config.toml").read_text(encoding="utf-8"))
+        state = user.get("hooks", {}).get("state", {})
+        snake = lambda e: re.sub(r"(?<!^)(?=[A-Z])", "_", e).lower()  # noqa: E731
+        keys = [f"{repo / '.codex/config.toml'}:{snake(e)}:{i}:{j}"
+                for e, groups in (project.get("hooks") or {}).items() if e != "state" and isinstance(groups, list)
+                for i, g in enumerate(groups) for j, _ in enumerate(g.get("hooks", []))]
+        if any("trusted_hash" not in state.get(k, {}) for k in keys):
+            notes.append("Codex: the project hooks run only once reviewed (open Codex there and trust them in /hooks)")
     except (OSError, ValueError):
         pass
     try:
@@ -362,7 +417,11 @@ def self_test() -> int:
         settings = json.loads((repo / ".claude/settings.local.json").read_text())
         ok(settings["enabledPlugins"] == {"m@4nrry": True}, "claude enables the plugin")
         codex_cfg = tomllib.loads((repo / ".codex/config.toml").read_text())
-        ok(codex_cfg["plugins"]["m@4nrry"]["enabled"] is True, "codex enables the plugin")
+        ok("plugins" not in codex_cfg and codex_cfg["mcp_servers"]["srv"]["args"][1:] == ["m", "srv"],
+           "codex gets the MCP server, not the plugin (whose skills it would list twice)")
+        ok(list(codex_cfg["hooks"]) == ["PreToolUse"]
+           and codex_cfg["hooks"]["PreToolUse"][0]["hooks"][0]["command"].endswith("PreToolUse --plugin m --json"),
+           "codex gets the supported hooks inline")
         ok("mine" in codex_cfg["mcp_servers"], "codex keeps the hand-written server")
         grok_cfg = tomllib.loads((repo / ".grok/config.toml").read_text())
         ok(grok_cfg["mcp_servers"]["srv"]["args"][1:] == ["m", "srv"], "grok gets the MCP server")
@@ -403,6 +462,15 @@ def self_test() -> int:
         g.write_text('[mcp_servers.srv]\ncommand = "own"\n')
         quiet(repo, src, skills_of, ["m"], ["m"], False)
         ok(tomllib.loads(g.read_text())["mcp_servers"]["srv"]["command"] == "own", "a hand-written server is kept")
+        g.write_text('[mcp_servers."srv"]   # mine\ncommand = "own"\n')
+        quiet(repo, src, skills_of, ["m"], ["m"], False)
+        ok(tomllib.loads(g.read_text())["mcp_servers"]["srv"]["command"] == "own"
+           and BEGIN not in g.read_text(), "a hand-written header with a comment is seen")
+        ok(q("/x/\U0001f600") == '"/x/\U0001f600"' and tomllib.loads(f"a = {q(chr(0x1f600))}")["a"] == chr(0x1f600),
+           "a non-BMP path stays valid TOML")
+        g.write_text("[mcp_servers]\nsrv = 1\n")
+        quiet(repo, src, skills_of, ["m"], ["m"], False)
+        ok(g.read_text() == "[mcp_servers]\nsrv = 1\n", "a block that would not parse beside the file is not written")
         (repo / ".claude/settings.local.json").write_text("[]")
         quiet(repo, src, skills_of, ["m"], ["m"], False)
         ok((repo / ".claude/settings.local.json").read_text() == "[]", "odd settings are left alone")
