@@ -109,6 +109,15 @@ human.glb out/` renders three figures (front, profile, back) to check a new glb.
 
 ## Checking
 
+- Plates are PNG (`reset()` sets it), and so is any frame a model looks at.
+  A JPEG written by Blender carries Blender's own segments: `Blender:`
+  comments, a private `NeoGeo` APP1 block where Exif usually sits, and an ICC
+  profile. Once a Gemini agent had read one with its file tool, every request
+  after it in the turn came back `400 INVALID_ARGUMENT` (Gemini 4 Carbon, 4
+  Argon and 3.8 Flash). For a Blender JPEG that already exists,
+  look at a stripped copy: `mogrify -strip -path <scratch> frame.jpg`.
+  Converting it to PNG is not the fix by itself: ImageMagick carries the
+  comment and the `NeoGeo` bytes into the PNG as text chunks.
 - `scripts/check_motion.py PLATE_DIR` fails when two consecutive frames are
   identical. Run it on plates, before grain or text hides a still picture. It
   needs numpy and Pillow.
