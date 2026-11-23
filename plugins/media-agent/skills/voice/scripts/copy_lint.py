@@ -40,6 +40,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import unicodedata
 from pathlib import Path
 
 # ---------------------------------------------------------------- upstream rules (verbatim)
@@ -69,13 +70,14 @@ COPY_RULES = [
 # in a corpus; it is this plugin's taste, and every hit is a warning.
 DASH = re.compile(r"—|\s–\s|\s--\s")
 PT_MAX_DASHES = 2   # one aside set off by a pair is fine; a third dash is a pile-up the TTS reads unevenly
+SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
 PT_RULES = [
-    (re.compile(r"\bvocê sabia que\b|\bneste vídeo\b|\bno vídeo de hoje\b"
+    (re.compile(r"\bvocê sabia que\b|\bneste vídeo\b(?!-)|\bno vídeo de hoje\b"
                 r"|\bhoje (nós )?vamos (falar|conversar|explorar|mergulhar|descobrir|entender)\b"
                 r"|\bvamos mergulhar\b|\bmergulh(ar|e|o|amos) (fundo|de cabeça)\b|\bprepare-se para\b"
                 r"|\bsem mais delongas\b", re.I),
      "a stock opener; start with the point"),
-    (re.compile(r"\bnão (é|são|foi|era) (apenas|só|somente|simplesmente)\b[^.!?\n]{1,80}?[,;:—–-]\s*(é|são|foi|era|mas)\b"
+    (re.compile(r"\bnão (é|são|foi|era) (apenas|só|somente|simplesmente)\b[^.!?\n]{1,80}?[,;:—–]\s*(é|são|foi|era)\b"
                 r"|\bnão se trata (apenas|só|somente) de\b"
                 r"|\bmais do que (apenas|só)\b[^.!?\n]{1,60}?,\s*(é|são)\b", re.I),
      "'não é apenas X, é Y'; say what it is"),
@@ -84,15 +86,17 @@ PT_RULES = [
      "'vale ressaltar que' (it's worth noting); say the point"),
     (re.compile(r"\bno mundo (acelerado |moderno |digital |atual )?de hoje\b|\bnos dias (de hoje|atuais)\b"
                 r"|\bem constante (evolução|transformação)\b|\bpor (último|fim),? mas não menos importante\b"
-                r"|\bem (suma|conclusão)\b|\blançar luz sobre\b|\babrir (o )?caminho para\b|\bna vanguarda\b"
-                r"|\bdivisor de águas\b|\btapeçaria\b|\bum testemunho d[eoa]s?\b"
+                r"|\blançar luz sobre\b|\babrir (o )?caminho para\b|\bna vanguarda\b"
+                r"|\b(é|foi|será|seria|representa|representou) (um )?(verdadeiro )?divisor de águas\b"
                 r"|\bembarc(ar|ue|amos) (nessa|nesta|numa|em uma) jornada\b"
                 r"|\bdesbloque(ar|ie) (o seu |seu |todo o (seu )?)?potencial\b"
                 r"|\bnavegar (pelas|nas) complexidades\b|\bde forma (fluida|integrada)\b", re.I),
      "a stock phrase translated from English; say it the way a person would"),
-    (re.compile(r"\b(alavanc(ar|a|am|ando)|potencializ(ar|a|am|ando)|revolucion(ar|a|am|ou)|turbin(ar|a|am)"
-                r"|de última geração|de classe mundial|tudo[- ]em[- ]um|sem esforço"
-                r"|(leve|levar|eleve|elevar) .{1,30} (ao|a um|para o) (próximo|outro) nível"
+    # verb forms only: "alavanca" and "turbina" are also nouns (a lever, a turbine)
+    (re.compile(r"\b(alavanc(ar|ando|ou|aram|amos|ará|arão|arem)|potencializ(ar|a|am|ando|ou)"
+                r"|revolucion(ar|a|am|ou|ando)|turbin(ar|ando|ou|aram|ará|arem)"
+                r"|de última geração|de classe mundial|tudo[- ]em[- ]um"
+                r"|(leve|levar|eleve|elevar) [^.!?\n]{1,30} (ao|a um|para o) (próximo|outro) nível(?=\s*([.,;:!?]|$))"
                 r"|diga adeus (aos?|às?|a))\b", re.I),
      "a stock marketing phrase; say the specific thing it does"),
 ]
@@ -100,16 +104,18 @@ PT_RULES = [
 
 def lint_text(text: str, lang: str = "en") -> list[tuple[str, str]]:
     """(matched text, reason) for every rule hit in a piece of prose."""
+    text = unicodedata.normalize("NFC", text)     # decomposed accents would slip past the pt patterns
     rules = COPY_RULES if lang == "en" else PT_RULES + COPY_RULES[1:]
     out = []
     for rx, why in rules:
         for m in rx.finditer(text):
             out.append((m.group(0).strip(), why))
     if lang == "pt":
-        dashes = DASH.findall(text)
-        if len(dashes) > PT_MAX_DASHES:
-            out.append((f"{len(dashes)} dashes", f"dash overuse (more than {PT_MAX_DASHES} in one sentence); "
-                                                 "use a comma, a full stop or a new sentence"))
+        for sentence in SENTENCE_END.split(text):
+            dashes = DASH.findall(sentence)
+            if len(dashes) > PT_MAX_DASHES:
+                out.append((f"{len(dashes)} dashes", f"dash overuse (more than {PT_MAX_DASHES} in one sentence); "
+                                                     "use a comma, a full stop or a new sentence"))
     return out
 
 
@@ -187,8 +193,23 @@ def self_test() -> int:
                   "A conta, que já era alta, subiu de novo.",
                   "A conta — que já era alta — subiu de novo.",       # one aside: two dashes are fine in pt
                   "Não é só isso: o prazo também mudou.",
-                  "Ele não apenas votou, mas também discursou."):
+                  "Ele não apenas votou, mas também discursou.",
+                  "A empresa não era só pequena, mas também endividada.",
+                  "A alavanca do freio quebrou e a turbina parou.",
+                  "O curso quer levar o aluno ao próximo nível escolar.",
+                  "Assista neste vídeo-aula ao resumo.",
+                  "O museu guarda uma tapeçaria do século XV.",
+                  "A serra é o divisor de águas entre as duas bacias.",
+                  "Ela prestou um testemunho de duas horas.",
+                  "Em conclusão, o juiz negou o pedido.",
+                  "Ganhou a prova sem esforço nenhum.",
+                  "Um — dois — três. Quatro — cinco — seis."):     # dashes are counted per sentence
         assert lint_text(clean, "pt") == [], (clean, lint_text(clean, "pt"))
+        checks += 1
+    for flagged in ("Isso vai alavancar suas vendas.", "Vamos turbinar o seu perfil.",
+                    "Leve sua empresa ao próximo nível.", "Foi um verdadeiro divisor de águas.",
+                    unicodedata.normalize("NFD", "Você sabia que o prazo acabou?")):
+        assert lint_text(flagged, "pt"), flagged
         checks += 1
     assert hits("A conta — que já era alta — subiu de novo.", "en") == ["—", "—"]   # en keeps upstream's rule
     assert any("dash overuse" in w for _, w in lint_text("Um — dois — três — quatro.", "pt"))

@@ -43,7 +43,7 @@ and numpy; `captions` also needs tesseract.
 | `banding` | warns at CAMBI 5 in dark frames, 7.5 in bright ones; skipped without an ffmpeg built with libvmaf | Netflix CAMBI; split after vargHQ |
 | `delivery` | a platform's official hard limit is broken (length and size everywhere; container on Reels; codec, frame rate and resolution on TikTok; shape on Shorts); recommendations, unconfirmed numbers and a silent track only warn | each platform's own pages, cited in the code |
 | `reading` | a caption leaves the screen sooner than characters ÷ 15 + 1.5 s | after lemo-opuscar `readcheck.mjs` |
-| `captions` | the burned-in captions, read by OCR, match under 65% of the captions file, or start a median of 350 ms or a p95 of 900 ms from its times | 45ck/content-machine `caption-sync.ts` |
+| `captions` | no caption is read on screen; under 65% of the file's captions, or of their time under 55%, are matched by OCR; or starts sit a median of 350 ms or a p95 of 900 ms from the file's times | 45ck/content-machine `caption-sync.ts` |
 | `fonts` | the font has no glyph for a character in the text, such as an accent | reads the font file, no network |
 
 - The captions file can be the voice JSON, a `{text, start, end}` list or
@@ -51,7 +51,8 @@ and numpy; `captions` also needs tesseract.
 - Instagram publishes no organic Reels spec: its numbers come from Meta's
   Reels ads guide, and its pages give both 3 and 20 minutes as the limit.
 - `captions` samples 3 frames a second in the bottom 35% of the frame (or
-  `--band TOP:HEIGHT`), retries in a centre band when that fails, and moves
+  `--band TOP:HEIGHT`), retries in a centre band when too few captions match
+  or the OCR confidence is low (not on drift alone), and moves
   each start to the frame where the band changed, so drift is measured to the
   frame. It reads light text only, not dark text on a light box. Without
   tesseract it is skipped. `--ocr-lang auto` reads with `por` when the
@@ -80,12 +81,19 @@ python3 scripts/qa_cut.py qa edit/cut.mp4 --edl edit/edl.json --heard heard.json
 - Show `review.md` to the person and render only after a yes. Change only
   `in` and `out` in `edl.json`; `render` recomputes the rest.
 - Pauses come from the take's own audio, not from gaps between words: an ASR
-  stretches words across pauses. A pause over 0.32 s is held at 0.22 s, or
-  0.36 s after a sentence. A retake is cut only when the repeat covers most of
-  the attempt; stutters are listed, never cut; fillers only with
-  `--cut-fillers`.
+  stretches words across pauses. A pause is held at 0.22 s, or 0.36 s after a
+  sentence, and only when that removes 0.2 s or more: so only pauses of
+  0.42 s or more are cut, or 0.56 s after a sentence. A retake is cut only
+  when the repeat covers most of the attempt; stutters are listed, never cut;
+  fillers only with `--cut-fillers`.
+- A quiet word the take's level calls silence still counts when its own
+  audio is over -50 dBFS. A word with no sound at its times, or past the end
+  of the media, is listed in `review.md` and left out of the check.
+- `render` refuses a variable-frame-rate take: conform it first
+  (`ffmpeg -i take.mov -vf fps=30,format=yuv420p -fps_mode cfr -c:a copy take.mp4`),
+  then plan again.
 - `qa` fails on a join that cuts through sound, a kept word the edit list
-  clips or leaves out, a pause over 0.6 s, an opening on silence, black or
+  clips (sound over -50 dBFS at the edge) or leaves out, a pause over 0.6 s, an opening on silence, black or
   flash frames, and loudness off -16 LUFS (`--lufs -14` for vargHQ's
   target). `render` reports loudness without judging it: a rough cut is mixed
   later. With `--heard`, a fresh transcript of the cut, under 95% of the

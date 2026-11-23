@@ -46,6 +46,7 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import unicodedata
 from pathlib import Path
 
 # ---------------------------------------------------------------- thresholds
@@ -119,19 +120,42 @@ def _hiatus(v1, v2):
     return False                          # pai, céu, muito, viu: one syllable
 
 
+def _closed(w, j):
+    """True when w[j] is a consonant that closes the syllable before it (not s)."""
+    if j >= len(w) or w[j] in VOWELS or w[j] == "s":
+        return False
+    if j + 1 == len(w) or w[j:j + 2] == "nh":
+        return True
+    return w[j + 1] not in VOWELS and w[j + 1] not in "rlh"     # ainda, ruins; not muito, cãibra, malha
+
+
+def _split_glide(w, k, prev):
+    """Hiatus the vowel classes alone miss: an unaccented i or u after a vowel."""
+    if w[k] not in WEAK:
+        return False
+    if prev in STRONG and k + 1 < len(w) and w[k + 1] in WEAK:
+        return True                                              # sa-iu, ca-iu
+    return _closed(w, k + 1)                                     # a-in-da, ru-im, ju-iz
+
+
 def syllables_pt(word):
     """Syllables of one Portuguese word by vowel groups. A heuristic, not a
     dictionary: it misses unmarked hiatuses such as ra-i-nha. A final
     unstressed -ia, -io, -ua, -ea, -eo after an accented syllable is one
     syllable (his-tó-ria, ci-ên-cia, ví-deo): the rising diphthong that the
-    spelling rule accenting those words assumes, and the way they are spoken."""
-    w = word.lower()
+    spelling rule accenting those words assumes, and the way they are spoken.
+    An i or u closed by a consonant other than s, or followed by nh, stands
+    apart from the vowel before it (a-in-da, ru-im, ju-iz, sa-ir, ra-i-nha);
+    after a strong vowel, i before u starts a new syllable (sa-iu, ca-iu)."""
+    w = unicodedata.normalize("NFC", word).lower()
+    if w in ("ao", "aos"):
+        return 1                          # the contraction is one falling diphthong
     w = re.sub(r"(?<=[qg])[uü](?=[aeioáéíóâêôãõ])", "", w)   # que, guerra, quatro, água: u is silent or a glide
     w = w.replace("ü", "u")
     n, prev = 0, None
-    for ch in w:
+    for k, ch in enumerate(w):
         if ch in VOWELS:
-            if prev is None or _hiatus(prev, ch):
+            if prev is None or _hiatus(prev, ch) or _split_glide(w, k, prev):
                 n += 1
             prev = ch
         else:
@@ -141,8 +165,25 @@ def syllables_pt(word):
     return max(n, 1)                      # a token with no vowel is an initial read aloud
 
 
+# Letter names in Portuguese, in syllables: an initialism is read letter by letter.
+LETTER_SYLLABLES = dict(zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+                            [1, 1, 1, 1, 1, 2, 1, 2, 1, 2, 1, 2, 2, 2, 1, 1, 1, 2, 2, 1, 1, 1, 3, 1, 3, 1]))
+
+
+def initialisms(text):
+    """All-caps tokens of 2 to 5 plain letters (IBGE, CPF): read as letters, or as a word (ONU)."""
+    return re.findall(r"\b[A-Z]{2,5}\b", unicodedata.normalize("NFC", spoken_text(text)))
+
+
 def count_syllables_pt(text):
-    return sum(syllables_pt(w) for w in re.findall(r"[^\W\d_]+", spoken_text(text)))
+    """Syllables of a line; an initialism counts as its spelled-out letter names."""
+    total = 0
+    for w in re.findall(r"[^\W\d_]+", unicodedata.normalize("NFC", spoken_text(text))):
+        if 2 <= len(w) <= 5 and re.fullmatch(r"[A-Z]+", w):
+            total += sum(LETTER_SYLLABLES[c] for c in w)
+        else:
+            total += syllables_pt(w)
+    return total
 
 
 # ---------------------------------------------------------------- audio
@@ -178,6 +219,8 @@ def silences(path, duration, floor_db):
 def audio_shape(path, floor_db):
     """Duration, leading and trailing silence, longest inner pause."""
     dur = probe_duration(path)
+    if dur < MIN_SILENCE_S:
+        raise ValueError(f"{path.name} runs {dur:.3f} s, too short to measure")
     sp = silences(path, dur, floor_db)
     lead = next((e for s, e in sp if s <= 0.01), 0.0)
     if lead >= dur - 0.01:
@@ -225,6 +268,9 @@ def check_line(item, lang, json_dir, audio_dir, floor_db, have_ffmpeg):
             out["status"] = level
 
     text = item.get("say") or item.get("text") or ""
+    if not isinstance(text, str):
+        note("error", f"say/text is {type(text).__name__}, not a string", "input")
+        return out
     if not text.strip():
         note("error", "no say or text to measure", "input")
         return out
@@ -233,6 +279,10 @@ def check_line(item, lang, json_dir, audio_dir, floor_db, have_ffmpeg):
     if re.search(r"\d", spoken_text(text)):
         note("warn", "digits in the spoken text: spell them out in `say` (the count here is short)",
              "voice SKILL.md: numbers are spelled out in say")
+    caps = initialisms(text)
+    if caps:
+        note("warn", f"initialism in the spoken text ({', '.join(dict.fromkeys(caps))}): write it in `say` "
+             "as it is read; counted here as spelled-out letters", "voice SKILL.md: acronyms are spelled out in say")
 
     span = None
     jdur = item.get("duration")
@@ -345,7 +395,7 @@ def report(lines, lang, as_json, target):
                  if "lead" in l else "")
         print(f"{l['status'].upper():<6}{l['id']:<10}{rate}{edges}")
         for f in l["findings"]:
-            print(f"        {f['level']:<5}{f['message']}  [{f['source']}]")
+            print(f"        {f['level']:<6}{f['message']}  [{f['source']}]")
     counts = {s: sum(l["status"] == s for l in lines) for s in ("fail", "error", "warn", "pass")}
     print(f"pacing: {counts['fail']} fail, {counts['error']} error, {counts['warn']} warn, "
           f"{counts['pass']} pass ({lang})")
@@ -361,18 +411,37 @@ def self_test():
     for word, n in (("dia", 2), ("saúde", 3), ("país", 2), ("pai", 1), ("muito", 2), ("quatro", 2),
                     ("que", 1), ("guerra", 2), ("água", 2), ("pão", 1), ("mães", 1), ("leão", 2),
                     ("poesia", 4), ("voo", 2), ("coração", 3), ("Brasil", 2), ("aeroporto", 5),
-                    ("ciência", 3), ("história", 3), ("relatório", 4), ("experiência", 5), ("rádio", 2), ("vídeo", 2), ("área", 2), ("ideia", 3), ("praia", 2), ("Uruguai", 3), ("feliz", 2), ("põe", 1)):
+                    ("ciência", 3), ("história", 3), ("relatório", 4), ("experiência", 5), ("rádio", 2), ("vídeo", 2), ("área", 2), ("ideia", 3), ("praia", 2), ("Uruguai", 3), ("feliz", 2), ("põe", 1),
+                    ("ao", 1), ("aos", 1), ("ruim", 2), ("ruins", 2), ("saiu", 2), ("caiu", 2), ("juiz", 2),
+                    ("ainda", 3), ("sair", 2), ("rainha", 3), ("construir", 3), ("cuidado", 3), ("muito", 2),
+                    ("mais", 1), ("depois", 2), ("partiu", 2), ("quando", 2), ("cãibra", 2),
+                    (unicodedata.normalize("NFD", "saúde"), 3), (unicodedata.normalize("NFD", "coração"), 3)):
         assert syllables_pt(word) == n, (word, syllables_pt(word), n)
         checks += 1
     s = "A casa tem uma porta azul"            # 6 words, 10 syllables
     assert count_words(s) == 6 and count_syllables_pt(s) == 10
     assert count_words("Olá [pause 1.0s] mundo <break time='1s'/>") == 2
+    assert count_syllables_pt(unicodedata.normalize("NFD", "A saúde do país")) == 7   # NFD does not split words
+    assert count_syllables_pt("O IBGE e o CPF") == 1 + 4 + 1 + 1 + 4 and initialisms("O IBGE e o CPF") == ["IBGE", "CPF"]
     assert label("pt", 6, 0, 5.0) == "ok" and label("pt", 6, 0, 6.0) == "fast" and label("pt", 6, 0, 3.0) == "slow"
     assert label("en", 6, 175, None) == "fast" and label("en", 6, 100, None) == "slow"
     assert label("en", 5, 300, None) is None
     checks += 6
     with tempfile.TemporaryDirectory() as tmp:
         t = Path(tmp)
+        bad_types = [{"id": "n", "say": 5, "duration": 1.0}, {"id": "l", "text": ["x"], "duration": 1.0}]
+        typed = run_lines(bad_types, t, "pt")
+        assert [l["status"] for l in typed] == ["error", "error"] and verdict(typed) == 2, typed
+        caps = run_lines([{"id": "i", "say": "O IBGE divulgou o dado hoje cedo", "duration": 2.0}], t, "pt")
+        assert any("initialism" in f["message"] for f in caps[0]["findings"]), caps
+        import contextlib
+        import io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            report([{"id": "z", "status": "error", "findings": [{"level": "error", "message": "no audio file x",
+                                                                 "source": "input"}]}], "pt", False, "t")
+        assert "error no audio file" in buf.getvalue(), buf.getvalue()
+        checks += 3
         no_audio = [{"id": "a", "say": s, "duration": 2.0},                   # 5.0 syl/s
                     {"id": "b", "say": s, "duration": 1.2},                   # 8.3 syl/s
                     {"id": "c", "say": "Custa 20 mil reais por ano", "duration": 2.0},
@@ -416,6 +485,11 @@ def self_test():
             (t / "x.json").write_text(json.dumps([{"id": "x", "say": s, "file": "x.wav"}]), encoding="utf-8")
             bad = run(t / "x.json")
             assert bad[0]["status"] == "error", bad
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono",
+                            "-t", "0.005", str(t / "tiny.wav")], check=True)              # 5 ms
+            (t / "tiny.json").write_text(json.dumps([{"id": "tiny", "say": s}]), encoding="utf-8")
+            tiny = run(t / "tiny.json", audio_dir=t)
+            assert tiny[0]["status"] == "error" and "too short" in tiny[0]["findings"][0]["message"], tiny
             cli = subprocess.run([sys.executable, __file__, str(t / "a.json"), "--audio-dir", str(t), "--json"],
                                  capture_output=True, text=True)
             assert cli.returncode == 1 and json.loads(cli.stdout)["exit"] == 1, cli.stderr

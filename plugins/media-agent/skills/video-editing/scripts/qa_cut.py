@@ -24,7 +24,8 @@ plan     reads the take's own audio for pauses (word times say which words, not
 render   recomputes frames and positions from in/out, renders the cut in one
          filter graph trimmed by frame and sample number with a 30 ms fade at
          each join, then runs qa on it (loudness reported, not judged: it is a
-         rough cut). --fcpxml also writes cut.fcpxml for a hand trim.
+         rough cut). --fcpxml also writes cut.fcpxml for a hand trim. A
+         variable-frame-rate take is refused (exit 2) with the conform command.
 qa       judges a rendered cut: its length against the edit list, joins that
          cut through sound, kept words the edit list clips or drops, pauses over
          0.6 s, an opening on silence, loudness, black and flash frames, and,
@@ -80,6 +81,10 @@ LUFS_TOL = 1.0
 TRUE_PEAK = -1.5       # dBTP
 MIN_MATCH = 0.95       # heard words against intended words
 JOIN_FLASH = 30.0      # mean grey difference (0-255, 64x36) beside a join
+# Ours: audio at a cut edge counts as silence only under this absolute level. The take-relative
+# speech threshold misses a whispered or trailing word ~30 dB under the voice.
+ABS_SILENCE_DB = -50.0
+QUIET_MARGIN_DB = 6.0  # a quiet word must also sit this far over the room to count as sound
 # Loudness target: vargHQ masters at -14 LUFS; this plugin's voice skill normalizes the
 # finished video to -16, so -16 is the default here (--lufs -14 for vargHQ's).
 LUFS = -16.0
@@ -126,16 +131,28 @@ def _rate(x):
         return 0.0
 
 
+def video_fps(r, avg, name="the file"):
+    """The nominal rate, else the average; a stream reporting neither has no usable frame rate."""
+    fps, av = _rate(r), _rate(avg)
+    if fps <= 0:
+        fps = av
+    if fps <= 0:
+        raise CheckError(f"{name} reports no frame rate (r_frame_rate {r}, avg_frame_rate {avg})")
+    return fps, av
+
+
 def probe(path):
     p = subprocess.run(["ffprobe", "-v", "error", "-show_entries",
-                        "format=duration:stream=codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate",
-                        "-of", "json", str(path)], capture_output=True, text=True)
+                        "format=duration:stream=codec_type,width,height,r_frame_rate,avg_frame_rate,sample_rate"
+                        ":stream_disposition=attached_pic", "-of", "json", str(path)], capture_output=True, text=True)
     if p.returncode:
         raise CheckError(f"ffprobe cannot read {Path(path).name}: {_tail(p.stderr)}")
     d = json.loads(p.stdout)
-    v = next((s for s in d.get("streams", []) if s["codec_type"] == "video"), None)
+    # cover art in an audio file is a one-picture "video" stream at 90000 fps: not a picture to cut
+    v = next((s for s in d.get("streams", []) if s["codec_type"] == "video"
+              and not (s.get("disposition") or {}).get("attached_pic")), None)
     a = next((s for s in d.get("streams", []) if s["codec_type"] == "audio"), None)
-    fps, avg = (_rate(v["r_frame_rate"]), _rate(v.get("avg_frame_rate"))) if v else (0.0, 0.0)
+    fps, avg = video_fps(v.get("r_frame_rate"), v.get("avg_frame_rate"), Path(path).name) if v else (0.0, 0.0)
     return {"duration": float(d.get("format", {}).get("duration") or 0), "has_video": v is not None,
             "fps": round(fps, 3) if v else 100.0, "avg_fps": round(avg, 3),
             "vfr": bool(v) and avg > 0 and abs(fps - avg) > 0.005,
@@ -155,12 +172,13 @@ def load_words(path):
     if isinstance(data, dict):
         if isinstance(data.get("word_segments"), list):
             items = data["word_segments"]
-        elif isinstance(data.get("segments"), list):
+        elif isinstance(data.get("segments"), list) and any(
+                isinstance(s, dict) and s.get("words") for s in data["segments"]):
             items = [w for s in data["segments"] if isinstance(s, dict) for w in (s.get("words") or [])]
-            if not items:
-                raise CheckError(f"{Path(path).name}: segments carry no words[]; align it for word times")
-        elif isinstance(data.get("words"), list):
+        elif isinstance(data.get("words"), list):      # Scribe, and OpenAI verbose_json beside wordless segments
             items = data["words"]
+        elif isinstance(data.get("segments"), list):
+            raise CheckError(f"{Path(path).name}: segments carry no words[]; align it for word times")
         else:
             raise CheckError(f"{Path(path).name}: no word_segments, segments[].words or words[]")
     elif isinstance(data, list):
@@ -441,7 +459,7 @@ def build_edl(info, regs, pauses, retakes, fillers, db, o, hard=(), black=()):
             "source_duration": info["duration"], "segments": segs, "cuts": cuts, "moved_for_picture": moved}
 
 
-def review_md(info, th, floor, voice, words, pauses, retakes, fillers, edl):
+def review_md(info, th, floor, voice, words, pauses, retakes, fillers, edl, unplaced=()):
     gaps = sum(1 for i in range(1, len(words)) if words[i]["start"] - words[i - 1]["end"] >= 0.4)
     drift = [w for w in words if w["drifted"]]
     L = ["# Take review", "", "| | |", "|---|---|",
@@ -453,6 +471,9 @@ def review_md(info, th, floor, voice, words, pauses, retakes, fillers, edl):
          "| Draft | %.2f s, %d segments |" % (edl["duration"], len(edl["segments"])), ""]
     if edl["moved_for_picture"]:
         L += ["Moved %d cut edge(s) off a slate, fade or camera change: check them on joins.jpg." % len(edl["moved_for_picture"]), ""]
+    if unplaced:
+        L += ["Words with no sound at their times, left out of intended.json and not checked: " + ", ".join(
+            "%s (%.2f-%.2f, %s)" % (u["text"], u["start"], u["end"], u["why"]) for u in unplaced[:12]), ""]
     if drift:
         L += ["Do not cut from these word times: " + ", ".join(
             "%s (%.2f-%.2f)" % (w["text"], w["start"], w["end"]) for w in drift[:12]), ""]
@@ -466,6 +487,41 @@ def review_md(info, th, floor, voice, words, pauses, retakes, fillers, edl):
     return "\n".join(L) + "\n"
 
 
+def word_level(db, a, b):
+    """The loudest 10 ms slice inside a word's span, in dBFS (-120 past the end of the audio)."""
+    i0, i1 = max(0, int(a / WIN)), min(len(db), int(math.ceil(b / WIN)))
+    return max(db[i0:i1]) if i1 > i0 else -120.0
+
+
+def place_words(words, regs, db, floor, duration):
+    """Regions for quiet words the relative threshold missed, and the words with no sound at all.
+
+    A word mostly outside the speech regions is kept as speech when its own span is louder than
+    ABS_SILENCE_DB and QUIET_MARGIN_DB over the room: a whispered or trailing ending. One with no
+    such sound, or past the end of the media, was misplaced by the ASR: it is listed, and left out
+    of intended.json, since nothing at its times can be checked."""
+    added, unplaced = [], []
+    for k, w in enumerate(words):
+        a, b = w["start"], w["end"]
+        if overlap(a, b, regs) / max(b - a, 0.01) >= 0.25:
+            continue
+        lv = word_level(db, a, b)
+        if a < duration and lv > max(ABS_SILENCE_DB, floor + QUIET_MARGIN_DB):
+            added.append([max(0.0, a), min(duration, b)])
+        else:
+            unplaced.append({"index": k, "text": w["text"], "start": a, "end": b, "level_db": round(lv, 1),
+                             "why": "past the end of the media" if a >= duration else "no sound at its times"})
+    if added:
+        merged = []
+        for r in sorted([list(x) for x in regs] + added):
+            if merged and r[0] - merged[-1][1] < 0.12:
+                merged[-1][1] = max(merged[-1][1], r[1])
+            else:
+                merged.append(r)
+        regs = merged
+    return regs, added, unplaced
+
+
 def plan(take, words_path, out, o):
     take = Path(take).resolve()
     info = probe(take)
@@ -475,6 +531,7 @@ def plan(take, words_path, out, o):
     db = levels(take)
     th, floor, voice = threshold(db)
     regs = speech_regions(db, th)
+    regs, quiet, unplaced = place_words(words, regs, db, floor, len(db) * WIN)
     hard, black = picture_changes(take) if info["has_video"] else ([], [])
     wr = retimed(words, regs)
     pauses = pauses_between(regs, wr)
@@ -493,21 +550,45 @@ def plan(take, words_path, out, o):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     # by word order, not by time: ASR times are the thing not to trust
-    intended = [{"text": w["text"], "start": w["start"], "end": w["end"]} for i, w in enumerate(wr) if i not in gone]
+    skip = gone | {u["index"] for u in unplaced}
+    intended = [{"text": w["text"], "start": w["start"], "end": w["end"]} for i, w in enumerate(wr) if i not in skip]
     (out / "edl.json").write_text(json.dumps(edl, indent=1, ensure_ascii=False))
     (out / "intended.json").write_text(json.dumps(intended, indent=0, ensure_ascii=False))
     (out / "take.json").write_text(json.dumps({
         "info": info, "threshold_db": round(th, 1), "room_db": round(floor, 1), "voice_db": round(voice, 1),
         "speech": [[round(x, 3), round(y, 3)] for x, y in regs], "hard_picture_changes": hard, "black": black,
-        "pauses": pauses, "retakes": retakes, "fillers": fillers, "words": wr}, indent=1, ensure_ascii=False))
-    (out / "review.md").write_text(review_md(info, th, floor, voice, wr, pauses, retakes, fillers, edl))
+        "pauses": pauses, "retakes": retakes, "fillers": fillers, "quiet_words": quiet, "unplaced_words": unplaced,
+        "words": wr}, indent=1, ensure_ascii=False))
+    (out / "review.md").write_text(review_md(info, th, floor, voice, wr, pauses, retakes, fillers, edl, unplaced))
     return {"out": str(out), "source_s": info["duration"], "draft_s": edl["duration"], "segments": len(edl["segments"]),
             "cuts": len(edl["cuts"]), "retakes_cut": sum(1 for r in retakes if r["sure"] and r["run"] >= o.min_run),
             "retakes_to_check": sum(1 for r in retakes if not r["sure"]), "fillers": len(fillers),
-            "words_removed": len(gone), "vfr": info["vfr"]}
+            "words_removed": len(gone), "quiet_words_kept": len(quiet), "unplaced_words": len(unplaced),
+            "vfr": info["vfr"]}
 
 
 # ---------------------------------------------------------------- render
+def ffmpeg_version(banner):
+    """(major, minor) from `ffmpeg -version`, or None for a git build (N-12345-g...) or an unknown banner."""
+    m = re.search(r"ffmpeg version n?(\d+)\.(\d+)", banner)
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
+_FPS_MODE = None
+
+
+def fps_mode(mode, banner=None):
+    """-fps_mode came in ffmpeg 5.1; older builds take the same value through -vsync."""
+    global _FPS_MODE
+    if banner is not None:
+        v = ffmpeg_version(banner)
+        return ["-vsync", mode] if v is not None and v < (5, 1) else ["-fps_mode", mode]
+    if _FPS_MODE is None:
+        p = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True)
+        _FPS_MODE = p.stdout.splitlines()[0] if p.stdout else ""
+    return fps_mode(mode, _FPS_MODE)
+
+
 def normalize_edl(edl):
     """Recompute frames and positions from in/out, the only fields edited by hand (vargHQ build_cut.py)."""
     fps, t = edl["fps"], 0
@@ -593,6 +674,11 @@ def render(edl_path, take=None, out=None, fade_ms=FADE_MS, crf=18, preset="veryf
     if not info["has_audio"]:
         raise CheckError(f"{take.name} has no audio")
     video = info["has_video"]
+    if video and info["vfr"]:
+        raise CheckError(f"{take.name} has a variable frame rate ({info['fps']} nominal, {info['avg_fps']} average): "
+                         "frame-numbered trims would drift from the sound. Conform it first, then plan again: "
+                         f"ffmpeg -i {take.name} -vf fps={round(info['fps'])},format=yuv420p -fps_mode cfr "
+                         f"-c:a copy {take.stem}.cfr.mp4")
     if video and abs(info["fps"] - edl["fps"]) > 0.01:
         raise CheckError(f"the edit list is at {edl['fps']} fps and {take.name} at {info['fps']}: plan it again")
     last = edl["segments"][-1]["out"]
@@ -604,7 +690,7 @@ def render(edl_path, take=None, out=None, fade_ms=FADE_MS, crf=18, preset="veryf
     (edl_path.parent / "filter.txt").write_text(graph)
     cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(take), "-filter_complex", graph]
     if video:
-        cmd += ["-map", "[v]", "-c:v", "libx264", "-crf", str(crf), "-preset", preset, "-fps_mode", "passthrough",
+        cmd += ["-map", "[v]", "-c:v", "libx264", "-crf", str(crf), "-preset", preset, *fps_mode("passthrough"),
                 "-g", str(max(1, round(edl["fps"]))), "-pix_fmt", "yuv420p"]
     cmd += ["-map", "[a]", "-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-movflags", "+faststart", str(out)]
     p = subprocess.run(cmd, capture_output=True, text=True)
@@ -662,9 +748,10 @@ def join_flashes(frames, ts, fps, limit=JOIN_FLASH):
     return bad
 
 
-def check_words(edl, intended, source_db=None, source_th=None):
+def check_words(edl, intended, source_db=None):
     """Each kept word against the edit list, in the take's own time: wholly inside a segment, or
-    clipped (a segment edge inside it while the take is voiced there), or dropped (in no segment)."""
+    clipped (a segment edge inside it while the take has sound there), or dropped (in no segment).
+    Sound means louder than ABS_SILENCE_DB, not the take's speech threshold: a quiet ending is a word."""
     segs = [(s["in"], s["out"]) for s in edl["segments"]]
     edges = sorted({x for s in segs for x in s})
     eps = 0.011
@@ -680,10 +767,10 @@ def check_words(edl, intended, source_db=None, source_th=None):
         voiced = None
         if source_db is not None:
             lv = [max(source_db[max(0, int(e / WIN) - 2):int(e / WIN) + 2] or [-120.0]) for e in inside]
-            voiced = max(lv) > source_th
+            voiced = max(lv) > ABS_SILENCE_DB
         row = {"index": k, "word": w["text"], "start": a, "end": b, "edges": [round(e, 3) for e in inside]}
         if voiced is False:
-            stretched.append(row)       # the ASR stretched the word into a pause the edit removed
+            stretched.append(row)       # the ASR stretched the word into silence the edit removed
         else:
             row["voiced_at_edge"] = voiced
             clipped.append(row)
@@ -698,7 +785,8 @@ def check_words(edl, intended, source_db=None, source_th=None):
             summary += " (take unreadable: the audio at the edge was not checked)"
     elif stretched:
         status = "warn"
-        summary = (f"{len(stretched)} word time(s) cross a cut where the take is silent, first \"{stretched[0]['word']}\": "
+        summary = (f"{len(stretched)} word time(s) cross a cut where the take is under {ABS_SILENCE_DB:.0f} dBFS, "
+                   f"first \"{stretched[0]['word']}\": "
                    "the ASR stretched them into a pause; listen to that join")
     else:
         status, summary = "pass", f"all {len(intended)} kept words sit inside a segment"
@@ -709,15 +797,23 @@ def check_words(edl, intended, source_db=None, source_th=None):
 def toks(path_or_list):
     data = json.loads(Path(path_or_list).read_text(encoding="utf-8")) if not isinstance(path_or_list, list) else path_or_list
     if isinstance(data, dict):
-        if isinstance(data.get("word_segments"), list):
+        if isinstance(data.get("words"), list) and data["words"]:
+            data = data["words"]
+        elif isinstance(data.get("word_segments"), list):
             data = data["word_segments"]
         elif isinstance(data.get("segments"), list):
             segs = [s for s in data["segments"] if isinstance(s, dict)]
             data = [w for s in segs for w in (s.get("words") or [{"text": s.get("text", "")}])]
+        elif isinstance(data.get("text"), str):          # a plain {"text": ...} transcript
+            data = [data["text"]]
         else:
-            data = data.get("words") or []
+            data = []
+    if not isinstance(data, list):
+        raise CheckError("expected a list of words, {text}, or WhisperX/Scribe JSON")
     out = []
     for x in data:
+        if not isinstance(x, (dict, str)):
+            continue                                       # null and other stray items
         if isinstance(x, dict) and x.get("type") not in (None, "word"):
             continue
         text = x if isinstance(x, str) else (x.get("word") if x.get("word") is not None else x.get("text") or "")
@@ -726,9 +822,14 @@ def toks(path_or_list):
 
 
 def check_heard(heard, intended, min_match):
-    h, i = toks(heard), toks(intended)
+    """Words heard against words intended; anything unreadable is an "error" result, not an exception,
+    so the other checks of the run still report."""
+    try:
+        h, i = toks(heard), toks(intended)
+    except (OSError, ValueError, CheckError, AttributeError, TypeError) as e:
+        return result("heard", "error", f"cannot read {Path(heard).name}: {type(e).__name__}: {e}")
     if not h:
-        raise CheckError("the heard transcript has no words")
+        return result("heard", "error", f"{Path(heard).name} has no words: transcribe the cut again")
     sm = SequenceMatcher(None, i, h, autojunk=False)
     match = sm.ratio()
     diff = [{"intended": " ".join(i[x:y]), "heard": " ".join(h[u:v])}
@@ -759,6 +860,10 @@ def loudness(video):
         return None
     j = json.loads(m.group(0))
     return _seconds(j["input_i"]), _seconds(j["input_tp"])
+
+
+def qa_dir(video, edl_path=None, out=None):
+    return Path(out) if out else (Path(edl_path).parent if edl_path else Path(video).parent / "qa")
 
 
 def qa(video, edl_path=None, intended_path=None, heard=None, accept=(), out=None, o=None):
@@ -792,15 +897,14 @@ def qa(video, edl_path=None, intended_path=None, heard=None, accept=(), out=None
         ip = Path(intended_path) if intended_path else Path(edl_path).parent / "intended.json"
         if ip.is_file():
             intended = json.loads(ip.read_text(encoding="utf-8"))
-            sdb = sth = None
+            sdb = None
             src = Path(edl.get("source") or "")
             if src.is_file():
                 try:
                     sdb = levels(src)
-                    sth = threshold(sdb)[0]
                 except CheckError:
                     sdb = None
-            res.append(check_words(edl, intended, sdb, sth))
+            res.append(check_words(edl, intended, sdb))
         else:
             res.append(result("words", "skip", f"no {ip.name} beside the edit list (plan writes it)"))
     err = run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(video), "-vn", "-af",
@@ -862,7 +966,7 @@ def qa(video, edl_path=None, intended_path=None, heard=None, accept=(), out=None
     else:
         res.append(result("heard", "skip", "no --heard transcript of the cut: words heard not compared"))
     # the sheets: what numbers cannot judge
-    d = Path(out) if out else (Path(edl_path).parent if edl_path else video.parent / "qa")
+    d = qa_dir(video, edl_path, out)
     d.mkdir(parents=True, exist_ok=True)
     sheets = []
     if info["has_video"]:
@@ -874,7 +978,7 @@ def qa(video, edl_path=None, intended_path=None, heard=None, accept=(), out=None
             pick = "+".join("between(t,%.3f,%.3f)" % (t - 1.1 / fps, t + 1.1 / fps) for t in ts)
             subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(video), "-vf",
                             "select='%s',scale=320:-2,tile=6x%d" % (pick, max(1, len(ts) * 3 // 6 + 1)),
-                            "-fps_mode", "vfr", "-frames:v", "1", str(d / "joins.jpg")], capture_output=True)
+                            *fps_mode("vfr"), "-frames:v", "1", str(d / "joins.jpg")], capture_output=True)
         sheets = [str(d / f) for f in ("contact.jpg", "joins.jpg") if (d / f).exists()]
     return res, sheets, d
 
@@ -899,8 +1003,12 @@ def report(results, as_json, target, sheets=(), qa_dir=None, extra=None):
     ok, code, checked = verdict(results)
     doc = {"target": target, "ok": ok, "checked": checked, "checks": results, "sheets": list(sheets),
            "still_on_you": STILL_ON_YOU, **(extra or {})}
-    if qa_dir:
-        Path(qa_dir, "qa.json").write_text(json.dumps(doc, indent=1, ensure_ascii=False))
+    if qa_dir:                      # written on every run, errors too: a stale pass must not survive
+        try:
+            Path(qa_dir).mkdir(parents=True, exist_ok=True)
+            Path(qa_dir, "qa.json").write_text(json.dumps(doc, indent=1, ensure_ascii=False))
+        except OSError as e:
+            print(f"qa_cut: could not write {Path(qa_dir, 'qa.json')}: {e}", file=sys.stderr)
     if as_json:
         print(json.dumps(doc, indent=2, ensure_ascii=False))
         return code
@@ -1040,7 +1148,7 @@ def self_test():
             if w["text"] == "mat.":
                 w["end"] = round(w["end"] + 0.6, 3)
         sdb = levels(take)
-        ws = check_words(edl, stretched, sdb, threshold(sdb)[0])
+        ws = check_words(edl, stretched, sdb)
         assert ws["status"] == "warn" and ws["stretched"][0]["word"] == "mat.", ws
         checks += 2
 
@@ -1096,6 +1204,91 @@ def self_test():
         assert err and err["status"] == "error", err
         assert verdict([result("heard", "skip", "x")]) == (False, 2, 0)
         checks += 3
+
+        # --- fixes after review: each defect it found gets a case
+        # a quiet trailing word (~30 dB under the voice), in an audio file with cover art
+        qspoken = [("one", 0.5, 0.8, 0.4), ("two", 0.9, 1.2, 0.4), ("three.", 2.4, 2.7, 0.008)]
+        qdur = 3.2
+        qexpr = "+".join(f"{amp}*sin(2*PI*330*t)*between(t,{a},{b})" for _, a, b, amp in qspoken) + "+0.002*(2*random(0)-1)"
+        qtake, cover = t / "quiet.m4a", t / "cover.png"
+        run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:s=64x64", "-frames:v", "1", str(cover)])
+        run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", f"aevalsrc='{qexpr}':s=48000:d={qdur}",
+             "-i", str(cover), "-map", "0:a", "-map", "1:v", "-c:a", "aac", "-b:a", "192k", "-c:v", "png",
+             "-disposition:v:0", "attached_pic", str(qtake)])
+        assert not probe(qtake)["has_video"], probe(qtake)               # cover art is not a picture to cut
+        qwords = t / "quiet.json"                                         # plus a word in a pause and one past the end
+        qw = [{"word": w, "start": a, "end": b} for w, a, b, _ in qspoken]
+        qw[2:2] = [{"word": "ghost", "start": 1.6, "end": 1.8}]
+        qw.append({"word": "four", "start": qdur + 0.3, "end": qdur + 0.6})
+        qwords.write_text(json.dumps(qw))
+        dq = t / "quiet_edit"
+        sq = plan(qtake, qwords, dq, opts)
+        qint = json.loads((dq / "intended.json").read_text())
+        assert [w["text"] for w in qint] == ["one", "two", "three."] and sq["unplaced_words"] == 2, (sq, qint)
+        assert "ghost" in (dq / "review.md").read_text() and sq["quiet_words_kept"] == 1, sq
+        qedl = json.loads((dq / "edl.json").read_text())
+        assert qedl["segments"][-1]["out"] >= 2.7, qedl                   # the plan keeps the quiet word whole
+        qcut, _ = render(dq / "edl.json")
+        assert qcut.suffix == ".m4a"
+        res, _, _ = qa(qcut, dq / "edl.json", o=rough)
+        assert {r["check"]: r["status"] for r in res}["words"] == "pass", res
+        qedl["segments"][-1]["out"] = 2.55                                 # the reviewer's repro: out mid-word
+        qw = check_words(normalize_edl(qedl), qint, levels(qtake))
+        assert qw["status"] == "fail" and qw["clipped"][0]["word"] == "three.", qw
+        checks += 6
+
+        # an empty, null-holding or unreadable --heard is an error result beside the other checks
+        for body in ("[]", "[null]", "{not json"):
+            heard.write_text(body)
+            res, _, _ = qa(cut, d / "edl.json", heard=str(heard), o=rough)
+            st = {r["check"]: r["status"] for r in res}
+            assert st["heard"] == "error" and st["joins"] == st["words"] == "pass" and verdict(res)[1] == 2, (body, res)
+        heard.write_text(json.dumps([None, {"text": " ".join(w["text"] for w in intended)}]))
+        assert check_heard(str(heard), str(d / "intended.json"), MIN_MATCH)["status"] == "pass"
+        heard.write_text(json.dumps({"text": " ".join(w["text"] for w in intended)}))
+        assert check_heard(str(heard), str(d / "intended.json"), MIN_MATCH)["status"] == "pass"
+        checks += 2
+
+        # an error run overwrites a stale qa.json
+        stale = t / "stale"
+        stale.mkdir()
+        (stale / "qa.json").write_text(json.dumps({"ok": True}))
+        pr = subprocess.run([sys.executable, str(Path(__file__).resolve()), "qa", str(silent), "--edl",
+                             str(d / "edl.json"), "--out", str(stale)], capture_output=True, text=True)
+        doc = json.loads((stale / "qa.json").read_text())
+        assert pr.returncode == 2 and doc["ok"] is False and doc["checks"][0]["status"] == "error", (pr, doc)
+        checks += 1
+
+        # OpenAI verbose_json: words[] at the top, segments without words
+        oa = t / "openai.json"
+        oa.write_text(json.dumps({"text": "Olá mundo", "segments": [{"text": "Olá mundo", "start": 0, "end": 1}],
+                                  "words": [{"word": "Olá", "start": 0.1, "end": 0.4},
+                                            {"word": "mundo", "start": 0.5, "end": 0.9}]}))
+        assert [w["text"] for w in load_words(oa)] == ["Olá", "mundo"]
+        checks += 1
+
+        # a variable-frame-rate take is refused before it drifts; a stream with no rate is an error
+        vfr = t / "vfr.mp4"
+        run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=160x120:r=30:d=3", "-f", "lavfi",
+             "-i", "sine=f=440:d=3", "-vf", "setpts='if(lt(N,30),N,30+(N-30)*2)/30/TB'", "-fps_mode", "passthrough",
+             "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-shortest", str(vfr)])
+        assert probe(vfr)["vfr"], probe(vfr)
+        dv = t / "vfr_edit"
+        dv.mkdir()
+        (dv / "edl.json").write_text(json.dumps({"fps": probe(vfr)["fps"], "source": str(vfr),
+                                                 "segments": [{"in": 0, "out": 1}]}))
+        _, err = guarded("render", render, dv / "edl.json")
+        assert err and "variable frame rate" in err["summary"] and "-fps_mode cfr" in err["summary"], err
+        _, err = guarded("probe", video_fps, "0/0", "0/0")
+        assert err and err["status"] == "error" and video_fps("0/0", "30/1")[0] == 30.0, err
+        checks += 2
+
+        # -fps_mode only from ffmpeg 5.1; older builds get -vsync
+        assert fps_mode("vfr", "ffmpeg version 4.4.2-0ubuntu0.22.04.1 Copyright") == ["-vsync", "vfr"]
+        assert fps_mode("vfr", "ffmpeg version n9.0.2-49-gc179411bbb-20261111") == ["-fps_mode", "vfr"]
+        assert fps_mode("vfr", "ffmpeg version 5.1.2 Copyright") == ["-fps_mode", "vfr"]
+        assert fps_mode("vfr", "ffmpeg version N-112345-gabcdef Copyright") == ["-fps_mode", "vfr"]
+        checks += 1
     print(f"self-test: {checks} checks ok")
     return 0
 
@@ -1162,7 +1355,7 @@ def main():
     if o.cmd == "render":
         rendered, err = guarded("render", render, o.edl, o.take, o.out, o.fade_ms, o.crf, want_fcpxml=o.fcpxml)
         if err:
-            return report([err], o.json, o.edl)
+            return report([err], o.json, o.edl, qa_dir=None if o.no_qa else Path(o.edl).parent)
         cut, info = rendered
         if o.no_qa:
             print(json.dumps(info, indent=1) if o.json else f"rendered {cut}: {info['clips']} clips, {info['duration']} s")
@@ -1171,14 +1364,14 @@ def main():
                                 tp=TRUE_PEAK, min_match=MIN_MATCH, no_loudness=True)
         out, err = guarded("qa", qa, cut, o.edl, o=qo)
         if err:
-            return report([err], o.json, str(cut), extra={"rendered": info})
+            return report([err], o.json, str(cut), qa_dir=Path(o.edl).parent, extra={"rendered": info})
         res, sheets, d = out
         return report(res, o.json, str(cut), sheets, d, extra={"rendered": info})
     if not Path(o.video).is_file():
         p.error(f"no such file: {o.video}")
     out, err = guarded("qa", qa, o.video, o.edl, o.intended, o.heard, o.accept_join, o.out, o)
     if err:
-        return report([err], o.json, o.video)
+        return report([err], o.json, o.video, qa_dir=qa_dir(o.video, o.edl, o.out))
     res, sheets, d = out
     return report(res, o.json, o.video, sheets, d)
 

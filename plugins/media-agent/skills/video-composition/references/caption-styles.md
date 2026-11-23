@@ -65,8 +65,15 @@ plain "calm" or no-highlight preset for the accessible version.
 Words per screen, from the same files: 2 to 4 for the pop, gradient and grow
 looks; 3 to 5 for the pill and colour looks; 3 to 6 for frosted; 2 to 6 for
 line-hug; 4 to 7 for serif italic; one word for bounce and tilted card.
-Every preset puts the block centre near 55 to 62% of the frame height and
-caps the line at 696 px on 9:16.
+Where a preset sets them, the block centre sits at 55 to 62% of the frame
+height and the 9:16 line is capped at 696 px, with these exceptions. Block
+centre is set only by pop (60), bounce (58), grow (60), line-hug (62),
+sliding pill (60), tilted card (55), translucent (60) and white card (60).
+A 696 px cap is set only by colour, pop, frosted, gradient, grow, line-hug,
+sliding pill and translucent; word tile sets 760 px; white card and
+translucent also cap at 68% of width for 16:9. Bounce, karaoke, neon,
+outline, serif italic, shadow and tilted card set neither a width nor a
+centre, so take both from the shared table below.
 
 ## Fonts and licences
 
@@ -76,21 +83,21 @@ checked each against its `METADATA.pb` in
 `06bfe0d62a98375cb09c942fa18e68bd32cff057`, 2026-11-20): all 15 sit under
 `ofl/` with `license: "OFL"`.
 
-| Family | Used by (default or alternate preset) | Licence |
-|---|---|---|
-| Montserrat | pop, colour, pill, outline, grow, bounce | OFL |
-| Inter | translucent, frosted, white card, shadow, word tile (alt) | OFL |
-| Poppins | gradient, karaoke | OFL |
-| Archivo Black | word tile, bounce (alt), tilted card (alt) | OFL |
-| Anton | tilted card, outline (caps preset) | OFL |
-| Plus Jakarta Sans | line-hug | OFL |
-| Nunito | neon | OFL |
-| Outfit | gradient (alt), neon (alt) | OFL |
-| Manrope | frosted (alt) | OFL |
-| Figtree | shadow (alt), white card (alt) | OFL |
-| Instrument Serif, Playfair Display, Fraunces | serif italic | OFL |
-| Atkinson Hyperlegible | translucent (alt) | OFL |
-| Bebas Neue | tilted card (alt) | OFL |
+| Family | Default in | Alternate in | Licence |
+|---|---|---|---|
+| Montserrat | pop, colour, pill, outline, grow, bounce | karaoke | OFL |
+| Inter | translucent, frosted, white card, shadow | line-hug, colour, word tile | OFL |
+| Poppins | gradient, karaoke | colour, pop, pill, grow | OFL |
+| Archivo Black | word tile | bounce, tilted card | OFL |
+| Anton | tilted card, outline (caps preset) | none | OFL |
+| Plus Jakarta Sans | line-hug | none | OFL |
+| Nunito | neon | none | OFL |
+| Outfit | none | gradient, neon | OFL |
+| Manrope | none | frosted | OFL |
+| Figtree | none | shadow, white card | OFL |
+| Instrument Serif, Playfair Display, Fraunces | serif italic (one per preset) | none | OFL |
+| Atkinson Hyperlegible | none | translucent | OFL |
+| Bebas Neue | none | tilted card | OFL |
 
 What OFL means for us: the fonts may be used and embedded in a rendered video
 commercially, with no attribution needed in the video. The repo says the same.
@@ -137,8 +144,11 @@ for talking heads, swaps 2 frames before the word. These add to it.
   within about 120 ms.
 - Karaoke: the line appears 10 to 20 frames early, never more than 1.5 s; the
   fill starts 1 frame early and sweeps over the word's length.
-- Per-word motion takes 6 frames or fewer. Entrances 4 to 8 frames, exits
-  about 30% shorter. Animate scale with a transform, never `font-size`.
+- The source's guideline: per-word motion takes 6 frames or fewer,
+  entrances 4 to 8 frames, exits about 30% shorter. Some of its own presets
+  exceed it: bounce pill (12-frame spring), the spring-pop preset (12),
+  navy pill rise (10), tilted card (8), outline spring (8; 12 for the Anton
+  preset) and the soft pill (7). Animate scale with a transform, never `font-size`.
 - Reading speed: 160 to 180 words per minute, at most 20 characters per
   second for adults (17 for children), 0.83 to 7 s per caption.
 
@@ -193,6 +203,11 @@ for talking heads, swaps 2 frames before the word. These add to it.
 
 ## Where it disagrees with this plugin
 
+- `SKILL.md` says 1 to 3 words per chunk for a talking head (from
+  `herk-edit-kit`). The source's Group mode for talking-head shorts is 2 to
+  5 words, and its presets run 2 to 4 (pop, gradient, grow), 3 to 5 (colour,
+  pill) and up to 6 (frosted, line-hug). Start at 1 to 3 for a fast talker
+  and widen only if the text cannot keep up.
 - [motion.md](motion.md) adds one word every 0.14 s (4 frames at 30 fps).
   There the line builds up and earlier words stay on screen, so the 8-frame
   minimum above, which is about one word replacing another, does not apply.

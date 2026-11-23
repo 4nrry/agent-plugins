@@ -40,8 +40,8 @@ without readable start and end times is counted and reported, not timed.
 
 captions samples 3 frames a second inside a band (top at 65% of the height,
 35% tall, unless --band), keeps the light pixels (caption fill) and reads them
-with tesseract; it retries in a centre band (42%, 16% tall) when the first
-pass fails. It is skipped without tesseract on PATH. --ocr-lang auto reads
+with tesseract; it retries in a centre band (42%, 16% tall) when too few
+captions match or the OCR confidence is low (not on drift alone). It is skipped without tesseract on PATH. --ocr-lang auto reads
 with por when the captions have Portuguese accents and por.traineddata is
 installed, else eng; a language that is not installed falls back to eng, and
 the result says which ran. Light captions only: dark text on a light box is
@@ -772,10 +772,16 @@ TESSERACT = shutil.which("tesseract")
 PT_MARKS = set("ãõçáéíóúâêôàÃÕÇÁÉÍÓÚÂÊÔÀ")
 
 
+APOSTROPHES = str.maketrans({c: "'" for c in "\u2019\u2018\u02bc\u2032\u0060\u00b4"})
+
+
 def _cap_norm(text):
-    """content-machine normalizeCaptionText, with accents folded first so Portuguese matches."""
-    t = "".join(c for c in unicodedata.normalize("NFKD", str(text or "")) if not unicodedata.combining(c))
-    return " ".join(re.sub(r"[^a-z0-9'\s]", " ", t.lower()).split())
+    """content-machine normalizeCaptionText, Unicode-aware: casefold, accents stripped (NFKD), curly
+    apostrophes made straight, letters and digits of any script kept, everything else a space.
+    The source kept only a-z0-9', so Cyrillic or CJK captions could never match."""
+    t = unicodedata.normalize("NFKD", str(text or "").translate(APOSTROPHES).casefold())
+    t = "".join(c for c in t if not unicodedata.combining(c))
+    return " ".join(re.sub(r"[^\w']|_", " ", t).split())
 
 
 def _cap_tokens(text):
@@ -942,16 +948,30 @@ def ocr_band(video, band, lang):
 
 
 def band_changes(video, band, fps):
-    """Mean grey difference of the band from each frame to the next, at every frame."""
+    """Mean grey difference of the band from each frame to the previous one, at every frame.
+    Streamed one frame at a time: an hour at 30 fps keeps two 160x48 frames, not 108 000."""
     y, h = band
-    raw = run(["ffmpeg", "-v", "error", "-i", str(video), "-map", "0:v:0", "-vf",
-               f"crop=iw:trunc(ih*{h}/2)*2:0:trunc(ih*{y}/2)*2,scale=160:48,format=gray",
-               "-f", "rawvideo", "-"]).stdout
-    f = np.frombuffer(raw[: len(raw) - len(raw) % (160 * 48)], np.uint8).reshape(-1, 48, 160).astype(np.float32)
-    mad = np.zeros(len(f), np.float32)
-    if len(f) > 1:
-        mad[1:] = np.abs(np.diff(f, axis=0)).mean(axis=(1, 2))
-    return mad
+    size = 160 * 48
+    errfile = tempfile.TemporaryFile()
+    proc = subprocess.Popen(["ffmpeg", "-v", "error", "-i", str(video), "-map", "0:v:0", "-vf",
+                             f"crop=iw:trunc(ih*{h}/2)*2:0:trunc(ih*{y}/2)*2,scale=160:48,format=gray",
+                             "-f", "rawvideo", "-"], stdout=subprocess.PIPE, stderr=errfile)
+    mad, prev = [], None
+    while True:
+        buf = proc.stdout.read(size)
+        if len(buf) < size:
+            break
+        f = np.frombuffer(buf, np.uint8).astype(np.int16)
+        mad.append(0.0 if prev is None else float(np.abs(f - prev).mean()))
+        prev = f
+    proc.stdout.close()
+    rc = proc.wait()
+    errfile.seek(0)
+    err = errfile.read()
+    errfile.close()
+    if rc:
+        raise CheckError(f"ffmpeg could not decode the caption band of {Path(video).name}: {_tail(err)}")
+    return np.array(mad, np.float32)
 
 
 def refine_start(seg, mad, fps):
@@ -1590,7 +1610,13 @@ def _self_test_captions(make, t, font_file):
     assert r["status"] == "pass" and r["band"]["top"] == OCR_SEAM_BAND[0] and "retry" in r["summary"], r
     r, m = cap(t / "cap_ok.mp4", lang="xyz")
     assert r["lang"] == "eng" and "xyz" in r["lang_note"] and r["status"] == "pass", r
-    return 8
+    # fixes after review: any script and curly apostrophes normalise; the band is streamed frame by frame
+    assert text_similarity("Привет, мир!", "привет мир") == 1.0 and _cap_norm("日本語のテキスト") == "日本語のテキスト"
+    assert _cap_norm("Don’t stop") == _cap_norm("don't stop") == "don't stop" and _cap_norm("AÇÃO") == "acao"
+    assert token_evidence("Привет мир", ["привет мир"]) == 1.0
+    mad = band_changes(t / "cap_ok.mp4", OCR_BAND, 30)
+    assert len(mad) == 330 and int(np.argmax(mad[10:20])) + 10 == 15, (len(mad), mad[10:20])   # caption 1 at 0.5 s
+    return 10
 
 
 # ---------------------------------------------------------------- main
