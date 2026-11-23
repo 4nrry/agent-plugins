@@ -162,6 +162,26 @@ lighting gradient exist only in 3D, and the canvas and HTML text sat about
 10 px apart vertically. Swap inside a move or a flash, or fade the 3D-only
 light out first.
 
+## Capture traps
+
+From godogen's `skills/engine-guide/threejs.md` (MIT, `htdt/godogen` at
+`07eaa1d`), not measured here:
+
+- **A real GPU.** Headless Chrome falls back to SwiftShader or llvmpipe without
+  a word: slow or blank frames. On Linux run under `xvfb-run` with
+  `--use-angle=vulkan`, read the WebGL `RENDERER` string, and stop if it says
+  `swiftshader`, `llvmpipe` or `lavapipe`.
+- **WebGPU falls back too.** `WebGPURenderer` runs on WebGL2 when there is no
+  adapter, with only a console warning; check
+  `renderer.backend.isWebGPUBackend` before trusting a WebGPU-only effect.
+- **Color maps** you load or build need `colorSpace = SRGBColorSpace`, or they
+  render washed out; the glTF loader tags its own.
+- **Lights are physical:** point and spot lights decay with inverse square
+  (`decay = 2`), so intensities from old examples leave the far set black. A
+  directional light's shadow camera spans ±5 units; size it to the set.
+- **Rigged clones** need `SkeletonUtils.clone()`; `clone()` keeps the copy on
+  the original's bones.
+
 ## Check
 
 Run the `video-editing` skill's `breakdown.py` on the render. It reports the

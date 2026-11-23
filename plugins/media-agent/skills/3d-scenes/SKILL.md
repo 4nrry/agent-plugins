@@ -74,12 +74,17 @@ human.glb out/` renders three figures (front, profile, back) to check a new glb.
 - **Walking** is not a frozen pose plus translation: that slides. Loop the
   rig's walk action and move the root at the clip's stride speed (distance
   per cycle over cycle length), or the feet skate.
-- **Custom creature moves from one AI video:** when a rigged creature (quadruped,
-  octopod, winged) lacks a walk or action clip,
-  [`4nrry/anymove`](https://github.com/4nrry/anymove) (fork of
-  `patch-gg/anymove`, Apache-2.0) films the creature from front and side in one
-  AI video frame, triangulates each joint in 3D from the pair and fits the
-  Blender 5.x rig frame by frame to export a `.glb`.
+- **Custom creature moves from one AI video:** when a rigged creature lacks a
+  walk or action clip, [`4nrry/anymove`](https://github.com/4nrry/anymove)
+  (fork of `patch-gg/anymove`, Apache-2.0) films the creature from front and
+  side in one AI video frame, triangulates each joint in 3D from the pair and
+  fits the Blender 5.x rig frame by frame to export a `.glb`. Its own numbers:
+  an NVIDIA GPU with 12 GB (24 GB safer) to train a per-creature joint reader,
+  a fal key, about $3 per usable move and about $17 per new creature, and 58%
+  of captured clips passing its checks. It works for four legs, two legs and
+  bat-like wings; eight-legged walking, bird wings and tail swipes fail. Its
+  `blender/` scripts (`build_rig`, `apply_motion`, `pack_glb`) are the part to
+  reuse without the paid capture.
 - **Additive syllable lip-sync shape keys** (MIT
   `4nrry/claude-code-video-toolkit`): keep `talk_*` mouth and jaw shape keys
   separate from expression keys so speech motion adds cleanly on top of smiles
