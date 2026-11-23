@@ -1,6 +1,6 @@
 ---
 name: agent-fleet
-description: Rules for multi-agent work — routing each phase to the right model, sizing a fan-out, constraining output schemas so budget is not spent on text you discard, and verifying what agents return. Read this before any deep-research run, whether invoked by name or triggered implicitly by a question that needs many sources, and before launching subagents, a dynamic workflow, an agent team, or any parallel run. Read it again when the results come back and you must decide what to trust. Consult it even when the user never says "deep research", "fleet", "fan-out" or "subagent" — any time work is about to be split across several agents, or a batch of agent findings needs checking.
+description: Rules for scripted fan-outs (dynamic workflows, deep research) — routing each phase to the right model, sizing a fan-out, constraining output schemas so budget is not spent on text you discard, and verifying what agents return. Read this before any deep-research run, whether invoked by name or triggered implicitly by a question that needs many sources, and before any dynamic workflow or other scripted fan-out. Read it again when the results come back and you must decide what to trust. Consult it even when the user never says "deep research", "fleet" or "fan-out" — any time a scripted fan-out is about to launch, or a batch of its findings needs checking.
 ---
 
 # Agent Fleet
@@ -10,11 +10,15 @@ send them and what to believe when they come back. Tiers, not models: cheap,
 mid, and you, the orchestrator — [references/harnesses.md](references/harnesses.md)
 maps them per harness.
 
+Scope: scripted fan-outs — dynamic workflows and deep research. A single
+subagent or a standalone session follows the host's defaults and the user's
+routing rules, not this skill.
+
 ## Before dispatch
 
 - Read any predefined workflow (a deep-research command, a saved script, a set
-  of agent definitions) and find where each agent's model is set. Unset means
-  every agent inherits your model: a top-tier session pays top tier per agent.
+  of agent definitions) and find where each agent's model is set. An agent
+  call with no model inherits yours: a top-tier session pays top tier per agent.
   A ~97-agent run did exactly that with these rules loaded. If caught late,
   stop and resume with overrides where the harness can resume.
 - A scripted fan-out returns only its final answer, so get the schema right
