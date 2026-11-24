@@ -17,7 +17,8 @@ export const meta = {
 // additions are model: and effort: overrides at the agent() call sites, the
 // comments beside them, this header, TOPIC_NOTE in the search, fetch and
 // verify prompts plus one extract rule against claims about what a page does
-// not say, the third vote cast only when the first two split (same 2-of-3
+// not say (with "off-topic" added to the Fetch prompt's empty-result
+// case), the third vote cast only when the first two split (same 2-of-3
 // outcome, fewer agents; see the Verify phase), a `confirmed` list (claim,
 // source, quote) in the final return so verify_citations.py --claims can check
 // the report's quotes, and invocation texts (meta, the comment
@@ -30,10 +31,11 @@ export const meta = {
 // the session model). Routing rationale and the paired-run records behind it:
 // https://github.com/4nrry/agent-plugins (bench/). FORK CAVEAT: the built-in
 // evolves with Claude Code releases — on harness updates, re-extract it, diff
-// against the body sha above, and rebase these overrides. The previous base
-// (2.1.223) lacked the webText/WEB_NOTE prompt-injection hardening this one
-// carries. The same body, byte for byte, ships in 2.1.299 and 2.1.304 — the
-// builds Claude Desktop 3.1623.0 bundles — checked 2026-10-21.
+// against the body sha above, and rebase these overrides. History of the
+// bases: 2.1.223 lacked the webText/WEB_NOTE prompt-injection hardening; the
+// 2.1.306 body shipped byte for byte in 2.1.299 and 2.1.304 (the builds
+// Claude Desktop 3.1623.0 bundled, checked 2026-10-21); 2.1.331 is the
+// current base.
 //
 // deep-research: Scope → pipeline(Search → URL-dedup → Fetch+Extract) → 2-of-3 Verify → Synthesize
 // Ported from bughunter architecture. WebSearch/WebFetch instead of git/grep.
