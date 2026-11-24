@@ -78,6 +78,11 @@ record in [bench/shared](https://github.com/4nrry/agent-plugins/tree/main/bench/
   or write none, set `FLEET_WORKER_AI_MEMORY_PROJECT` (`off` turns it off).
 - Search X only when the question is about posts, announcements, an account
   or what people say, or the user asks for it.
+- Search GitHub with `gh`, not WebSearch, when the question is about repos,
+  code, issues, PRs or releases there. Its search bucket is 30 calls a minute
+  (code: 10) for every agent on the token, so give it one agent (three at
+  most), not one per angle. Commands, limits, read-only and how to cite are in
+  [references/github-search.md](references/github-search.md).
 
 ## Verifying what comes back
 
@@ -101,9 +106,14 @@ record in [bench/shared](https://github.com/4nrry/agent-plugins/tree/main/bench/
   403) means the host answered about that one page. After one block, send no
   more fetch agents to that host. A browser tool (the harness's built-in one,
   or the user's own through an extension) renders scripts and carries the
-  user's session, but may refuse the same host. Past that, use the site's
-  official API, an archive mirror, or ask the user to read the page. Keep a
-  per-project list of blocked hosts and the route that worked.
+  user's session, but may refuse the same host. Next, when `firecrawl-local`
+  is already on PATH, run `FIRECRAWL_CLOUD=off firecrawl-local scrape URL`:
+  it renders in the machine's own Chrome and read reddit.com and
+  stackoverflow.com. Its exit code is 0 either way, so read the JSON (see
+  [references/harnesses.md](references/harnesses.md)). Never install it for a
+  run, and never use its `mcp` command, which runs an npm package. Past that,
+  use the site's official API, an archive mirror, or ask the user to read the
+  page. Keep a per-project list of blocked hosts and the route that worked.
 - A YouTube page fetched as a web page returns its chrome, not the words: do
   not count it as fetched. `scripts/yt_captions.py URL [--lang pt]` returns the
   caption text when yt-dlp is installed. Exit 3 means it is not installed and
