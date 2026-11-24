@@ -58,8 +58,7 @@ root.
 - The workflow runs Claude Code subagents with web search and fetch.
 - The skill tells agents to run `gh` (GitHub's API, on the user's token) for
   GitHub questions and, when it is already installed, `firecrawl-local scrape`
-  for a page that needs a browser to render, never for a host that refused
-  automated access. No script of the plugin runs either; with
+  for a page WebFetch refused. No script of the plugin runs either; with
   `FIRECRAWL_CLOUD=off` Firecrawl Local fetches only from this machine.
 
 ## Why hooks

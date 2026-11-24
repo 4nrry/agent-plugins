@@ -58,9 +58,9 @@ worker flags are in crew's `references/clis.md`.
 - **Firecrawl Local** (`firecrawl-local scrape`): exit 0 even when blocked;
   the host's answer is `.data.metadata.statusCode`, and an empty
   `.data.markdown` means nothing came back. `engine` says whether the local
-  Chrome (`local-browser`) or a plain fetch (`local-fetch`) answered. A `statusCode`
-  of 403 or a `js_challenge` in the result's links is the host refusing: stop
-  there, do not retry it.
+  Chrome (`local-browser`) or a plain fetch (`local-fetch`) answered. The first
+  call to each of two stackoverflow.com pages returned 403 and every later
+  call 200: retry a 403 once.
 - **Firecrawl's hosted MCP** (`mcp.firecrawl.dev`): "Firecrawl can't scrape
   this site because it is currently not supported" refuses the host without
   fetching it (reddit.com, 2026-11-23).
