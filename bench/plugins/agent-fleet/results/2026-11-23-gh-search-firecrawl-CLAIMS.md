@@ -60,26 +60,10 @@ reddit.com, is in `2026-10-28-blocked-hosts-youtube-CLAIMS.md`.
   cloud, and the cloud is turned off".
 - `firecrawl-local mcp` printed `npm notice run 'firecrawl-mcp'` and listed 31
   tools: it starts the npm MCP server through `npx`.
-- The reddit.com markdown's links carry `js_challenge=1&jsc_token=...`: the
-  local Chrome cleared Reddit's challenge. `curl` on `reddit.com/robots.txt`
-  got Reddit's "Your request has been blocked due to a network policy" page,
-  which sends scripts to its API; on `stackoverflow.com/robots.txt`, a
-  Cloudflare "Just a moment..." challenge. The 403s above were that challenge.
-  So the skill does not route a refusing host to Firecrawl Local; these
-  results show what it can do, not a route.
 - Exit code was 0 for blocked and empty results alike. The output is one JSON
   object `{success, data}`; the fields read were `.data.markdown`,
   `.data.metadata.statusCode` and `.data.metadata.engine`. `serve` was not
   run.
-
-**Stack Exchange API** (`api.stackexchange.com/2.3`, no key)
-- `questions/23735149?site=stackoverflow&filter=withbody` returned the
-  question with its body; `quota_max` 300, per day per IP by the docs.
-  `search/advanced?q=...&sort=votes` returned ranked questions with links.
-- `verify_citations.py --claims`, quote "You can have many running containers
-  of the same image." from the top answer: 1.0 on
-  `questions/23735149/answers?site=stackoverflow&sort=votes&filter=withbody&pagesize=1`,
-  0.0 on `stackoverflow.com/questions/23735149` (HTTP 403).
 
 **Firecrawl hosted MCP** (`https://mcp.firecrawl.dev/v2/mcp`, no key; server
 `firecrawl-fastmcp` 3.41.0)
