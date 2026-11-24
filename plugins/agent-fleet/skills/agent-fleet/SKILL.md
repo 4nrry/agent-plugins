@@ -106,14 +106,22 @@ record in [bench/shared](https://github.com/4nrry/agent-plugins/tree/main/bench/
   403) means the host answered about that one page. After one block, send no
   more fetch agents to that host. A browser tool (the harness's built-in one,
   or the user's own through an extension) renders scripts and carries the
-  user's session, but may refuse the same host. Next, when `firecrawl-local`
-  is already on PATH, run `FIRECRAWL_CLOUD=off firecrawl-local scrape URL`:
-  it renders in the machine's own Chrome and read reddit.com and
-  stackoverflow.com. Its exit code is 0 either way, so read the JSON (see
+  user's session, but may refuse the same host. A host that refuses automated
+  access (a harness refusal naming it, a challenge page such as Cloudflare's
+  "Just a moment..." or Reddit's "blocked due to a network policy") is not a
+  page to fetch some other way: use the site's official API, an archive
+  mirror, or ask the user to read the page. Stack Overflow's is
+  `api.stackexchange.com/2.3`, keyless at 300 calls a day, and its URLs pass
+  the verifier where the page answers 403; Reddit's Data API needs an app the
+  user registers. Keep a per-project list of blocked hosts and the route that
+  worked.
+- A page that only needs a browser to render, on a host that did not refuse,
+  can go to `FIRECRAWL_CLOUD=off firecrawl-local scrape URL` when it is on
+  PATH: it renders in the machine's own Chrome and returns markdown. That
+  Chrome also clears bot challenges, which is why it is never pointed at a
+  host that refused. Its exit code is 0 either way, so read the JSON (see
   [references/harnesses.md](references/harnesses.md)). Never install it for a
-  run, and never use its `mcp` command, which runs an npm package. Past that,
-  use the site's official API, an archive mirror, or ask the user to read the
-  page. Keep a per-project list of blocked hosts and the route that worked.
+  run, and never use its `mcp` command, which runs an npm package.
 - A YouTube page fetched as a web page returns its chrome, not the words: do
   not count it as fetched. `scripts/yt_captions.py URL [--lang pt]` returns the
   caption text when yt-dlp is installed. Exit 3 means it is not installed and
