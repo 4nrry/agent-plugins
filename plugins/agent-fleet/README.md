@@ -24,6 +24,7 @@ root.
 | Harness map | `references/harnesses.md` | Tiers, model setting and read-only children per harness |
 | CLI workers | `references/cli-workers.md`, `scripts/fleet_worker.py` | Search and extract on another CLI through crew's `ask --web --schema`, read-only; needs the crew plugin installed |
 | Verifier | `scripts/verify_citations.py` | Fetches each cited URL and string-checks the quote, from a markdown report or a JSON claims file (`--claims`) |
+| GitHub search | `references/github-search.md` | `gh search` and `gh api` for repos, code, issues and PRs: which command, the search rate limits, read-only workers, and the URL to cite so the verifier can match code |
 | YouTube captions | `scripts/yt_captions.py` | Caption text of a public video through yt-dlp when installed; exit 3 when it is not, never installs |
 | Workflow | `workflows/deep-research.js` | Claude Code's built-in deep research with per-phase `model:` and `effort:` overrides, returning its confirmed quotes for `--claims` |
 | Injection hook | `hooks/inject.sh` | `UserPromptSubmit`: loads the skill when the prompt names a fan-out (`ultracode`, deep research, dynamic workflow, `/dwf`, `/fleet`), asks for several subagents at once, or asks for "pesquisa" from many sources, judged on the user's own words only: `<system-reminder>`, `<task-notification>`, `<cross-session-message>` and similar host blocks are removed first. In Claude Code, the whole skill once per session, then a short pointer to it; `SessionStart` after a compaction or `/clear` runs `inject.sh --forget`, so the next match loads it whole again. Through the bridges for other harnesses, the whole skill on every match |
@@ -55,6 +56,11 @@ root.
   addresses only, and sends nothing else. `yt_captions.py` runs `yt-dlp`
   against YouTube when it is installed.
 - The workflow runs Claude Code subagents with web search and fetch.
+- The skill tells agents to run `gh` (GitHub's API, on the user's token) for
+  GitHub questions and, when it is already installed, `firecrawl-local scrape`
+  for a page that needs a browser to render, never for a host that refused
+  automated access. No script of the plugin runs either; with
+  `FIRECRAWL_CLOUD=off` Firecrawl Local fetches only from this machine.
 
 ## Why hooks
 

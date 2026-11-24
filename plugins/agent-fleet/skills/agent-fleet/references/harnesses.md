@@ -55,6 +55,15 @@ worker flags are in crew's `references/clis.md`.
   for a host they refuse.
 - **`verify_citations.py`**: `HTTP 403` or `HTTP 404` is the host's answer about
   one page; `URLError` is no answer at all.
+- **Firecrawl Local** (`firecrawl-local scrape`): exit 0 even when blocked;
+  the host's answer is `.data.metadata.statusCode`, and an empty
+  `.data.markdown` means nothing came back. `engine` says whether the local
+  Chrome (`local-browser`) or a plain fetch (`local-fetch`) answered. A `statusCode`
+  of 403 or a `js_challenge` in the result's links is the host refusing: stop
+  there, do not retry it.
+- **Firecrawl's hosted MCP** (`mcp.firecrawl.dev`): "Firecrawl can't scrape
+  this site because it is currently not supported" refuses the host without
+  fetching it (reddit.com, 2026-11-23).
 
 ## Isolation traps
 
