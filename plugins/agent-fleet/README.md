@@ -75,7 +75,10 @@ the trigger eval, the hook-grep batch, the breadth-tier batch, and the
 fleet-worker smoke notes. The rules in the skill come from earlier paired runs
 that predate the bench protocol; read those as design notes.
 
-`workflows/deep-research.js` is Claude Code's built-in script plus `model:` and
-`effort:` overrides, a `confirmed` list of quotes in its result and a corrected
-Fetch phase text; its header names the builds it was taken from and compared
-with, and says how to rebase it when the built-in changes.
+`workflows/deep-research.js` is Claude Code's built-in script (2.1.331) plus
+`model:` and `effort:` overrides, a `confirmed` list of quotes in its result, a
+corrected Fetch phase text, a note in the search, fetch and verify prompts that
+the relayed launch message names the tool, not the subject, and a third verify
+vote cast only when the first two split (same 2-of-3 outcome, fewer agents);
+its header names the builds it was taken from and compared with, and says how
+to rebase it when the built-in changes.
