@@ -44,7 +44,9 @@ the rule and leave the decision to whoever signs. Licenses are bought at
   renders; set it once on mount, or port to components.
 - Captions: a scene declares `vo: {id, at}`; the film computes the absolute
   start minus transition overlap, and the same table feeds the sentence
-  `<Audio>`, the caption track and the music ducking.
+  `<Audio>`, the caption track and the music ducking. `<Audio>` in the
+  composition is the single-layer route; the layered build renders silent and
+  muxes a separate mix (SKILL.md, "Build in layers").
 - `fade()` overlaps two scenes for T frames, so two titles show at once. Wrap
   each scene's content (except the first) in `<Sequence from={T} layout="none">`.
   5.0 drops `layout="none"` on `<TransitionSeries>` itself, not on `<Sequence>`.

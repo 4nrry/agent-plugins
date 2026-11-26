@@ -10,7 +10,7 @@ description: Edits a finished video file when only the rendered mp4 exists, with
 | Task | Route |
 |---|---|
 | Change text, scenes, order or format | re-render the source (`video-composition` skill): editing the source beats patching the mp4 |
-| Change only the sound (an effect, the music, levels) | remix the stems and mux onto the existing picture, `-map 0:v -map 1:a -c:v copy`, padded or cut with `-af apad -t <picture duration>`, not `-shortest` (`video-composition` skill, "Build in layers"); no picture re-render, no re-encode |
+| Change only the sound (an effect, the music, levels) | remix the stems and mux onto the existing picture, `-map 0:v -map 1:a -c:v copy -c:a aac -ar 48000`, padded or cut with `-af apad -t <picture duration>`, not `-shortest`, which cuts the picture to a shorter mix (`video-composition` skill, "Build in layers"); no picture re-render, no picture re-encode (the audio is encoded to AAC) |
 | Cut, merge, resize, crop, extract a frame, burn in an `.srt` | a typed operation on the mp4 (Kinocut, below) |
 | Normalize each voice-over sentence | before assembly (`voice` skill); it lands closer to -16 LUFS than normalizing the mixed file |
 | An operation Kinocut lacks (table below) | a pinned `ffmpeg-skill` script |

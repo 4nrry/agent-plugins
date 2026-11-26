@@ -79,16 +79,21 @@ Build the same way:
 | Layer | Reads | A change here re-runs |
 |---|---|---|
 | 3D or plates | sets, camera, frames | plates, picture, mux |
-| Picture | plates, text, captions, timing | picture, mux |
+| Picture | plates, text, captions, timing | picture, mux; a timing change that moves a cue re-runs the mix too |
 | Sound mix | voice, music and effects stems, levels, cues | mix, mux |
 | Mux | the picture and the mix | mux |
 
 - **Render the picture silent.** Keep voice, music and effects as separate
   stem files, mix them into one track, and mux last:
-  `ffmpeg -i picture.mp4 -i mix.wav -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -af apad -t <picture duration> -movflags +faststart out.mp4`.
+  `ffmpeg -i picture.mp4 -i mix.wav -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -ar 48000 -af apad -t <picture duration> -movflags +faststart out.mp4`.
   `-c:v copy` does not re-encode the picture. Pad or cut the sound to the
-  picture with `-af apad -t`, not `-shortest`, which can drop the last frames
-  of a copied stream.
+  picture with `-af apad -t`, not `-shortest`: `-shortest` ends the file
+  with the shorter stream, so a short mix cuts the picture.
+- **Sound leaves the composition.** Voice, music and ducking are built from
+  the same sentence table as captions, but as a separate mix from the stems,
+  not as audio elements in the scene. `loudnorm` at -16 LUFS goes on
+  `mix.wav` before the mux, not on the final file, which would re-encode the
+  picture.
 - **Cache each layer by a fingerprint of only what it reads**: a hash of the
   spec fields and input files that layer uses, not the whole spec's mtime. An
   effect moved by a word re-runs the mix and the mux; a caption fix re-runs
