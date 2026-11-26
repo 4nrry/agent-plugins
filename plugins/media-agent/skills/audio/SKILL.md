@@ -42,6 +42,9 @@ your own GPU; transcription alone on an Intel NPU) and
   "a nice sound".
 - Normalize effects with the music, not louder than the voice.
 - Room, phone or radio effects are the last step.
+- Keep voice, music and effects as separate stems and mix them apart from
+  the picture, so a sound change never re-renders it (`video-composition`
+  skill, "Build in layers").
 - **Synthesized** effects need no license: `scripts/sfx-synth.py list` shows
   static, ticks, thuds, impacts, rain, wind, lamp hum, typing, a heartbeat
   and a TV switching off, made from a seed (same seed, same file). It needs
