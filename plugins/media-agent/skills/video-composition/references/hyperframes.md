@@ -128,7 +128,9 @@ What renders wrong with no error. `check --json` reports most of it with a
 ## This plugin's rules in HyperFrames
 
 - Captions and voice: each sentence start in the voice-over JSON becomes the
-  `data-start` of its caption clip and of its `<audio id>`.
+  `data-start` of its caption clip and of its `<audio id>`. Audio in the
+  composition is the single-layer route; the layered build renders silent and
+  muxes a separate mix (SKILL.md, "Build in layers").
 - Loudness: what the mix does to levels was not measured; check -16 LUFS on
   the rendered file as with any compositor.
 - Formats: the canvas is the root's `data-width` and `data-height`, and scenes

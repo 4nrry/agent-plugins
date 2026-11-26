@@ -5,7 +5,8 @@ description: Builds a marketing video as code from its source project — frame-
 
 # Video composition as code
 
-Change a voice-over sentence and re-render; one source, every format. The
+Change a voice-over sentence and re-render only the layers it touches; one
+source, every format. The
 traps do not show in the preview. The rules below hold for any compositor;
 each one's commands, license and traps are in its reference.
 
@@ -63,6 +64,45 @@ each one's commands, license and traps are in its reference.
   Scripted Blender sets with characters are the `3d-scenes` skill; their
   plates come in here, and a tape look over them is in
   [references/lofi-look.md](references/lofi-look.md).
+
+## Build in layers
+
+Post-production keeps picture and sound apart until the end: films and series
+deliver dialogue, music and effects as separate stems (DME, Netflix's
+[M&E guidelines](https://backlothelp.netflix.com/hc/en-us/articles/360057558533-M-E-Creation-and-Delivery-Guidelines-for-Nonfiction)),
+a textless master beside the texted one
+([Discovery](https://pmd.discovery.com/textless-material/)), and light changed
+in comp without rendering the 3D again
+([Foundry](https://foundry.com/insights/film-tv/animated-creations-nuke)).
+Build the same way:
+
+| Layer | Reads | A change here re-runs |
+|---|---|---|
+| 3D or plates | sets, camera, frames | plates, picture, mux |
+| Picture | plates, text, captions, timing | picture, mux; a timing change that moves a cue re-runs the mix too |
+| Sound mix | voice, music and effects stems, levels, cues | mix, mux |
+| Mux | the picture and the mix | mux |
+
+- **Render the picture silent.** Keep voice, music and effects as separate
+  stem files, mix them into one track, and mux last:
+  `ffmpeg -i picture.mp4 -i mix.wav -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k -ar 48000 -af apad -t <picture duration> -movflags +faststart out.mp4`.
+  `-c:v copy` does not re-encode the picture. Pad or cut the sound to the
+  picture with `-af apad -t`, not `-shortest`: `-shortest` ends the file
+  with the shorter stream, so a short mix cuts the picture.
+- **Sound leaves the composition.** Voice, music and ducking are built from
+  the same sentence table as captions, but as a separate mix from the stems,
+  not as audio elements in the scene. `loudnorm` at -16 LUFS goes on
+  `mix.wav` before the mux, not on the final file, which would re-encode the
+  picture.
+- **Cache each layer by a fingerprint of only what it reads**: a hash of the
+  spec fields and input files that layer uses, not the whole spec's mtime. An
+  effect moved by a word re-runs the mix and the mux; a caption fix re-runs
+  the picture and the mux, never the 3D.
+- **Keep a clean picture** (plates composed with no text) when the plates are
+  expensive or rendered somewhere else, such as a rented GPU, so a wording
+  change composes over it instead of rendering the 3D again.
+- **A freshness check or gate compares per-layer fingerprints.** One stamp
+  for the whole build forces a full re-render when only the sound changed.
 
 ## Formats from one source
 
